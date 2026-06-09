@@ -247,6 +247,16 @@ Endorsed in review; not part of the surface refactor but cleared to build.
 - [ ] **`Responsive(Length)` prop-only auto-collapse** (§3.1): collapse a
       `Responsive(Length)` against the current breakpoint *in prop position only*
       (same shape as the bare-number→`Px` coercion). Enables declare-once-reuse.
+- [ ] **Accessibility-as-proof** (`OnSurface` contrast refinement, styles-design §14.1):
+      enforce `Color where contrast(self, bg) >= Lc` at compile time — an unreadable
+      foreground/background pairing fails to compile. **Conservative scope is binding
+      (readability constraint, see §14.1):** static check ONLY when the background is a
+      literal on a statically-visible ancestor (reuse the §9.5 parent walk), reporting
+      the *computed* contrast (`#777 → Lc 38 vs #fff, needs ≥ 60`), never a proof
+      obligation. Convergence-resolved / theme-inherited backgrounds are NOT chased
+      statically — they stay with the runtime `uiModel` linter. Mostly wiring: `contrast`
+      into `constEval` + bind the ancestor bg as the refinement's value-arg (§4.2 path).
+      Lifts UI/styling toward A− when done; no new logic-model concept.
 - [ ] **Unified numeric/dimension design note** (§3.4): reconcile `Number` /
       `Duration` / `Px·Fr·Pct` / planned sized types. Recommendation on the table:
       make *dimensioned numbers* the general mechanism (F#-style units), derive

@@ -1261,3 +1261,59 @@ below AA** while every other state passes. 177 corpus green.
 
 **Deferred:** JSON output mode (outline only, same as `uiModel`); a `sandbox`-as-CLI
 mode; and prop-set cross-product sugar (today the caller builds the variant list).
+
+---
+
+## 14. Type system mechanisms
+
+The styling types rest on three mechanisms, and deliberately no more:
+
+| Feature | Where | Mechanism |
+|---|---|---|
+| Contrast / scale / unit bounds | §4.2, §4.3 | refinement types (SMT/`constEval`-dischargeable) |
+| Context-validity (`gap ⇒ Flex`, `grow ⇒ flex parent`) | §9.5 | value-indexed validity — legality depends on the layout value |
+| Acyclic convergence graph | §6 | termination by construction (well-foundedness) |
+
+> **DECIDED:** refinement-typed HM plus a closed value-indexed validity layer — not
+> a general dependent calculus. Refinements keep numeric/contrast/scale/unit checks
+> *inferred* (§1, no annotation on `gap=8`); context-validity stays a decidable
+> value-keyed check (§9.5); acyclicity stays the convergence pass's own
+> well-foundedness check (§6); genuine cycles (constraint layout, seeded fixpoints,
+> two-way binds) live behind a trusted solver boundary (§7), not in the type system.
+
+**Evidence basis:** all three are shipped — refinements graded A− (§4.3, TODO §1),
+context-validity zero-false-positive (§9.5 as-built), convergence cycle-checked
+(§6.6 as-built).
+
+### 14.1 Accessibility-as-proof — and the scope that keeps it readable
+
+The one feature the fragment makes *buildable but not yet built* is
+**accessibility-as-proof**: a foreground colour typed against its background so an
+unreadable pairing fails to compile, not lints after the fact —
+`type OnSurface = Color where contrast(self, bg) >= 60` (APCA Lc, §4.3). It adds **no
+new concept**: it is an instance of the refinement mechanism already in the table, so
+there is nothing extra to teach.
+
+The only thing that could hurt the mental model is **non-locality** — the background is
+set by an ancestor, so a check that chased it everywhere would produce
+action-at-a-distance errors ("why does this colour error *here* but not there?"). That
+is the exact failure the rest of this language avoids with one discipline: *enforce only
+when the fact is locally certain; defer otherwise.* Refinements fold only on constant
+args; context-validity fires only on known primitives; convergence cycles are a runtime
+error, not static. Accessibility-as-proof must obey the same rule.
+
+> **DECIDED — conservative scope (binding constraint on any build):**
+> - **Static check ONLY when the background is a literal on a statically-visible
+>   ancestor** (the same parent walk §9.5 already does). Report the *computed* value —
+>   `colour #777 → Lc 38 vs #fff, needs ≥ 60` — never a proof obligation.
+> - **Convergence-resolved or theme/role-inherited backgrounds are NOT chased at check
+>   time.** They are already served by the runtime `uiModel` contrast linter
+>   (`render.ts` prints `· contrast … vs …`); that stays their home.
+> - Net: the *safe* scope is the *decided* scope. The temptation to make the check
+>   "complete" (resolve every background statically) is precisely the version that would
+>   break local reasoning — so it is out of scope by decision, not by omission.
+>
+> Implementation is mostly wiring existing pieces: add `contrast` to `constEval`, bind
+> the ancestor background as the refinement's `bg` value-arg (§4.2 dependent-arg path),
+> evaluate the predicate where the background is a literal. Status: **not built** —
+> evaluated and scoped here so the build stays on the readable side of the line.
