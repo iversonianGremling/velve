@@ -1,0 +1,17 @@
+@edition "2026.6"
+
+-- Accessibility-as-proof (styles-design §14.1). A colour prop is checked for APCA
+-- contrast against the element's *resolved* background. You opt in by defining the
+-- `OnSurface` refinement; the predicate's `surface` is bound to the nearest-ancestor
+-- literal `background`, threaded down the element tree. Every colour here clears
+-- Lc ≥ 60 (including the inverse text on the dark panel), so the view checks clean.
+
+type Color = String
+type OnSurface = Color where contrast(self, surface) >= 60
+
+def view(): Element
+  Column background=#ffffff
+    Text "heading" color=#000000
+    Text "body"    color=#444444
+    Column background=#101418
+      Text "inverse on dark" color=#ffffff

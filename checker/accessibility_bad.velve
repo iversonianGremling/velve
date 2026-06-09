@@ -1,0 +1,12 @@
+@edition "2026.6"
+
+-- Non-accessible colour. `#9aa0a6` on a white background is APCA Lc ~51, below the
+-- 60 the `OnSurface` refinement requires — so the unreadable pairing is a compile
+-- error, not a runtime lint. The fix is a darker foreground or a different surface.
+
+type Color = String
+type OnSurface = Color where contrast(self, surface) >= 60
+
+def view(): Element
+  Column background=#ffffff
+    Text "too light to read" color=#9aa0a6

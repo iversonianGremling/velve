@@ -1313,7 +1313,14 @@ error, not static. Accessibility-as-proof must obey the same rule.
 >   "complete" (resolve every background statically) is precisely the version that would
 >   break local reasoning — so it is out of scope by decision, not by omission.
 >
-> Implementation is mostly wiring existing pieces: add `contrast` to `constEval`, bind
-> the ancestor background as the refinement's `bg` value-arg (§4.2 dependent-arg path),
-> evaluate the predicate where the background is a literal. Status: **not built** —
-> evaluated and scoped here so the build stays on the readable side of the line.
+> **Status: BUILT** (conservative scope, `accessibility_test`/`accessibility_bad`). As
+> shipped: APCA Lc lives in `constEval` (`contrast(fg, bg)`); the `Element` inference
+> walk threads the resolved background down the tree (own literal `background` wins,
+> else inherited — mirroring the renderer's `myBg`) into a `surfaceBg` field; a `color`
+> prop is folded against it **only when the project defines `OnSurface`** (the §4.2
+> opt-in pattern, via `PROP_SURFACE`) and both colour and background are constant hex.
+> The predicate binds `self`/`value` = the colour and `surface` = the background. The
+> error reports the computed value — `colour #9aa0a6 fails 'OnSurface' — APCA Lc 51
+> against background #ffffff` — never a proof obligation. Non-literal / convergence-
+> resolved backgrounds stay silent (runtime/linter), exactly as scoped above. Corpus
+> impact: zero (inert unless `OnSurface` is defined).

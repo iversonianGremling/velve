@@ -280,6 +280,36 @@ export const EMPTY_ENV: Map<string, ConstVal> = new Map();
 // literals, list literals, arithmetic/comparison/logical operators, `!`/unary-minus,
 // `matches(value, "regex")`, and `listLength`/`length` of a constant list (so
 // dependent bounds like `InBounds(listLength xs)` can be folded).
+// APCA Lc — perceptual contrast (WCAG-3 / SACAM 0.0.98G-4g), the metric the colour
+// system and `OnSurface` refinements use (styles-design §4.3, §14.1). Returns the
+// *magnitude* |Lc| (≈0–108) so a `contrast(fg, bg) >= 60` threshold is polarity-
+// independent. `null` when either colour isn't a parseable hex string.
+function hexToRgb(h: string): [number, number, number] | null {
+  const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(h.trim());
+  if (!m) return null;
+  let s = m[1]!;
+  if (s.length === 3) s = s.split("").map(c => c + c).join("");
+  return [0, 2, 4].map(i => parseInt(s.slice(i, i + 2), 16)) as [number, number, number];
+}
+function apcaLc(fg: string, bg: string): number | null {
+  const txt = hexToRgb(fg), back = hexToRgb(bg);
+  if (!txt || !back) return null;
+  const TRC = 2.4, Rc = 0.2126729, Gc = 0.7151522, Bc = 0.0721750;
+  const blkThrs = 0.022, blkClmp = 1.414;
+  const normBG = 0.56, normTXT = 0.57, revTXT = 0.62, revBG = 0.65;
+  const scale = 1.14, loClip = 0.1, offset = 0.027, deltaYmin = 0.0005;
+  const lum = ([r, g, b]: [number, number, number]) =>
+    Rc * Math.pow(r / 255, TRC) + Gc * Math.pow(g / 255, TRC) + Bc * Math.pow(b / 255, TRC);
+  let txtY = lum(txt), bgY = lum(back);
+  if (txtY < blkThrs) txtY += Math.pow(blkThrs - txtY, blkClmp);
+  if (bgY  < blkThrs) bgY  += Math.pow(blkThrs - bgY,  blkClmp);
+  if (Math.abs(bgY - txtY) < deltaYmin) return 0;
+  let sapc: number, out: number;
+  if (bgY > txtY) { sapc = (Math.pow(bgY, normBG) - Math.pow(txtY, normTXT)) * scale; out = sapc < loClip ? 0 : sapc - offset; }
+  else            { sapc = (Math.pow(bgY, revBG) - Math.pow(txtY, revTXT)) * scale; out = sapc > -loClip ? 0 : sapc + offset; }
+  return Math.abs(out * 100);
+}
+
 export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undefined {
   switch (e.tag) {
     case "Lit":
@@ -346,6 +376,18 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
         const pat  = constEval(e.args[1]!, env);
         if (typeof subj === "string" && typeof pat === "string") {
           try { return new RegExp(pat).test(subj); } catch { return undefined; }
+        }
+      }
+      // contrast(fg, bg) — APCA Lc magnitude, the colour-accessibility predicate
+      // (`OnSurface = Color where contrast(self, surface) >= 60`). Folds only when
+      // both colours are constant hex strings; a non-literal background (resolved by
+      // convergence, themed) stays unfolded → runtime/linter, per styles-design §14.1.
+      if (e.fn.tag === "Var" && e.fn.name === "contrast" && e.args.length === 2) {
+        const fg = constEval(e.args[0]!, env);
+        const bg = constEval(e.args[1]!, env);
+        if (typeof fg === "string" && typeof bg === "string") {
+          const lc = apcaLc(fg, bg);
+          return lc === null ? undefined : lc;
         }
       }
       return undefined;
@@ -772,6 +814,17 @@ export const PROP_SCALE: Record<string, string> = {
   size: "TypeScale",
 };
 
+// ── Accessibility-as-proof (§4.3, §14.1 — opt-in) ────────────────────────────────
+// A colour prop is checked for contrast against the element's resolved background —
+// but ONLY when the project defines the named contrast refinement (e.g.
+// `type OnSurface = Color where contrast(self, surface) >= 60`). The predicate's
+// `surface` is bound to the **ambient background**: the nearest ancestor's literal
+// `background`, threaded down the element tree exactly as the renderer threads it.
+// The check fires only when BOTH the colour and that background are constant hex —
+// a convergence-resolved or themed background stays unfolded (runtime/linter), per
+// the §14.1 conservative scope. Undefined refinement ⇒ no check, nothing breaks.
+const PROP_SURFACE: Record<string, string> = { color: "OnSurface" };
+
 // ── Prop vocabulary (§3.2 — unknown-prop + required-prop errors) ─────────────────
 // Built-in primitives have a CLOSED prop vocabulary, so a prop outside it is almost
 // always a typo (`colour=`, or `onClick=` where an `on` handler child was meant).
@@ -864,6 +917,11 @@ function collectBodyGotos(body: SagaStmt[], out: Set<string>, knownSteps: Set<st
 
 class Inferrer {
   constructor(private ctx: Ctx, private types: Map<Expr, Type>) {}
+
+  // Ambient background (nearest-ancestor literal `background`) threaded down the
+  // element tree for the `OnSurface` contrast check. Null = unknown (root, or a
+  // non-literal/convergence-resolved background) → the check stays silent.
+  private surfaceBg: string | null = null;
 
   // Result type of each first-class saga, so `go Checkout(..)` can be typed as a
   // saga handle (`Saga T`) rather than a plain future.
@@ -1817,6 +1875,11 @@ class Inferrer {
         if (expr.content) this.inferExpr(expr.content, env);
         const mode = PRIMITIVE_MODE[expr.name];
         const isPrimitive = mode !== undefined;
+        // Resolve THIS element's background: its own constant `background` prop wins,
+        // else it inherits the ambient one from its ancestors (the §14.1 surface).
+        const ownBg = expr.props.find(p => p.name === "background");
+        const ownBgLit = ownBg ? constEval(ownBg.value, EMPTY_ENV) : undefined;
+        const myBg = typeof ownBgLit === "string" ? ownBgLit : this.surfaceBg;
         for (const p of expr.props) {
           const vt = this.inferExpr(p.value, env);
           const expected = ELEMENT_PROP_TYPES[p.name] ?? PRIMITIVE_PROP_TYPES[expr.name]?.[p.name];
@@ -1847,6 +1910,23 @@ class Inferrer {
               err(this.ctx, p.value.span,
                 `${cv} is off the '${scaleName}' scale; use a scale value or raw(${cv})`);
           }
+          // Accessibility-as-proof: a colour prop must contrast with the resolved
+          // background. Opt-in (only if the project defines `OnSurface`), and only
+          // when both the colour and the ambient background are constant hex (§14.1).
+          const surfName = PROP_SURFACE[p.name];
+          const surfRef = surfName ? REFINEMENTS.get(surfName) : undefined;
+          if (surfRef && typeof myBg === "string") {
+            const cc = constEval(p.value, EMPTY_ENV);
+            if (typeof cc === "string") {
+              // `surface` = ambient background; `self`/`value` = this colour.
+              const penv = new Map<string, ConstVal>([["value", cc], ["self", cc], ["surface", myBg]]);
+              if (constEval(surfRef.pred, penv) === false) {
+                const lc = apcaLc(cc, myBg);
+                err(this.ctx, p.value.span,
+                  `colour ${cc} fails '${surfName}'${lc === null ? "" : ` — APCA Lc ${Math.round(lc)}`} against background ${myBg}`);
+              }
+            }
+          }
         }
         // Required-prop: a primitive that cannot render without a prop (Image needs
         // a source, Link needs a destination) errors when it is missing.
@@ -1857,6 +1937,10 @@ class Inferrer {
               err(this.ctx, expr.span, `${expr.name} requires a '${req}' prop`);
         }
         // Parent-context: a directly-nested child's flex-item props need THIS to be flex.
+        // Children are checked with THIS element's resolved background as their ambient
+        // surface (the §14.1 top-down threading, mirroring the renderer's `myBg`).
+        const prevSurface = this.surfaceBg;
+        this.surfaceBg = typeof myBg === "string" ? myBg : null;
         for (const c of expr.children) {
           if (c.tag === "Element" && mode !== undefined && mode !== "flex")
             for (const cp of c.props)
@@ -1865,6 +1949,7 @@ class Inferrer {
                   `prop '${cp.name}' requires a flex parent (Row/Column/Stack/Grid); parent ${expr.name} is a ${mode}`);
           this.inferExpr(c, env);
         }
+        this.surfaceBg = prevSurface;
         return { tag: "Named", name: "Element", args: [] };
       }
 

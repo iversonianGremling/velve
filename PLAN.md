@@ -247,16 +247,20 @@ Endorsed in review; not part of the surface refactor but cleared to build.
 - [ ] **`Responsive(Length)` prop-only auto-collapse** (§3.1): collapse a
       `Responsive(Length)` against the current breakpoint *in prop position only*
       (same shape as the bare-number→`Px` coercion). Enables declare-once-reuse.
-- [ ] **Accessibility-as-proof** (`OnSurface` contrast refinement, styles-design §14.1):
-      enforce `Color where contrast(self, bg) >= Lc` at compile time — an unreadable
-      foreground/background pairing fails to compile. **Conservative scope is binding
-      (readability constraint, see §14.1):** static check ONLY when the background is a
-      literal on a statically-visible ancestor (reuse the §9.5 parent walk), reporting
-      the *computed* contrast (`#777 → Lc 38 vs #fff, needs ≥ 60`), never a proof
-      obligation. Convergence-resolved / theme-inherited backgrounds are NOT chased
-      statically — they stay with the runtime `uiModel` linter. Mostly wiring: `contrast`
-      into `constEval` + bind the ancestor bg as the refinement's value-arg (§4.2 path).
-      Lifts UI/styling toward A− when done; no new logic-model concept.
+- [x] **Accessibility-as-proof** (`OnSurface` contrast refinement, styles-design §14.1).
+      ✅ DONE (conservative scope). `Color where contrast(self, surface) >= Lc` is enforced
+      at compile time — an unreadable foreground/background pairing fails to check.
+      As-built: APCA Lc in `constEval` (`contrast(fg,bg)`); the `Element` walk threads the
+      resolved background (`surfaceBg`) down the tree (own literal `background` wins, else
+      inherited); the `color` prop folds against it **only when the project defines
+      `OnSurface`** (`PROP_SURFACE` opt-in, mirrors the §4.2 token-scale pattern) and both
+      colour + background are constant hex. Error reports the computed Lc, never a proof
+      obligation. Non-literal / convergence-resolved backgrounds stay silent (runtime /
+      `uiModel` linter), per the §14.1 binding scope. Fixtures: `accessibility_test`
+      (green), `accessibility_bad` (Lc 51 < 60, 1 intended error). Corpus impact zero
+      (inert unless `OnSurface` is defined). No new logic-model concept — it is the
+      existing refinement mechanism. **Remaining for an A− UI grade:** call-syntax phase 2
+      (§2.1) + theme/responsive, not this.
 - [ ] **Unified numeric/dimension design note** (§3.4): reconcile `Number` /
       `Duration` / `Px·Fr·Pct` / planned sized types. Recommendation on the table:
       make *dimensioned numbers* the general mechanism (F#-style units), derive
