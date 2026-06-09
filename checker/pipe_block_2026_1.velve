@@ -1,0 +1,14 @@
+@edition "2026.1"
+
+-- Baseline edition keeps the `pipe` block parseable: it lowers to the same Do
+-- block that threads each line's result into the magic `ret`. It now carries a
+-- deprecation WARNING (Phase 3a) pointing at the multiline `|>` replacement, but
+-- still checks — so this fixture stays green (warnings are not errors).
+
+def doubleSum(xs: List(Number)): Number
+  pipe
+    map(xs, fn(x) -> x * 2)
+    sum(ret)
+
+def main(): Unit
+  print(doubleSum([1, 2, 3]))

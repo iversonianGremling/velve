@@ -1554,7 +1554,21 @@ export class Lowerer {
   // `a; b ret; c ret` becomes `ret = a; ret = b ret; c ret` — a Do block whose
   // value is the last line (which still sees the prior `ret`). Reuses Do, so no
   // infer/eval changes are needed. Bindings written explicitly pass through.
+  //
+  // DEPRECATED (Phase 3a): removed in edition 2026.6 — multiline `|>` chains cover
+  // the same threading without the magic `ret` identifier (whose only meaning is
+  // this desugar, so it vanishes with the block). Warning in baseline 2026.1,
+  // error in 2026.6+ (SPEC §17 lifecycle). The block still lowers either way so the
+  // rest of the module checks.
   private lowerPipeBlock(n: N, span: Span): Expr {
+    const deprecated = atLeast(this.edition, "2026.6");
+    this.diagnostics.push({
+      kind: deprecated ? "error" : "warning",
+      message: deprecated
+        ? "the `pipe` block (and its magic `ret`) is removed in edition 2026.6 — use a multiline `|>` chain"
+        : "the `pipe` block (and its magic `ret`) is deprecated — use a multiline `|>` chain (rejected from edition 2026.6)",
+      span,
+    });
     const stmts = n.namedChildren.map(c => this.lowerStmt(c));
     const threaded: Stmt[] = stmts.map((s, i) => {
       const isLast = i === stmts.length - 1;

@@ -1,5 +1,5 @@
--- ── Checkout saga
--- Shows: saga with rollback, parallel go, race with timeout, step transitions
+-- ── Checkout machine (persisted saga)
+-- Shows: persisted machine with rollback, parallel go, race with timeout, step transitions
 
 type Item    = { id: Number, name: String, price: Number, qty: Number }
 type Cart    = { userId: Number, items: List(Item) }
@@ -31,45 +31,47 @@ def httpGet(path: String): Effect [network] Result String String
 def httpPost(path: String): Effect [network] Result String String
   netPost(path)
 
--- ── Saga ──────────────────────────────────────────────────────────────────────
+-- ── Machine ───────────────────────────────────────────────────────────────────
+-- `machine … persisted over Store` is the canonical durable/compensating form
+-- (the `saga` keyword was its deprecated alias). `persisted` unlocks the journal
+-- and `? rollback :step` compensation; `over CheckoutState` names the backing store.
 
-def checkout(cart: Cart): Effect [payment, inventory, orders] Result Receipt CheckoutError
-  saga CheckoutState
+machine Checkout(cart: Cart): Effect [payment, inventory, orders] Result Receipt CheckoutError persisted over CheckoutState
 
-    :validate
-      validateCart(cart)
-        | Ok clean  -> :stock clean
-        | Error e   -> :abort (InvalidCart(e))
+  :validate
+    validateCart(cart)
+      | Ok clean  -> :stock clean
+      | Error e   -> :abort (InvalidCart(e))
 
-    :stock clean
-      checkInventory(clean).items
-        | Ok stock  -> :reserve clean stock
-        | Error e   -> :abort (OutOfStock(e))
+  :stock clean
+    checkInventory(clean).items
+      | Ok stock  -> :reserve clean stock
+      | Error e   -> :abort (OutOfStock(e))
 
-    :reserve clean stock
-      reserveItems(stock)
-        | Ok r ->
-          releaseReservation(r) ? rollback :stock
-          :charge clean r
-        | Error e -> :abort (OutOfStock(e))
+  :reserve clean stock
+    reserveItems(stock)
+      | Ok r ->
+        releaseReservation(r) ? rollback :stock
+        :charge clean r
+      | Error e -> :abort (OutOfStock(e))
 
-    :charge clean reservation
-      race
-        go processPayment(cart.userId, clean.total)
-        after 30s
-        until ask CheckoutState currentPhase == :cancelled
-      | Ok payment ->
-        refundPayment(payment) ? rollback :reserve
-        :ship reservation payment
-      | Timeout   -> :abort (PaymentFailed("timed out"))
-      | Cancelled -> :abort (PaymentFailed("cancelled"))
+  :charge clean reservation
+    race
+      go processPayment(cart.userId, clean.total)
+      after 30s
+      until ask CheckoutState currentPhase == :cancelled
+    | Ok payment ->
+      refundPayment(payment) ? rollback :reserve
+      :ship reservation payment
+    | Timeout   -> :abort (PaymentFailed("timed out"))
+    | Cancelled -> :abort (PaymentFailed("cancelled"))
 
-    :ship reservation payment
-      go ask Shipping (Estimate(reservation))
-      | Ok eta ->
-        createOrder(reservation, payment, eta) ? rollback :charge
-        :done (Ok(Receipt({ orderId: payment.id, total: payment.amount, eta: eta })))
-      | Error _ -> :abort (OrderFailed("shipping estimate failed"))
+  :ship reservation payment
+    go ask Shipping (Estimate(reservation))
+    | Ok eta ->
+      createOrder(reservation, payment, eta) ? rollback :charge
+      :done (Ok(Receipt({ orderId: payment.id, total: payment.amount, eta: eta })))
+    | Error _ -> :abort (OrderFailed("shipping estimate failed"))
 
-    :done result -> result
-    :abort e     -> Error(e)
+  :done result -> result
+  :abort e     -> Error(e)

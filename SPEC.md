@@ -370,6 +370,22 @@ let mut x = 5        -- block-scoped mutable
 x : Number = 5
 ```
 
+**`let`/`const` vs bare `x =` — not redundant.** The leading keyword is what makes a
+statement a *declaration*: `let x = e` (and `const x = e`, `mut x = e`) introduces a
+**new** binding, scoped to the enclosing block and free to **shadow** an outer `x`. A
+bare `x = e` is a **reassignment** of the binding already in scope — it does not
+declare, does not shadow, and (for the borrow checker) re-points an existing
+single-owner slot rather than opening a new one. So inside a block:
+```
+let total = 0          -- declares; shadows any outer `total`
+total = total + line   -- reassigns the binding just declared
+let total = "done"     -- a fresh, differently-typed binding (shadow), block-scoped
+```
+`const` is `let` without `mut`; the bare `x = e` *declaration* form (no keyword, first
+mention of `x`) is the common shorthand for `const x = e`. Reach for `let`/`const`
+explicitly when you need to shadow, or to make "new binding, not reassignment" visible
+at a glance.
+
 ### 3.4 Functions
 
 ```
@@ -740,14 +756,21 @@ rejected at compile time:
 n * 1ms          -- Duration   (convert a Number `n` of ms into a Duration)
 ```
 
-**`pipe`** — thread each line's result into `ret` for the next line; value is the
-last line (the point-free `|>` chain as a block):
+**`pipe`** — *(deprecated; removed in edition 2026.6 — see §17)* threaded each line's
+result into the magic `ret` for the next line; value was the last line. The `ret`
+identifier had no meaning outside the block. A multiline `|>` chain expresses the same
+data flow without the magic name and is the replacement:
 ```
+-- edition 2026.1 (deprecated): warning
 result =
   pipe
     loadItems source
     sortBy score ret
     listTake n ret
+
+-- edition 2026.6: write the |> chain instead
+result =
+  loadItems(source) |> sortBy(score) |> listTake(n)
 ```
 
 **`drop x`** — deterministically release `x` now (compile-time ownership; runtime

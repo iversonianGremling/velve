@@ -161,13 +161,30 @@ codemod + full fixture/corpus run before moving on.
       **`?:` glue dropped:** no formatter to host it, no ambiguity to fix (established
       in 2b) — purely a style nicety, not worth a tokenization break.
 
-### Phase 3 — Deletions (§4)
-- [ ] **3a. Delete `pipe` block** + the `ret` magic identifier; verify multiline `|>`
-      covers all uses; codemod. (Revisit `|>` sugar later only if spamming is real.)
-- [ ] **3b. Finish `saga` removal.** Keep the alias; migrate the aspirational examples
-      still using the deprecated form (`examples/checkout.velve`).
-- [ ] Keep `let` and `Char` — **no code change**; just *document* the `let`
-      block-scoping difference in the SPEC (or it reads as redundant with bare `x =`).
+### Phase 3 — Deletions (§4)  ✅ DONE (2026-06)
+- [x] **3a. Delete `pipe` block** + the `ret` magic identifier. ✅ DONE, edition-gated.
+      **Finding:** zero corpus/example uses of the `pipe` block keyword (all matches were
+      substrings — `pipeline`, "pipes" in comments) → no codemod needed. The magic `ret`
+      has no meaning outside the desugar, so deprecating the block removes both. Kept the
+      block in the superset grammar; `lowerPipeBlock` now warns 2026.1 / errors 2026.6
+      (SPEC §17 lifecycle), pointing at the multiline `|>` chain as the replacement.
+      New fixtures: `pipe_block_2026_1.velve` (warn-only, green) + `pipe_chain_2026_6.velve`
+      (the `|>` replacement, clean). Gate verified both ways; corpus 32→32, zero
+      regressions. SPEC §3.11 `pipe` entry rewritten with the deprecation + `|>` form.
+- [x] **3b. Finish `saga` removal.** ✅ DONE. Kept the deprecated alias path
+      (`saga_def`/`saga_alias_test.velve` still warn + run identically — that's the
+      alias *test*, left in place). Migrated the last aspirational user
+      `examples/checkout.velve`: the expr-form `def checkout … saga CheckoutState` became
+      a top-level `machine Checkout(cart: Cart): … persisted over CheckoutState` (steps
+      dedented one level; Effect return type rides through since `_type` ⊇ `effect_type`).
+      Parses as `DSaga deprecated:false` (canonical machine path); the `saga` keyword is
+      gone from `examples/`. Baseline byte-identical (checkout's 14 errs are its
+      undefined helpers — Phase 4c, unchanged here).
+- [x] Keep `let` and `Char` — **no code change**; documented the `let`/`const` vs bare
+      `x =` distinction in SPEC §3.3. **Finding:** the difference is real and
+      borrow-checked (`borrow.ts:267,599` keys on `SBind.declares`): `let`/`const`/`mut`
+      *declare* a new block-scoped, shadow-capable binding; bare `x =` *reassigns* the
+      binding in scope. Documented exactly that (not "redundant sugar").
 
 ### Phase 4 — SPEC / example hygiene (§6, §2.3) 🔴 highest leverage
 This is the root cause of the "I thought we already did X" surprises — decisions

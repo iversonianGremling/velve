@@ -1,0 +1,14 @@
+@edition "2026.6"
+
+-- Edition 2026.6 removes the `pipe` block and the magic `ret` identifier. The
+-- same left-to-right threading is written as a `|>` chain — each stage feeds the
+-- next, no implicit binding. This is the replacement the Phase 3a deprecation
+-- points at; it reads the data flow without a magic name.
+
+def double(x: Number): Number -> x * 2
+
+def doubleSum(xs: List(Number)): Number ->
+  xs |> map(double) |> sum
+
+def main(): Unit
+  print(doubleSum([1, 2, 3]))
