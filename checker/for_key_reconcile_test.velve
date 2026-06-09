@@ -1,0 +1,24 @@
+-- Proves the implicit `for r in rows` key reaches the reconciler: reversing the
+-- list emits keyed `moveChild` patches (matching rows by identity), NOT a positional
+-- re-render. No `key=`/`id=` is written on the row — it is auto-keyed on `r.id`.
+
+type Row = { id: String, label: String }
+
+store Rows
+  state
+    items : List(Row) = [ { id: "a", label: "Alpha" }, { id: "b", label: "Beta" }, { id: "c", label: "Gamma" } ]
+  messages
+    Flip -> { items: reverse((items)) }
+  pub
+    all = items
+
+def view(): Element
+  Column gap=4 padding=8
+    Button "flip" id="flip" size=12
+      on onClick -> send Rows (Flip())
+    Column gap=2
+      for r in Rows.all
+        Text (r.label) size=12 color=#ffffff
+
+def main(): Unit
+  print((interactive(view, [ { target: "flip", event: "onClick" } ])))

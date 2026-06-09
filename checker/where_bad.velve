@@ -1,0 +1,13 @@
+-- `where` lifetime constraints that do NOT establish the needed outlives relation.
+-- Each function returns a ~y pointer where the result is declared ~x, so soundness
+-- needs `~y >= ~x` — which none of these provide.
+
+-- wrong direction: ~x >= ~y says nothing about whether ~y outlives ~x
+def wrongDir(a: Ptr ~x Number, b: Ptr ~y Number): Ptr ~x Number
+  where (~x >= ~y)
+  b              -- ERROR: ~y is not known to outlive ~x
+
+-- an unrelated constraint between other lifetimes doesn't help
+def unrelated(a: Ptr ~x Number, b: Ptr ~y Number, c: Ptr ~z Number): Ptr ~x Number
+  where (~z >= ~y)
+  b              -- ERROR: ~y is not known to outlive ~x

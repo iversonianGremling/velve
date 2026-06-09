@@ -1,0 +1,13 @@
+-- Prop vocabulary (errors): 5 diagnostics expected.
+--   1. unknown prop 'colour' on Column   (typo for `color`)
+--   2. unknown prop 'onClick' on Text     (an `on …` handler child was meant)
+--   3. unknown prop 'href' on Button      (Button has no link destination)
+--   4. Image requires a 'src' prop
+--   5. Link requires a 'to' prop
+
+def view(): Element
+  Column gap=16 colour=#000000
+    Text "hi" size=14 onClick="x"
+    Button "Go" href="/x"
+    Image alt="no source"
+    Link "Nowhere" color=#ffffff

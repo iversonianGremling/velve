@@ -1,0 +1,9 @@
+-- Responsive sugar stays exhaustiveness-checked: omitting a Breakpoint is an error,
+-- exactly as for an explicit `match viewport.breakpoint`. Expect 1 error
+-- (non-exhaustive match — missing: Wide).
+
+def responsiveWidth(): Length
+  responsive
+    | Mobile  -> Fill
+    | Tablet  -> Pct((80))
+    | Desktop -> Px((320))

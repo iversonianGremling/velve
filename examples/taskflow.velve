@@ -1,0 +1,393 @@
+-- TaskFlow — a task management application
+-- Demonstrates the full Velve language surface
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Types
+-- ──────────────────────────────────────────────────────────────────────────
+
+type TaskId = Number
+
+type Color = String
+
+type ValidAge = Number where 0 <= value
+
+type Priority
+  = High
+  = Medium
+  = Low
+
+type Status
+  = Todo
+  = InProgress
+  = Done
+
+type Task = { id: TaskId, title: String, priority: Priority, status: Status }
+
+type Point = { x: Number, y: Number }
+
+type Tree a
+  = Leaf
+  = Node { value: a, left: Tree, right: Tree }
+
+type SafeTitle = Tainted String
+
+type LoadState = Async String
+
+type TaskResult = Result String Number
+
+type StoreFx = Effect [network, storage] String
+
+type Vec4 = extern { x: Number align=16, y: Number, z: Number, w: Number }
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Session store — tracks login state, with v1 migration
+-- ──────────────────────────────────────────────────────────────────────────
+
+store Session
+  version: 2
+  migrate
+    | v1 { token } -> { token: token, role: "user" }
+  state
+    token : String = "none"
+    role : String = "user"
+  messages
+    Login (token: String) ->
+      { token: token, role: role }
+    Logout ->
+      { token: "none", role: "user" }
+  pub
+    isLoggedIn = token != "none"
+    currentRole = role
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Task store — owns the task list
+-- ──────────────────────────────────────────────────────────────────────────
+
+store Tasks
+  state
+    items : List = []
+    nextId : Number = 1
+  messages
+    Add (title: String, priority: Priority) ->
+      { items: items, nextId: nextId + 1 }
+    Complete (id: TaskId) ->
+      updated = items
+      { items: updated, nextId: nextId }
+    Remove (id: TaskId) ->
+      remaining = items
+      { items: remaining, nextId: nextId }
+  pub
+    all = items
+    count = nextId - 1
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Priority helpers
+-- ──────────────────────────────────────────────────────────────────────────
+
+def priorityLabel(p: Priority): String
+  match p
+    | High -> "High"
+    | Medium -> "Medium"
+    | Low -> "Low"
+
+def priorityColor(p: Priority): Color
+  match p
+    | High -> #ff4444
+    | Medium -> #ffaa00
+    | Low -> #44bb44
+
+def priorityRank(p: Priority): Number
+  match p
+    | High -> 0
+    | Medium -> 1
+    | Low -> 2
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Task helpers
+-- ──────────────────────────────────────────────────────────────────────────
+
+def formatTask(task: Task): String
+  tag = priorityLabel(task).priority
+  "[{tag}] {task.title}"
+
+def isComplete(task: Task): Bool
+  task.status is Done
+
+def isPending(task: Task): Bool
+  not (task.status is Done)
+
+def safeCount(tasks: List): String
+  tasks?.length
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Collection operations
+-- ──────────────────────────────────────────────────────────────────────────
+
+def pendingTasks(tasks: List): List
+  tasks |> filter task -> isPending(task)
+
+def highPriority(tasks: List): List
+  tasks |> filter task -> task.priority is High
+
+def taskTitles(tasks: List): List
+  tasks |> map task -> task.title
+
+def indexedTitles(tasks: List): List
+  tasks |> mapWithIndex 0 task -> task.title
+
+def activePriority(tasks: List): List
+  tasks |> pendingTasks |> highPriority
+
+def firstTaskTitle(tasks: List): String
+  tasks[0].title
+
+def sortedByRank(tasks: List): List
+  tasks |> sortBy(priorityRank)
+
+def countPending(tasks: List): Number
+  pending = pendingTasks(tasks)
+  pending.length
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Arithmetic and utility
+-- ──────────────────────────────────────────────────────────────────────────
+
+def add(x: Number, y: Number): Number
+  x + y
+
+def greet(): String
+  "hello"
+
+def clampProgress(n: Number): Number
+  lo = if n < 0
+    0
+  else
+    n
+  if lo > 100
+    100
+  else
+    lo
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Lambdas
+-- ──────────────────────────────────────────────────────────────────────────
+
+def makeSorters(): List
+  byRank = fn a -> priorityRank((a.priority))
+  sentinel = fn _ -> 0
+  noop = fn -> 0
+  classify = fn
+    | High -> "urgent"
+    | Medium -> "normal"
+    | Low -> "later"
+  [byRank, sentinel, noop, classify]
+
+def applyTransform(items: List): List
+  process(items, (fn x -> x))
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Pattern matching
+-- ──────────────────────────────────────────────────────────────────────────
+
+def describeList(items: List): String
+  match items
+    | [] -> "empty"
+    | -> "has items"
+
+def describeResult(r: TaskResult): String
+  r |> match
+    | Ok msg -> msg
+    | Error msg -> msg
+
+def progressNote(s: Status): String
+  match s
+    | x if x is Done -> "complete"
+    | -> "ongoing"
+
+def handleError(r: TaskResult): String
+  match r
+    | result.Error msg -> msg
+    | v -> "ok"
+
+def nextAction(task: Task): String
+  match task.status
+    | Done ->
+      label = priorityLabel(task).priority
+      "done: {label}"
+    | InProgress -> "keep going"
+    | Todo -> "start this"
+
+def checkItems(items: List): String
+  match items
+    | x -> "found items"
+    | ()
+
+def processStep(task: Task): Number
+  match task.status
+    | Done -> break
+    | InProgress -> continue
+    | Todo ->
+      rank = priorityRank(task).priority
+      rank
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Destructuring
+-- ──────────────────────────────────────────────────────────────────────────
+
+def userFullName(user: User): String
+  { name, surname } = user
+  "{name} {surname}"
+
+def sumPair(pair: List): Number
+  (a, b) = pair
+  a + b
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Annotated and mutable bindings
+-- ──────────────────────────────────────────────────────────────────────────
+
+def annotatedBindings(): Number
+  x = 5
+  mut y = 0
+  z : Number = 5
+  mut w : Number = 0
+  x
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Effects
+-- ──────────────────────────────────────────────────────────────────────────
+
+def fetchUser(id: Number): Effect [network] String
+  "user"
+
+def login(token: String): StoreFx
+  transaction
+    send Session (Login(token))
+    token
+
+def loginWithTimeout(token: String): StoreFx
+  transaction within { timeout: 5000 }
+    send Session (Login(token))
+    token
+
+def loadRole(): String
+  role <- ask Session GetCurrentRole
+  role
+
+def loadRoleWithTimeout(): String
+  role <- ask Session GetCurrentRole timeout=5000
+  role
+
+def notifyRemoval(taskId: TaskId): Number
+  taskId |> send Tasks Remove
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Escape blocks
+-- ──────────────────────────────────────────────────────────────────────────
+
+def nowMs(): Number
+  @js{ Date.now() }
+
+def schemaVersion(): Number
+  @comptime{
+    v = 1
+    v
+
+def unsafeGet(): Number
+  @unsafe{
+    x = 42
+    x
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Decorated (GPU kernel)
+-- ──────────────────────────────────────────────────────────────────────────
+
+@kernel
+def vertexShader(): Number
+  42
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Modules
+-- ──────────────────────────────────────────────────────────────────────────
+
+module geometry
+  def area(): Number
+    42
+
+  def lerp(a: Number, b: Number, t: Number): Number
+    a + (b - a) * t
+
+module dashboard
+  capabilities: [render, network]
+
+  def title(): String
+    "TaskFlow"
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- UI: task components
+-- ──────────────────────────────────────────────────────────────────────────
+
+def priorityBadge(p: Priority): Element
+  label = priorityLabel(p)
+  color = priorityColor(p)
+  Text label color={color}
+
+-- Row with a label and a complete button. Children are sequential statements —
+-- they appear indented under Row but are siblings in the function body.
+def taskRow(task: Task): Element
+  label = formatTask(task)
+  color = priorityColor(task).priority
+  done = isComplete(task)
+  Row gap=4 background={color}
+  Text label
+  Button onClick -> send Tasks (Complete((task.id))) label="Done" disabled={done}
+
+-- Column whose only child is an expression block: { tasks }
+def taskListView(tasks: List): Element
+  Column
+    { tasks }
+
+def addRow(): Element
+  Button onClick -> send Tasks (Add("New task", Medium)) label="+ Add"
+
+def emptyState(): Element
+  Column padding=24
+  Text("No tasks yet")
+  Button onClick -> send Tasks (Add("First task", High)) label="Start"
+
+-- Spread props and hex color literal
+def sidePanel(): Element
+  baseProps = { gap: 8 }
+  Row ...baseProps background=#f5f5f5
+  Text("TaskFlow")
+
+-- Input with dynamic prop (={expr})
+def searchBar(): Element
+  Input value={""} label="Search"
+
+-- App shell: Column with on-handler and several child components
+def appShell(tasks: List): Element
+  Column gap=16 padding=24
+  on onRender -> send Session (Login("anon"))
+  sidePanel
+  taskListView(tasks)
+  addRow
+
+-- Login screen
+def loginView(): Element
+  Column padding=32
+  Text("Sign in to TaskFlow")
+  Input value={""} label="Token"
+  Button onClick -> send Session (Login("demo")) label="Log In"
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Entry point
+-- ──────────────────────────────────────────────────────────────────────────
+
+def view(): Element
+  loggedIn <- ask Session GetIsLoggedIn
+  tasks <- ask Tasks GetAll
+  if loggedIn
+    appShell(tasks)
+  else
+    loginView

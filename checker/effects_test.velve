@@ -1,0 +1,25 @@
+-- stdlib stubs for this test
+def netGet(url: String): Effect [io] String -> url
+def dbQuery(q: String): Effect [db] String -> q
+def logMsg(msg: String): Effect [io] String -> msg
+
+-- pure function — no effects declared, unchecked mode
+def pureAdd(x: Number, y: Number): Number -> x + y
+
+-- declares [io] — can call netGet but not dbQuery
+def fetchUser(id: String): Effect [io] String
+  result = netGet(id)
+  result
+
+-- declares [io, db] — can call both
+def fetchAndStore(id: String): Effect [io, db] String
+  data = netGet(id)
+  dbQuery(data)
+
+-- declares [db] — calling netGet (requires [io]) should error
+def badFetch(id: String): Effect [db] String
+  netGet(id)
+
+-- pure function calling effectful one — unchecked, no error reported
+def unchecked(id: String): String
+  netGet(id)

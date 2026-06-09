@@ -1,0 +1,28 @@
+-- Responsive keyword sugar (§9.3): `responsive | …` is exactly
+-- `match viewport.breakpoint | …` — the subject is supplied by lowering, and the
+-- Breakpoint match stays exhaustiveness-checked. Compare clamp_breakpoint_test.velve,
+-- which spells out the equivalent `match viewport.breakpoint` form.
+-- (Authored as named components / let-bindings; like `match`, the multi-branch body
+--  spans lines, so it does not inline into a `(…)`/`{…}` prop value.)
+
+def responsiveWidth(): Length
+  responsive
+    | Mobile  -> Fill
+    | Tablet  -> Pct((80))
+    | Desktop -> Px((320))
+    | Wide    -> Clamp(320, 480)
+
+-- Strategy for not enumerating every breakpoint: a wildcard `| _ -> …` fallback.
+-- It satisfies exhaustiveness (so responsive is ALWAYS total — either every
+-- breakpoint is named, or a wildcard covers the rest). Here only Mobile differs.
+def responsivePad(): Length
+  responsive
+    | Mobile -> Px((8))
+    | _      -> Px((24))
+
+def view(): Element
+  Column gap=16 padding=(responsivePad()) background=#000000
+    Box width=(responsiveWidth()) height=40 background=#161b22
+
+def main(): Unit
+  print((html((view()))))

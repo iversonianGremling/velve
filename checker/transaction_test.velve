@@ -1,0 +1,65 @@
+store Bank
+  state
+    a : Number = 100
+    b : Number = 0
+
+  messages
+    SetA (n: Number) ->
+      { a: n }
+    SetB (n: Number) ->
+      { b: n }
+
+  pub
+    balA = a
+    balB = b
+
+def withdraw(bal: Number, amt: Number): Result Number String
+  if bal >= amt
+    Ok((bal - amt))
+  else
+    Error("insufficient funds")
+
+-- A transaction yields the distinctly-typed `TxResult(T)` ADT (NOT a Result):
+-- `Ok v` on commit, `Error e` on a bare-transaction abort, or a concurrency
+-- outcome — `Conflict {retries}`, `Timeout {after}`, or `Cancelled`.
+def transfer(amt: Number): TxResult(Number)
+  transaction
+    left = withdraw(Bank.balA, amt)?
+    send Bank (SetA(left))
+    send Bank (SetB((Bank.balB + amt)))
+    amt
+
+def retryDemo(): TxResult(Number)
+  transaction within { maxRetry: 2 }
+    x = withdraw(Bank.balA, 999)?
+    x
+
+def report(label: String): Unit
+  print(("{label}: A={Bank.balA} B={Bank.balB}"))
+
+def main(): Unit
+  print(("commit: transfer 30 of 100"))
+  transfer((30)) |> match
+    | Ok n       -> print(("  outcome: Ok {n}"))
+    | Error e    -> print(("  outcome: Error {e}"))
+    | Conflict c -> print(("  outcome: Conflict retries={c.retries}"))
+    | Timeout t  -> print(("  outcome: Timeout after={t.after}"))
+    | Cancelled  -> print(("  outcome: Cancelled"))
+  report(("after commit"))
+
+  print(("rollback: transfer 9999 insufficient"))
+  transfer((9999)) |> match
+    | Ok n       -> print(("  outcome: Ok {n}"))
+    | Error e    -> print(("  outcome: Error {e}"))
+    | Conflict c -> print(("  outcome: Conflict retries={c.retries}"))
+    | Timeout t  -> print(("  outcome: Timeout after={t.after}"))
+    | Cancelled  -> print(("  outcome: Cancelled"))
+  report(("after rollback"))
+
+  print(("retry: configured txn that always fails"))
+  retryDemo() |> match
+    | Ok n       -> print(("  outcome: Ok {n}"))
+    | Error e    -> print(("  outcome: Error {e}"))
+    | Conflict c -> print(("  outcome: Conflict retries={c.retries}"))
+    | Timeout t  -> print(("  outcome: Timeout after={t.after}"))
+    | Cancelled  -> print(("  outcome: Cancelled"))

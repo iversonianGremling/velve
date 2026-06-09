@@ -1,0 +1,11 @@
+-- uiModel: serialize a view to an analyzable outline (structure + contrast + a11y).
+def view(): Element
+  Column gap=8 padding=16 background=#000000
+    Text "Title" size=24 color=#ffffff       -- high contrast → ✓
+    Text "Faint" size=12 color=#222222       -- low contrast on black → ⚠
+    Button "Save"                             -- has label → ok
+    Button color=#ffffff                      -- no label → a11y ⚠
+    Row gap=8                                 -- empty container → ⚠
+
+def main(): Unit
+  print((uiModel((view()))))

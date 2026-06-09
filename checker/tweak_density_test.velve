@@ -1,0 +1,20 @@
+-- Tweak-density gradient (§9.6): with scales defined, on-scale values read as
+-- INTENT and only escapes/magic constants read as TWEAKS. Exercises every class:
+--   token    — gap=8, padding=16, size=16  (on a defined scale)
+--   semantic — width=Fill                  (layout-relative unit, not a magic px)
+--   dynamic  — background=(accent)          (parameterized → neutral, not counted)
+--   tweak    — color=#ffffff (magic colour), padding=raw(13) (escape),
+--              height={Px 200} (explicit px)
+-- File checks clean: every bare number is on-scale; off-scale values are raw()/Px.
+-- Run `velve tweaks tweak_density_test.velve` → card: 3 tweaks / 7 tracked (43%).
+
+type Space     = Number where value==0 || value==4 || value==8 || value==12 || value==16 || value==24
+type TypeScale = Number where value==12 || value==14 || value==16 || value==20
+
+def card(pad: Number, accent: String): Element
+  Column gap=8 padding=16 background=(accent) width=Fill
+    Text "Title" size=16 color=#ffffff
+    Box padding={raw((13))} height={Px(200)}
+
+def main(): Unit
+  print((html((card(8, "#222")))))

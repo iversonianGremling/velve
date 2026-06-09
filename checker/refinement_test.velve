@@ -1,0 +1,31 @@
+-- Refinement types: `type T = Base where <pred>` (predicate refers to the value
+-- as `value`). The type is transparent for checking (usable anywhere Base is),
+-- and `T.parse : Base -> Result Base String` enforces the predicate at runtime.
+-- Plain aliases (`type UserId = Number`) now resolve to their base too.
+
+type UserId  = Number
+type NonZero = Number where value != 0
+type Age     = Number where 0 <= value && value <= 150
+type Email   = String where matches(value, "^[^@ ]+@[^@ ]+.[^@ ]+$")
+
+def inc(id: UserId): Number -> id + 1          -- alias usable as Number
+
+def birthday(a: Age): Number -> a + 1          -- refinement usable as Number
+
+def main(): Number
+  let u = inc((41))                              -- 42 (plain alias)
+
+  let ok  = NonZero.parse((5))                   -- Ok(5)
+  let bad = NonZero.parse((0))                   -- Error(...)
+
+  let next = Age.parse((30)) |> match
+    | Ok age  -> birthday((age))                 -- 31
+    | Error e -> 0
+
+  let em = Email.parse(("user@example.com"))     -- Ok(...)
+  let no = Email.parse(("nope"))                 -- Error(...)
+
+  println(("u={u} ok={ok} bad={bad} next={next}"))
+  println(("email ok={em}"))
+  println(("email no={no}"))
+  u

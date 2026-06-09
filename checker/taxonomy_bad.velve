@@ -1,0 +1,9 @@
+-- A style function that forgets an interaction state must not compile.
+-- Missing `Disabled` and `Dragged` → non-exhaustive match error.
+
+def buttonBg(s: Interaction): String
+  match s
+    | Idle    -> #1e2130
+    | Hovered -> #2a2f45
+    | Focused -> #34395c
+    | Pressed -> #4FC1FF

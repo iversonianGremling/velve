@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>velve · live</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head>
+<body>
+  <!-- The LIVE velve app: the interpreter runs in the browser (its AST shipped as
+       app.ast.json from `velve ast`); DOM events re-run view() and reconcile.
+       Serve this dir over http (ESM + fetch need it):  python3 -m http.server
+       then open  /web/index.html  -->
+  <script type="module">
+    // Single bundled runtime (esbuild → web/app.js): `npm run bundle`.
+    import { Evaluator, mountLive } from "./app.js";
+
+    const mod = await (await fetch("./app.ast.json")).json();
+    const ev = new Evaluator();
+    await ev.loadModule(mod);            // define stores / components / view
+    await mountLive(document.body, ev, "view", document);  // render + wire events
+  </script>
+</body>
+</html>

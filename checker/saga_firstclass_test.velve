@@ -1,0 +1,53 @@
+-- Test: a persisted machine's handle type is first-class — it survives aliasing.
+--
+-- Key cases:
+--   1. Direct call: Greet(name) -> String             (run to completion)
+--   2. Direct go:   go Greet(name) -> Saga String     (spawn handle)
+--   3. Alias go:    let s = Greet; go s(name)         (alias preserves SagaFn)
+--   4. Annotation:  let h: Greet = go Greet(name)     (machine name as handle type)
+
+store GreetState
+  state
+    phase : Atom = :idle
+  messages
+    SetPhase (p: Atom) -> { phase: p }
+  pub
+    currentPhase = phase
+
+machine Greet(name: String): String persisted over GreetState
+  :start
+    :done ("hello " ++ name)
+  :done r
+    r
+
+-- 1. Synchronous run to completion
+def testDirect(): String
+  Greet(("alice"))
+
+-- 2. Spawn and await
+def testGoAwait(): String
+  let h = go Greet(("bob"))
+  await h
+
+-- 3. Alias — `let s = Greet` gives s the SagaFn type; `go s(..)` should resolve
+-- to `Saga String` not `Async String`.
+def testAlias(): String
+  let s = Greet
+  let h = go s(("carol"))
+  await h
+
+-- 4. Type annotation with the saga name: `Greet` as a type = handle for this saga
+def testAnnotation(): String
+  let h: Greet = go Greet(("dave"))
+  await h
+
+def main(): String
+  let r1 = testDirect()
+  let r2 = testGoAwait()
+  let r3 = testAlias()
+  let r4 = testAnnotation()
+  print((r1))
+  print((r2))
+  print((r3))
+  print((r4))
+  "done"

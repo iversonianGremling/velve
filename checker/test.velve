@@ -1,0 +1,38 @@
+type Color
+  = Red
+  | Green
+  | Blue
+
+type Shape
+  = Circle Number
+  | Rect Number Number
+
+-- exhaustive — should pass
+def describeColor(c: Color): String
+  match c
+    | Red   -> "red"
+    | Green -> "green"
+    | Blue  -> "blue"
+
+-- missing Blue — should fail
+def badColor(c: Color): String
+  match c
+    | Red   -> "red"
+    | Green -> "green"
+
+-- wildcard covers it — should pass
+def wildcardColor(c: Color): String
+  match c
+    | Red -> "red"
+    | _   -> "other"
+
+-- exhaustive Result — should pass
+def handleResult(r: Result String String): String
+  match r
+    | Ok  x -> x
+    | Error e -> e
+
+-- missing Error — should fail
+def badResult(r: Result String String): String
+  match r
+    | Ok x -> x

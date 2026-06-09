@@ -1,0 +1,42 @@
+-- Dict-key and string-char indexing: direct assignment and pointer write-through.
+import { fromList } from "Dict"
+
+-- direct dict-key assignment: update existing + insert new
+@low
+def dictAssign(): Unit
+  mut d = fromList(([("a", 1), ("b", 2)]))
+  d["a"] = 99            -- update
+  d["c"] = 3             -- insert
+  let a = d["a"]
+  let c = d["c"]
+  println(("dict direct: a={a} c={c}"))     -- a=99 c=3
+
+-- write through a pointer to a dict slot
+@low
+def dictPtr(): Number
+  mut d = fromList(([("x", 10)]))
+  let p = d["x"].&
+  p.* = 50
+  d["x"]                                   -- 50
+
+-- direct string-char assignment (mutates the buffer in place)
+@low
+def strAssign(): Unit
+  mut s = "cat"
+  s[0] = "b"                               -- "bat"
+  println(("str direct: {s}"))
+
+-- write through a pointer to a string character
+@low
+def strPtr(): String
+  mut s = "bat"
+  let p = s[2].&
+  p.* = "n"                                -- "ban"
+  s
+
+@low
+def main(): Unit
+  dictAssign()
+  println(("dict ptr: {dictPtr()}"))
+  strAssign()
+  println(("str ptr: {strPtr()}"))

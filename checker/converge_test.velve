@@ -1,0 +1,16 @@
+-- #6: the convergence layer. A prop may be computed from another element's
+-- resolved prop via self/parent/prev/next/children, as long as the
+-- (element, prop) references form no cycle. Resolved in topological order.
+
+def view(): Element
+  Column gap=16 padding=24 height=(sum((children.height))) background=#0d1117
+    -- self: radius derived from this element's own padding
+    Box height=40 padding=20 radius=(self.padding / 2) background=#1e2130
+    -- parent: width from the containing Column's padding
+    Box height=60 width=(parent.padding * 10) background=#161b22
+    -- prev: width copies the previous sibling's (itself a deferred value, so the
+    -- topo sort must resolve Box-2's width first)
+    Box height=20 width=(prev.width) background=#22272e
+
+def main(): Unit
+  print((html((view()))))

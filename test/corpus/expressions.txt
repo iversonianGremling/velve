@@ -1,0 +1,965 @@
+================================================================================
+expr: number literal
+================================================================================
+
+def foo(): Number
+  42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (number))))
+
+================================================================================
+expr: float literal
+================================================================================
+
+def foo(): Number
+  3.14
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (number))))
+
+================================================================================
+expr: string literal
+================================================================================
+
+def foo(): String
+  "hello"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (string))))
+
+================================================================================
+expr: string interpolation
+================================================================================
+
+def foo(): String
+  "hello {name}"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (string
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+expr: bool literals
+================================================================================
+
+def foo(): Bool
+  true
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (bool))))
+
+================================================================================
+expr: unit
+================================================================================
+
+def foo(): Unit
+  ()
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (unit))))
+
+================================================================================
+expr: hex color
+================================================================================
+
+def foo(): String
+  #ff0000
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (hex_color))))
+
+================================================================================
+expr: arithmetic
+================================================================================
+
+def foo(): Number
+  1 + 2 * 3
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binary_expr
+      (literal
+        (number))
+      (binary_expr
+        (literal
+          (number))
+        (literal
+          (number))))))
+
+================================================================================
+expr: unary minus
+================================================================================
+
+def foo(): Number
+  -42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (unary_expr
+      (literal
+        (number)))))
+
+================================================================================
+expr: unary not
+================================================================================
+
+def foo(): Bool
+  not true
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (unary_expr
+      (literal
+        (bool)))))
+
+================================================================================
+expr: comparison
+================================================================================
+
+def foo(): Bool
+  1 == 1
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binary_expr
+      (literal
+        (number))
+      (literal
+        (number)))))
+
+================================================================================
+expr: logical and
+================================================================================
+
+def foo(): Bool
+  true && false
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binary_expr
+      (literal
+        (bool))
+      (literal
+        (bool)))))
+
+================================================================================
+expr: ternary with else
+================================================================================
+
+def foo(): Number
+  x > 0 ? 1 : 0
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (ternary_expr
+      (binary_expr
+        (identifier_expr
+          (lower_id))
+        (literal
+          (number)))
+      (literal
+        (number))
+      (literal
+        (number)))))
+
+================================================================================
+expr: ternary without else
+================================================================================
+
+def foo(): Number
+  x > 0 ? 1
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (ternary_expr
+      (binary_expr
+        (identifier_expr
+          (lower_id))
+        (literal
+          (number)))
+      (literal
+        (number)))))
+
+================================================================================
+expr: field access
+================================================================================
+
+def foo(): String
+  user.name
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (field_access
+      (identifier_expr
+        (lower_id))
+      (lower_id))))
+
+================================================================================
+expr: optional chain
+================================================================================
+
+def foo(): String
+  user?.name
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (optional_chain
+      (identifier_expr
+        (lower_id))
+      (lower_id))))
+
+================================================================================
+expr: array index
+================================================================================
+
+def foo(): Number
+  items[0]
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (array_index
+      (identifier_expr
+        (lower_id))
+      (literal
+        (number)))))
+
+================================================================================
+expr: type test
+================================================================================
+
+def foo(): Bool
+  x is Error
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (type_test
+      (identifier_expr
+        (lower_id))
+      (upper_id))))
+
+================================================================================
+expr: record literal
+================================================================================
+
+def foo(): User
+  { name: "Alice", age: 30 }
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (record_literal
+      (record_field
+        (lower_id)
+        (literal
+          (string)))
+      (record_field
+        (lower_id)
+        (literal
+          (number))))))
+
+================================================================================
+expr: record spread
+================================================================================
+
+def foo(): User
+  { ...user, name: "Bob" }
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (record_spread
+      (identifier_expr
+        (lower_id))
+      (record_field
+        (lower_id)
+        (literal
+          (string))))))
+
+================================================================================
+expr: list literal
+================================================================================
+
+def foo(): List
+  [1, 2, 3]
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (list_literal
+      (literal
+        (number))
+      (literal
+        (number))
+      (literal
+        (number)))))
+
+================================================================================
+expr: empty list
+================================================================================
+
+def foo(): List
+  []
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (list_literal)))
+
+================================================================================
+expr: grouped
+================================================================================
+
+def foo(): Number
+  (1 + 2)
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (grouped
+      (binary_expr
+        (literal
+          (number))
+        (literal
+          (number))))))
+
+================================================================================
+expr: adt call with atom
+================================================================================
+
+def foo(): Response
+  Ok(42)
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (call
+      (identifier_expr
+        (upper_id))
+      (literal
+        (number)))))
+
+================================================================================
+expr: adt call with record
+================================================================================
+
+def foo(): Shape
+  Circle({ radius: 5 })
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (call
+      (identifier_expr
+        (upper_id))
+      (record_literal
+        (record_field
+          (lower_id)
+          (literal
+            (number)))))))
+
+================================================================================
+expr: lazy
+================================================================================
+
+def foo(): Number
+  lazy expensiveValue
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (lazy_expr
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+expr: break
+================================================================================
+
+def foo(): Number
+  break
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (break_expr)))
+
+================================================================================
+expr: continue
+================================================================================
+
+def foo(): Number
+  continue
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (continue_expr)))
+
+================================================================================
+string: double-dash inside string is not a comment
+================================================================================
+
+def f(): String
+  greet(("-- {name} -- end"))
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (call
+      (identifier_expr
+        (lower_id))
+      (grouped
+        (literal
+          (string
+            (identifier_expr
+              (lower_id))))))))
+
+================================================================================
+brace block: bindings and value
+================================================================================
+
+def f(): Number
+  area = { w = 3; w * 2 }
+  area
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (brace_block
+        (brace_binding
+          (lower_id)
+          (literal
+            (number)))
+        (binary_expr
+          (identifier_expr
+            (lower_id))
+          (literal
+            (number)))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+brace block vs record: colon stays a record
+================================================================================
+
+def f(): Unit
+  r = { name: 3, ok: 1 }
+  drop r
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (record_literal
+        (record_field
+          (lower_id)
+          (literal
+            (number)))
+        (record_field
+          (lower_id)
+          (literal
+            (number)))))
+    (drop_expr
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+pipe block: threads ret
+================================================================================
+
+def f(): Number
+  pipe
+    5
+    double(ret)
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (pipe_block
+      (literal
+        (number))
+      (call
+        (identifier_expr
+          (lower_id))
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+try block: propagate and value
+================================================================================
+
+def f(): Result Number String
+  try
+    x = g(1)?
+    Ok(x)
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (result_type
+      (simple_type
+        (upper_id))
+      (simple_type
+        (upper_id)))
+    (try_block
+      (binding
+        (lower_id)
+        (propagate_expr
+          (call
+            (identifier_expr
+              (lower_id))
+            (literal
+              (number)))))
+      (call
+        (identifier_expr
+          (upper_id))
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+retry block: bounded with count
+================================================================================
+
+def f(): Result Number String
+  retry 3
+    g(1)?
+    Ok(0)
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (result_type
+      (simple_type
+        (upper_id))
+      (simple_type
+        (upper_id)))
+    (retry_block
+      (literal
+        (number))
+      (propagate_expr
+        (call
+          (identifier_expr
+            (lower_id))
+          (literal
+            (number))))
+      (call
+        (identifier_expr
+          (upper_id))
+        (literal
+          (number))))))
+
+================================================================================
+retry block: count and duration delay
+================================================================================
+
+def f(): Result Number String
+  retry 3 200ms
+    g(1)
+    Ok(0)
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (result_type
+      (simple_type
+        (upper_id))
+      (simple_type
+        (upper_id)))
+    (retry_block
+      (literal
+        (number))
+      (duration_lit)
+      (call
+        (identifier_expr
+          (lower_id))
+        (literal
+          (number)))
+      (call
+        (identifier_expr
+          (upper_id))
+        (literal
+          (number))))))
+
+================================================================================
+lambda: multi-arg
+================================================================================
+
+def f(): T
+  fn (a b c) -> a + b + c
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (lambda
+      (lambda_simple
+        (lower_id)
+        (lower_id)
+        (lower_id)
+        (binary_expr
+          (binary_expr
+            (identifier_expr
+              (lower_id))
+            (identifier_expr
+              (lower_id)))
+          (identifier_expr
+            (lower_id)))))))
+
+================================================================================
+pipe: leading |> continuation across lines
+================================================================================
+
+def f(): T
+  items
+    |> sortBy(cmp)
+    |> listTake(n)
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (pipe_expr
+      (identifier_expr
+        (lower_id))
+      (call
+        (pipe_expr
+          (call
+            (identifier_expr
+              (lower_id))
+            (identifier_expr
+              (lower_id)))
+          (lower_id))
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+pointer: deref expression
+================================================================================
+
+def f(p: Ptr Number): Number
+  p.*
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (pointer_type
+          (simple_type
+            (upper_id)))))
+    (simple_type
+      (upper_id))
+    (deref_expr
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+pointer: address-of (borrow)
+================================================================================
+
+def f(): T
+  x.&
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (addr_of_expr
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+pointer: lifetime-annotated type
+================================================================================
+
+def f(p: Ptr ~a Number): Number
+  p.*
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (pointer_type
+          (lifetime_var)
+          (simple_type
+            (upper_id)))))
+    (simple_type
+      (upper_id))
+    (deref_expr
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+pointer: write through (deref assign)
+================================================================================
+
+def f(): Unit
+  p.* = 9
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (deref_assign
+      (deref_expr
+        (identifier_expr
+          (lower_id)))
+      (literal
+        (number)))))
+
+================================================================================
+call: paren_call (IIFE)
+================================================================================
+
+def f(): Number
+  (fn x -> x)((3))
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (call
+      (grouped
+        (lambda
+          (lambda_simple
+            (simple_pattern
+              (binding_pattern
+                (lower_id)))
+            (identifier_expr
+              (lower_id)))))
+      (grouped
+        (literal
+          (number))))))

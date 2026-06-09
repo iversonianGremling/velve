@@ -1,0 +1,88 @@
+{
+  "name": "Velve",
+  "scopeName": "source.velve",
+  "fileTypes": ["velve"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#multiline_string" },
+    { "include": "#keyword" },
+    { "include": "#constant" },
+    { "include": "#atom" },
+    { "include": "#operator" },
+    { "include": "#number" },
+    { "include": "#type" },
+    { "include": "#function_call" },
+    { "include": "#variable" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.double-dash.velve",
+      "match": "--.*$"
+    },
+    "string": {
+      "name": "string.quoted.double.velve",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.velve",
+          "match": "\\\\."
+        },
+        {
+          "name": "meta.interpolation.velve",
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": { "0": { "name": "punctuation.definition.template-expression.begin.velve" } },
+          "endCaptures":   { "0": { "name": "punctuation.definition.template-expression.end.velve" } },
+          "patterns": [{ "include": "$self" }]
+        }
+      ]
+    },
+    "multiline_string": {
+      "name": "string.quoted.other.velve",
+      "begin": "\"\"\"|`",
+      "end": "\"\"\"|`",
+      "patterns": [
+        { "name": "meta.interpolation.velve",
+          "begin": "\\{", "end": "\\}",
+          "beginCaptures": { "0": { "name": "punctuation.definition.template-expression.begin.velve" } },
+          "endCaptures":   { "0": { "name": "punctuation.definition.template-expression.end.velve" } },
+          "patterns": [{ "include": "$self" }] }
+      ]
+    },
+    "keyword": {
+      "name": "keyword.control.velve",
+      "match": "\\b(def|type|store|state|messages|module|match|if|else|do|loop|for|fn|let|const|import|from|as|where|is|await|go|race|saga|machine|over|after|until|rollback|send|ask|pub|mut|transaction|within|on|break|continue|lazy|return)\\b"
+    },
+    "constant": {
+      "name": "constant.language.velve",
+      "match": "\\b(true|false)\\b"
+    },
+    "atom": {
+      "name": "constant.other.symbol.velve",
+      "match": ":[a-z][a-zA-Z0-9_]*"
+    },
+    "operator": {
+      "comment": "The ?: (recover) and ? (defer/propagate) operators — distinct from the leading ':' of atoms so a saga's `expr ? rollback :step` reads clearly.",
+      "name": "keyword.operator.optional.velve",
+      "match": "\\?:|\\?"
+    },
+    "number": {
+      "name": "constant.numeric.velve",
+      "match": "\\b[0-9][0-9_]*(\\.[0-9][0-9_]*)?\\b"
+    },
+    "type": {
+      "name": "entity.name.type.velve",
+      "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+    },
+    "function_call": {
+      "name": "entity.name.function.velve",
+      "match": "\\b([a-z][a-zA-Z0-9_]*)(?=\\s*\\()"
+    },
+    "variable": {
+      "name": "variable.other.velve",
+      "match": "\\b[a-z][a-zA-Z0-9_]*\\b"
+    }
+  }
+}

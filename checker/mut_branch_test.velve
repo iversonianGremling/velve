@@ -1,0 +1,56 @@
+-- Regression fixture for the "reassign-in-branch updates outer mut" bug.
+-- A bare `x = e` reassignment used as a (multi-line) branch body must walk UP
+-- to the outer `mut` binding (via env.set), not create a new child binding.
+-- A `let`/`mut` declared inside a branch must still shadow (stay local).
+
+def wire(push, done): Unit
+  push((10))
+  push((20))
+  push((30))
+  done()
+
+-- reassign inside an `await` branch body: accumulate stream values into a sum
+-- and into a list (proves the outer mut sees every push).
+def streamSum(): Number
+  let s = externSource((wire))
+  mut total = 0
+  loop
+    await s
+      | Push v ->
+        total = total + v
+      | Done ->
+        break
+  total
+
+def streamList(): List(Number)
+  let s = externSource((wire))
+  mut acc = []
+  loop
+    await s
+      | Push v ->
+        acc = acc ++ [v]
+      | Done ->
+        break
+  acc
+
+-- reassign inside a `match` branch body (multi-statement). The `let shadow`
+-- declared inside the branch must NOT leak: each iteration adds (999-998)=1,
+-- so after 6 iterations n == 6. If `shadow` leaked or the reassign created a
+-- child binding, n would stay 0.
+def matchSum(): Number
+  mut n = 0
+  mut i = 0
+  loop
+    i = i + 1
+    match i
+      | _ ->
+        let shadow = 999
+        n = n + shadow - 998
+    if i == 6
+      break
+  n
+
+def main(): Unit
+  print(("total {streamSum()}"))
+  print(("list {streamList()}"))
+  print(("n {matchSum()}"))

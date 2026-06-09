@@ -1,0 +1,27 @@
+-- `where` lifetime constraints — these all satisfy the outlives relation, so the
+-- borrow checker must accept returning a pointer with a different-but-longer-lived
+-- lifetime than the declared result.
+
+-- ~y is declared to outlive ~x, so a ~y pointer satisfies a ~x result
+def asLong(a: Ptr ~x Number, b: Ptr ~y Number): Ptr ~x Number
+  where (~y >= ~x)
+  b
+
+-- equality is symmetric: ~x = ~y lets a ~y pointer satisfy a ~x result
+def eqLife(a: Ptr ~x Number, b: Ptr ~y Number): Ptr ~x Number
+  where (~x = ~y)
+  b
+
+-- `b.~` is the lifetime of b (its pointer's ~y); declared to outlive the result
+def viaBuf(a: Ptr ~x Number, b: Ptr ~y Number): Ptr ~x Number
+  where (b.~ >= ~x)
+  b
+
+-- transitive closure: ~z >= ~y >= ~x, so a ~z pointer satisfies a ~x result
+def trans(a: Ptr ~x Number, b: Ptr ~y Number, c: Ptr ~z Number): Ptr ~x Number
+  where (~z >= ~y), (~y >= ~x)
+  c
+
+-- a pointer parameter with the same lifetime as the result still passes (reflexive)
+def same(a: Ptr ~x Number): Ptr ~x Number
+  a

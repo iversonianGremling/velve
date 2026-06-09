@@ -1,0 +1,20 @@
+-- #11: the sandbox — a text Storybook driven by the §12 taxonomy. `sandbox`
+-- maps a render fn over each variant (here every Interaction state) and dumps the
+-- uiModel + html per variant, so each state can be eyeballed/diffed/linted in
+-- isolation. Reuses the taxonomy (#9), the UI model (#10), and html.
+
+def buttonBg(s: Interaction): String
+  match s
+    | Idle     -> #1e2130
+    | Hovered  -> #2a2f45
+    | Focused  -> #34395c
+    | Pressed  -> #4FC1FF
+    | Dragged  -> #3a4060
+    | Disabled -> #15171f
+
+-- The component under test: one Button styled for a given interaction state.
+def button(s: Interaction): Element
+  Button "Save" size=14 color=#ffffff background=(buttonBg((s))) padding=8 radius=6
+
+def main(): Unit
+  print((sandbox("Button", Interaction.all, button)))

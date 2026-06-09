@@ -1,0 +1,13 @@
+-- Keyless dynamic list: rows have no `id`/`key`, so reconciliation falls back to
+-- position — fragile under reorder. The runtime emits a soft warning (§8). Full
+-- affine enforcement (a keyless dynamic `for` as a compile error) is deferred.
+
+def row(it: String): Element
+  Text (it) size=12 color=#ffffff
+
+def view(): Element
+  Column gap=4 padding=12 background=#000000
+    { map(row, ["alpha", "beta"]) }
+
+def main(): Unit
+  print((interactive(view, [])))

@@ -1,0 +1,508 @@
+================================================================================
+pipe: simple chain
+================================================================================
+
+def foo(): Number
+  x |> double |> increment
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (pipe_expr
+      (pipe_expr
+        (identifier_expr
+          (lower_id))
+        (lower_id))
+      (lower_id))))
+
+================================================================================
+pipe: into function call
+================================================================================
+
+def foo(): List
+  items |> filter(active)
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (pipe_expr
+      (identifier_expr
+        (lower_id))
+      (call
+        (identifier_expr
+          (lower_id))
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+pipe: lambda call (single param)
+================================================================================
+
+def foo(): List
+  items |> map item -> item.name
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (pipe_lambda_stmt
+      (identifier_expr
+        (lower_id))
+      (pipe_lambda_call
+        (lower_id)
+        (pipe_lambda_param
+          (binding_pattern
+            (lower_id)))
+        (field_access
+          (identifier_expr
+            (lower_id))
+          (lower_id))))))
+
+================================================================================
+pipe: lambda call (wildcard param)
+================================================================================
+
+def foo(): List
+  items |> map _ -> "x"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (pipe_lambda_stmt
+      (identifier_expr
+        (lower_id))
+      (pipe_lambda_call
+        (lower_id)
+        (pipe_lambda_param
+          (wildcard))
+        (literal
+          (string))))))
+
+================================================================================
+pipe: lambda call with extra arg
+================================================================================
+
+def foo(): List
+  items |> mapWithIndex 0 item -> item.name
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (pipe_lambda_stmt
+      (identifier_expr
+        (lower_id))
+      (pipe_lambda_call
+        (lower_id)
+        (atom
+          (literal
+            (number)))
+        (pipe_lambda_param
+          (binding_pattern
+            (lower_id)))
+        (field_access
+          (identifier_expr
+            (lower_id))
+          (lower_id))))))
+
+================================================================================
+pipe: into send
+================================================================================
+
+def foo(): Number
+  x |> send Store Msg
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (pipe_expr
+      (identifier_expr
+        (lower_id))
+      (send_expr
+        (upper_id)
+        (atom
+          (upper_id))))))
+
+================================================================================
+pipe: subjectless match
+================================================================================
+
+def foo(): String
+  result |> match
+    | Ok v -> v
+    | Error msg -> msg
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (pipe_match_stmt
+      (identifier_expr
+        (lower_id))
+      (pipe_match
+        (match_branch
+          (pattern
+            (simple_pattern
+              (upper_id)
+              (simple_pattern
+                (binding_pattern
+                  (lower_id)))))
+          (identifier_expr
+            (lower_id)))
+        (match_branch
+          (pattern
+            (simple_pattern
+              (upper_id)
+              (simple_pattern
+                (binding_pattern
+                  (lower_id)))))
+          (identifier_expr
+            (lower_id)))))))
+
+================================================================================
+match: simple
+================================================================================
+
+def foo(): String
+  match status
+    | "active" -> "yes"
+    | "inactive" -> "no"
+    | -> "unknown"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (match_expr
+      (identifier_expr
+        (lower_id))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (literal
+              (string))))
+        (literal
+          (string)))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (literal
+              (string))))
+        (literal
+          (string)))
+      (match_branch
+        (literal
+          (string))))))
+
+================================================================================
+match: ADT destructure
+================================================================================
+
+def foo(): Number
+  match shape
+    | Circle { radius } -> radius
+    | Rect { width, height } -> width
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (match_expr
+      (identifier_expr
+        (lower_id))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (upper_id)
+            (record_pattern
+              (lower_id))))
+        (identifier_expr
+          (lower_id)))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (upper_id)
+            (record_pattern
+              (lower_id)
+              (lower_id))))
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+match: nested binding
+================================================================================
+
+def foo(): String
+  match result
+    | Ok v -> v
+    | Error msg -> msg
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (match_expr
+      (identifier_expr
+        (lower_id))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (upper_id)
+            (simple_pattern
+              (binding_pattern
+                (lower_id)))))
+        (identifier_expr
+          (lower_id)))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (upper_id)
+            (simple_pattern
+              (binding_pattern
+                (lower_id)))))
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+match: guard pattern
+================================================================================
+
+def foo(): String
+  match n
+    | x if x > 0 -> "positive"
+    | -> "non-positive"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (match_expr
+      (identifier_expr
+        (lower_id))
+      (match_branch
+        (pattern
+          (guard_pattern
+            (simple_pattern
+              (binding_pattern
+                (lower_id)))
+            (binary_expr
+              (identifier_expr
+                (lower_id))
+              (literal
+                (number)))))
+        (literal
+          (string)))
+      (match_branch
+        (literal
+          (string))))))
+
+================================================================================
+match: empty list pattern
+================================================================================
+
+def foo(): String
+  match items
+    | [] -> "empty"
+    | -> "nonempty"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (match_expr
+      (identifier_expr
+        (lower_id))
+      (match_branch
+        (pattern
+          (simple_pattern))
+        (literal
+          (string)))
+      (match_branch
+        (literal
+          (string))))))
+
+================================================================================
+match: unit branch
+================================================================================
+
+def foo(): String
+  match items
+    | x -> x
+    | ()
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (match_expr
+      (identifier_expr
+        (lower_id))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (binding_pattern
+              (lower_id))))
+        (identifier_expr
+          (lower_id)))
+      (match_branch))))
+
+================================================================================
+match: block body
+================================================================================
+
+def foo(): String
+  match x
+    | v ->
+      y = v
+      y
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (match_expr
+      (identifier_expr
+        (lower_id))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (binding_pattern
+              (lower_id))))
+        (binding
+          (lower_id)
+          (identifier_expr
+            (lower_id)))
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+match: qualified pattern
+================================================================================
+
+def foo(): String
+  match result
+    | result.Error msg -> msg
+    | v -> "ok"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (match_expr
+      (identifier_expr
+        (lower_id))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (qualified_pattern
+              (lower_id)
+              (upper_id)
+              (lower_id))))
+        (identifier_expr
+          (lower_id)))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (binding_pattern
+              (lower_id))))
+        (literal
+          (string))))))
+
+================================================================================
+match: responsive sugar
+================================================================================
+
+def w(): Length
+  responsive
+    | Mobile -> Fill
+    | Desktop -> Px((320))
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (responsive_expr
+      (match_branch
+        (pattern
+          (simple_pattern
+            (upper_id)))
+        (identifier_expr
+          (upper_id)))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (upper_id)))
+        (call
+          (identifier_expr
+            (upper_id))
+          (grouped
+            (literal
+              (number))))))))

@@ -1,0 +1,187 @@
+================================================================================
+store: minimal
+================================================================================
+
+store Counter
+  state
+    count : Number = 0
+  messages
+    Increment ->
+      { count: count + 1 }
+  pub
+    value = count
+
+--------------------------------------------------------------------------------
+
+(program
+  (store_def
+    (upper_id)
+    (state_block
+      (state_field
+        (lower_id)
+        (simple_type
+          (upper_id))
+        (literal
+          (number))))
+    (messages_block
+      (message_def
+        (upper_id)
+        (record_literal
+          (record_field
+            (lower_id)
+            (binary_expr
+              (identifier_expr
+                (lower_id))
+              (literal
+                (number)))))))
+    (pub_block
+      (pub_field
+        (lower_id)
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+store: with version and migrate
+================================================================================
+
+store Session
+  version: 2
+  migrate
+    | v1 { token } -> { token: token, role: "user" }
+  state
+    token : String = "none"
+  messages
+    Reset -> { token: "none" }
+  pub
+    active = token
+
+--------------------------------------------------------------------------------
+
+(program
+  (store_def
+    (upper_id)
+    (version_decl
+      (number))
+    (migrate_block
+      (migrate_branch
+        (lower_id)
+        (record_pattern
+          (lower_id))
+        (record_literal
+          (record_field
+            (lower_id)
+            (identifier_expr
+              (lower_id)))
+          (record_field
+            (lower_id)
+            (literal
+              (string))))))
+    (state_block
+      (state_field
+        (lower_id)
+        (simple_type
+          (upper_id))
+        (literal
+          (string))))
+    (messages_block
+      (message_def
+        (upper_id)
+        (record_literal
+          (record_field
+            (lower_id)
+            (literal
+              (string))))))
+    (pub_block
+      (pub_field
+        (lower_id)
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+store: message with params
+================================================================================
+
+store Items
+  state
+    items : List = []
+  messages
+    Add (item: String) ->
+      { items: items }
+  pub
+    all = items
+
+--------------------------------------------------------------------------------
+
+(program
+  (store_def
+    (upper_id)
+    (state_block
+      (state_field
+        (lower_id)
+        (simple_type
+          (upper_id))
+        (list_literal)))
+    (messages_block
+      (message_def
+        (upper_id)
+        (param
+          (lower_id)
+          (simple_type
+            (upper_id)))
+        (record_literal
+          (record_field
+            (lower_id)
+            (identifier_expr
+              (lower_id))))))
+    (pub_block
+      (pub_field
+        (lower_id)
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+store: message with block body
+================================================================================
+
+store Log
+  state
+    entries : List = []
+  messages
+    Append (msg: String) ->
+      x = entries
+      { entries: x }
+  pub
+    all = entries
+
+--------------------------------------------------------------------------------
+
+(program
+  (store_def
+    (upper_id)
+    (state_block
+      (state_field
+        (lower_id)
+        (simple_type
+          (upper_id))
+        (list_literal)))
+    (messages_block
+      (message_def
+        (upper_id)
+        (param
+          (lower_id)
+          (simple_type
+            (upper_id)))
+        (binding
+          (lower_id)
+          (identifier_expr
+            (lower_id)))
+        (record_literal
+          (record_field
+            (lower_id)
+            (identifier_expr
+              (lower_id))))))
+    (pub_block
+      (pub_field
+        (lower_id)
+        (identifier_expr
+          (lower_id))))))

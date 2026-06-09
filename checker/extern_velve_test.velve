@@ -1,0 +1,15 @@
+-- recursive consumer (avoids the mut-in-branch issue): accumulate via the arg
+def collect(s: Stream(Number), acc: List(Number)): List(Number)
+  await s
+    | Push v -> collect(s, acc ++ [v])
+    | Done -> acc
+
+def wire(push, done): Unit
+  push((10))
+  push((20))
+  push((30))
+  done()
+
+def main(): Unit
+  let r = collect(externSource((wire)), [])
+  print(("received {r}  count {length((r))}"))

@@ -1,0 +1,28 @@
+-- Set module (std) — runtime demo. Canonical-key dedup, set algebra, HOFs.
+--   named:      import { add, has, union } from "Set"
+--   namespace:  import Set from "std/set"   then  Set.map s f
+import { empty, add, has, size, fromList, toList, union, intersect, difference } from "Set"
+import Set from "std/set"
+
+def isOdd(n: Number): Bool
+  (n % 2) == 1
+
+def main(): Unit
+  -- dedup on insert
+  let s = add(add(add(empty(), 1), 2), 2)
+  print(("size after add 1,2,2: {size((s))}"))
+  print(("has 2: {has(s, 2)}  has 9: {has(s, 9)}"))
+
+  -- set algebra
+  let a = fromList(([1, 2, 3, 4]))
+  let b = fromList(([3, 4, 5, 6]))
+  print(("union: {size((union(a, b)))}"))           -- 6
+  print(("intersect: {size((intersect(a, b)))}"))   -- 2
+  print(("difference a-b: {size((difference(a, b)))}")) -- 2
+  print(("dedup [1,1,2,3,3]: {size((fromList(([1, 1, 2, 3, 3]))))}")) -- 3
+
+  -- HOFs (namespace form; lambda bodies with a trailing binary op need parens)
+  let odds = Set.filter(a, (fn x -> isOdd((x))))
+  print(("odds in a: {size((odds))}"))              -- 2
+  let plus10 = Set.map(a, (fn x -> (x + 10)))
+  print(("mapped count: {length((toList((plus10))))}")) -- 4

@@ -1,0 +1,22 @@
+stream Numbers : Number
+
+def producer(): Unit =
+  send Numbers (Push 10)
+  send Numbers (Push 20)
+  send Numbers (Push 30)
+
+def consume(): Number =
+  await Numbers
+    | Push v -> v
+    | Done -> 0
+
+def main(): Number =
+  go producer()
+  let a = consume()
+  let b = consume()
+  let c = consume()
+  print "stream values:"
+  print a
+  print b
+  print c
+  a + b + c

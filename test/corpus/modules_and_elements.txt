@@ -1,0 +1,274 @@
+================================================================================
+module: simple
+================================================================================
+
+module geometry
+  def area(): Number
+    42
+
+--------------------------------------------------------------------------------
+
+(program
+  (module_def
+    (lower_id)
+    (function_def
+      (lower_id)
+      (param_list)
+      (simple_type
+        (upper_id))
+      (literal
+        (number)))))
+
+================================================================================
+module: with capabilities
+================================================================================
+
+module dashboard
+  capabilities: [render, network]
+
+  def foo(): Number
+    42
+
+--------------------------------------------------------------------------------
+
+(program
+  (module_def
+    (lower_id)
+    (capabilities_decl
+      (lower_id)
+      (lower_id))
+    (function_def
+      (lower_id)
+      (param_list)
+      (simple_type
+        (upper_id))
+      (literal
+        (number)))))
+
+================================================================================
+element: with props
+================================================================================
+
+def foo(): Element
+  Button label="click me" disabled
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (element
+      (upper_id)
+      (prop
+        (lower_id)
+        (atom
+          (literal
+            (string))))
+      (prop
+        (lower_id)))))
+
+================================================================================
+element: with dynamic prop
+================================================================================
+
+def foo(): Element
+  Input value={user.name}
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (element
+      (upper_id)
+      (prop
+        (lower_id)
+        (field_access
+          (identifier_expr
+            (lower_id))
+          (lower_id))))))
+
+================================================================================
+element: with handler prop
+================================================================================
+
+def foo(): Element
+  Button onClick -> send Store Close
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (element
+      (upper_id)
+      (prop
+        (lower_id)
+        (send_expr
+          (upper_id)
+          (atom
+            (upper_id)))))))
+
+================================================================================
+element: with spread prop
+================================================================================
+
+def foo(): Element
+  Row ...baseProps background=#fff
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (element
+      (upper_id)
+      (prop
+        (identifier_expr
+          (lower_id)))
+      (prop
+        (lower_id)
+        (atom
+          (literal
+            (hex_color)))))))
+
+================================================================================
+element: with children
+================================================================================
+
+def foo(): Element
+  Column gap=8
+    Text "hello"
+    Text "world"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (element
+      (upper_id)
+      (prop
+        (lower_id)
+        (atom
+          (literal
+            (number))))
+      (children_block
+        (child
+          (element_leaf
+            (upper_id)
+            (element_content
+              (literal
+                (string)))))
+        (child
+          (element_leaf
+            (upper_id)
+            (element_content
+              (literal
+                (string)))))))))
+
+================================================================================
+element: with on handler child
+================================================================================
+
+def foo(): Element
+  Column
+    on onRender -> send Store Init
+    Text "hi"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (element
+      (upper_id)
+      (children_block
+        (child
+          (on_handler
+            (lower_id)
+            (send_expr
+              (upper_id)
+              (atom
+                (upper_id)))))
+        (child
+          (element_leaf
+            (upper_id)
+            (element_content
+              (literal
+                (string)))))))))
+
+================================================================================
+element: with expression child
+================================================================================
+
+def foo(): Element
+  Column
+    { someExpr }
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (element
+      (upper_id)
+      (children_block
+        (child
+          (identifier_expr
+            (lower_id)))))))
+
+================================================================================
+element: for-child keyed list
+================================================================================
+
+def view(): Element
+  Column
+    for r in rows
+      Text (r.title)
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (element
+      (upper_id)
+      (children_block
+        (child
+          (for_child
+            (lower_id)
+            (identifier_expr
+              (lower_id))
+            (element_leaf
+              (upper_id)
+              (element_content
+                (grouped
+                  (field_access
+                    (identifier_expr
+                      (lower_id))
+                    (lower_id)))))))))))

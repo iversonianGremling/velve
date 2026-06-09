@@ -1,0 +1,1520 @@
+import type { SyntaxNode, Tree } from "tree-sitter";
+import { spanFrom } from "./span.js";
+import type { Span } from "./span.js";
+import type { Diagnostic } from "./resolve.js";
+import type {
+  Expr, Stmt, Pat, TypeRef, Decl, Module, FnClause, FnSig,
+  Param, Branch, Prop, NamedArg, Lit, TypeBody, AdtVariant,
+} from "./ast.js";
+
+type N = SyntaxNode;
+
+// ── Node category sets ────────────────────────────────────────────────────────
+
+const TYPE_KINDS = new Set([
+  "simple_type", "type_var", "unit_type", "parameterized_type",
+  "record_type", "tuple_type", "tainted_type", "effect_type",
+  "async_type", "array_type", "result_type", "pointer_type", "atomic_type",
+]);
+
+const PAT_KINDS = new Set([
+  "pattern", "simple_pattern", "guard_pattern", "binding_pattern",
+  "wildcard", "record_pattern", "literal", "qualified_pattern", "tuple_pattern",
+]);
+
+const STMT_KINDS = new Set([
+  "binding", "block_binding", "index_assign", "deref_assign", "destructure",
+  "on_handler", "pipe_block", "try_block", "retry_block", "brace_binding", "loop_expr", "await_stmt", "go_stmt",
+  "machine_expr", "saga_expr", "where_stmt", "if_expr", "if_pattern_expr",
+  "match_expr", "responsive_expr", "transaction_expr", "comptime_block", "unsafe_block",
+  "pipe_match_stmt", "pipe_lambda_stmt", "element",
+]);
+
+const EXPR_KINDS = new Set([
+  "literal", "identifier_expr", "unary_expr", "binary_expr", "pipe_expr",
+  "ternary_expr", "field_access", "optional_chain", "array_index",
+  "deref_expr", "addr_of_expr", "propagate_expr", "range_expr",
+  "if_pattern_expr", "type_test", "record_literal", "record_spread",
+  "list_literal", "for_expr", "for_child", "match_expr", "responsive_expr", "if_expr", "call",
+  "lambda", "lambda_simple", "lambda_block", "send_expr",
+  "ask_expr", "transaction_expr", "js_block", "unsafe_block", "comptime_block",
+  "lazy_expr", "go_expr", "resume_expr", "drop_expr", "break_expr", "continue_expr", "grouped", "tuple_literal", "js_block", "send_expr",
+  "await_expr", "pipe_block", "try_block", "retry_block", "brace_block", "loop_expr", "machine_expr", "saga_expr", "element", "element_leaf",
+  "lower_id", "upper_id", "number", "bool", "string", "multiline_string",
+  "unit", "atom_lit", "duration_lit", "hex_color", "sigil_string", "regex_sigil",
+]);
+
+function isTypeKind(n: N): boolean { return TYPE_KINDS.has(n.type); }
+function isPatKind(t: string): boolean { return PAT_KINDS.has(t); }
+function isStmtKind(t: string): boolean { return STMT_KINDS.has(t); }
+function isExprKind(t: string): boolean { return EXPR_KINDS.has(t); }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function parseNumber(text: string): number {
+  const s = text.replace(/_/g, "");
+  if (s.startsWith("0b")) return parseInt(s.slice(2), 2);
+  if (s.startsWith("0x")) return parseInt(s.slice(2), 16);
+  return parseFloat(s);
+}
+
+// Resolve backslash escapes in string literal text. `\{` / `\}` produce literal
+// braces (so JSON-shaped text can be written without triggering interpolation);
+// `\n \t \r \" \\` are the usual C-style escapes; an unknown `\x` drops the
+// backslash and keeps `x`.
+function unescapeStr(s: string): string {
+  return s.replace(/\\(.)/g, (_, c: string) => {
+    switch (c) {
+      case "n":  return "\n";
+      case "t":  return "\t";
+      case "r":  return "\r";
+      case '"':  return '"';
+      case "\\": return "\\";
+      case "{":  return "{";
+      case "}":  return "}";
+      default:   return c;
+    }
+  });
+}
+
+function parseDuration(text: string): number {
+  if (text.endsWith("ms")) return parseInt(text) ;
+  if (text.endsWith("s"))  return parseInt(text) * 1000;
+  if (text.endsWith("m"))  return parseInt(text) * 60_000;
+  if (text.endsWith("h"))  return parseInt(text) * 3_600_000;
+  return 0;
+}
+
+// ── Lowerer ───────────────────────────────────────────────────────────────────
+
+export class Lowerer {
+  // Diagnostics raised during lowering (CST→AST), e.g. empty string interpolation.
+  // The CLI (`check`/`run`) and the LSP read this after `lower()` and merge it with
+  // the resolve/infer/exhaust/borrow diagnostics.
+  readonly diagnostics: Diagnostic[] = [];
+
+  constructor(private readonly file: string) {}
+
+  private sp(n: N): Span { return spanFrom(n, this.file); }
+
+  private err(span: Span): Expr {
+    return { tag: "Lit", lit: { tag: "Unit" }, span };
+  }
+
+  // ── Module ──────────────────────────────────────────────────────────────────
+
+  lower(tree: Tree): Module {
+    const named = tree.rootNode.namedChildren.filter(c => c.type !== "comment");
+    return { source: this.file, decls: this.lowerDeclList(named) };
+  }
+
+  // Shared logic for lowering any list of declaration nodes — used by both
+  // the top-level program and module bodies.
+  private lowerDeclList(nodes: N[]): Decl[] {
+    const named = nodes.filter(c => c.type !== "comment");
+    const fnGroups = new Map<string, N[]>();
+    const fnSigs   = new Map<string, N>();
+    // Function names opted into the low-level tier via `@low`/`@kernel def …`.
+    const lowLevelFns = new Set<string>();
+    type Item = { kind: "fn"; name: string } | { kind: "other"; node: N };
+    const order: Item[] = [];
+    const seen = new Set<string>();
+
+    for (const node of named) {
+      const isDecorated = node.type === "decorator_def";
+      const inner = isDecorated
+        ? (node.namedChildren.find(c => c.type === "function_def" || c.type === "type_def") ?? node)
+        : node;
+      // A `@low`/`@kernel` decorator on a function marks it low-tier.
+      const decoNames = isDecorated
+        ? node.namedChildren.filter(c => c.type === "decorator").map(d => d.namedChild(0)?.text ?? "")
+        : [];
+      const isLow = decoNames.some(d => d === "low" || d === "kernel");
+
+      if (inner.type === "function_def") {
+        const name = inner.namedChild(0)?.text ?? "?";
+        if (!seen.has(name)) { seen.add(name); fnGroups.set(name, []); order.push({ kind: "fn", name }); }
+        if (isLow) lowLevelFns.add(name);
+        fnGroups.get(name)!.push(inner);
+      } else if (inner.type === "function_sig") {
+        const name = inner.namedChild(0)?.text ?? "?";
+        fnSigs.set(name, inner);
+        if (!seen.has(name)) { seen.add(name); fnGroups.set(name, []); order.push({ kind: "fn", name }); }
+      } else {
+        order.push({ kind: "other", node });
+      }
+    }
+
+    const decls: Decl[] = [];
+    for (const item of order) {
+      if (item.kind === "fn") {
+        decls.push(this.lowerFnGroup(item.name, fnGroups.get(item.name)!, fnSigs.get(item.name) ?? null, lowLevelFns.has(item.name)));
+      } else {
+        const d = this.lowerTopDecl(item.node);
+        if (d) decls.push(d);
+      }
+    }
+    return decls;
+  }
+
+  // ── Declarations ────────────────────────────────────────────────────────────
+
+  private lowerTopDecl(n: N): Decl | null {
+    switch (n.type) {
+      case "import_stmt":   return this.lowerImport(n);
+      case "type_def":      return this.lowerTypeDef(n);
+      case "store_def":     return this.lowerStoreDef(n);
+      case "saga_def":      return this.lowerSagaDef(n);
+      case "machine_def":   return this.lowerMachineDef(n);
+      case "stream_def": {
+        const name  = n.namedChildren.find(c => c.type === "upper_id")?.text ?? "?";
+        const typeNode = n.namedChildren.find(isTypeKind);
+        const inner = typeNode ? this.lowerTypeRef(typeNode) : { tag: "TRNamed" as const, name: "Unknown", args: [] };
+        return { tag: "DStream", name, inner, span: this.sp(n) };
+      }
+      case "module_def":    return this.lowerModuleDef(n);
+      case "decorator_def": {
+        const inner = n.namedChildren.find(c => c.type !== "decorator");
+        return inner ? this.lowerTopDecl(inner) : null;
+      }
+      default: return null;
+    }
+  }
+
+  private lowerModuleDef(n: N): Decl {
+    const name = n.namedChildren.find(c => c.type === "lower_id")?.text ?? "?";
+    const capsNode = n.namedChildren.find(c => c.type === "capabilities_decl");
+    const capabilities = capsNode?.namedChildren.filter(c => c.type === "lower_id").map(c => c.text) ?? [];
+    // Everything that's not the name, capabilities, or comments is a declaration.
+    const bodyNodes = n.namedChildren.filter(c =>
+      c.type !== "lower_id" &&
+      c.type !== "capabilities_decl" &&
+      c.type !== "comment"
+    );
+    const decls = this.lowerDeclList(bodyNodes);
+    return { tag: "DModule", name, capabilities, decls, span: this.sp(n) };
+  }
+
+  private lowerImport(n: N): Decl {
+    const stringNode = n.namedChildren.find(c => c.type === "string");
+    const path = stringNode ? stringNode.text.slice(1, -1) : "";
+    const names: { name: string; alias: string | null }[] = [];
+
+    const importNames = n.namedChildren.filter(c => c.type === "import_name");
+    if (importNames.length > 0) {
+      for (const imp of importNames) {
+        const ids = imp.namedChildren;
+        names.push(ids.length === 2
+          ? { name: ids[0]!.text, alias: ids[1]!.text }
+          : { name: imp.text, alias: null });
+      }
+    } else {
+      // import foo from "path"  OR  import Foo from "path"  — bare name (lower or upper)
+      for (const id of n.namedChildren.filter(c => c.type === "lower_id" || c.type === "upper_id")) {
+        names.push({ name: id.text, alias: null });
+      }
+    }
+
+    return { tag: "DImport", path, names, span: this.sp(n) };
+  }
+
+  // ── Functions ───────────────────────────────────────────────────────────────
+
+  private lowerFnGroup(name: string, nodes: N[], sigNode: N | null, lowLevel = false): Decl {
+    const sig = sigNode ? this.lowerFnSig(sigNode) : null;
+    const clauses = nodes.map(n => this.lowerFnClause(n));
+    const span = (nodes[0] ?? sigNode)!;
+    return { tag: "DFn", name, sig, clauses, lowLevel, span: this.sp(span) };
+  }
+
+  private lowerFnSig(n: N): FnSig {
+    // def lower_id ( _type* ) : _type
+    // All named children after lower_id are types; last is return type.
+    const types = n.namedChildren.filter(isTypeKind);
+    const retNode = types.at(-1);
+    const paramNodes = types.slice(0, -1);
+    const { effects, retRef } = this.unpackEffectType(retNode ?? null);
+    return {
+      params: paramNodes.map(t => this.lowerTypeRef(t)),
+      ret: retRef,
+      effects,
+      span: this.sp(n),
+    };
+  }
+
+  private lowerFnClause(n: N): FnClause {
+    // named children: lower_id (name), param*, _type (ret), body...
+    const named = n.namedChildren;
+    // Skip the first child (function name)
+    const rest = named.slice(1);
+    const plNode = rest.find(c => c.type === "param_list");
+    const params = plNode ? this.lowerParamList(plNode) : [];
+    const typeIdx = rest.findIndex(isTypeKind);
+    const bodyNodes = typeIdx >= 0 ? rest.slice(typeIdx + 1) : rest;
+
+    const whereNodes = bodyNodes.filter(c => c.type === "where_stmt");
+    const bodyContent = bodyNodes.filter(c => c.type !== "where_stmt");
+    const where_ = whereNodes.flatMap(w => this.lowerWhereBindings(w));
+    const lifetimeConstraints = whereNodes.flatMap(w => this.lowerLifetimeConstraints(w));
+    const rawRetNode = typeIdx >= 0 ? rest[typeIdx] : undefined;
+    const { effects, retRef: ret } = this.unpackEffectType(rawRetNode ?? null);
+
+    return { params, ret, effects, body: this.lowerBody(bodyContent), where_, lifetimeConstraints, span: this.sp(n) };
+  }
+
+  // where_stmt in the grammar is lifetime constraints, not value bindings.
+  // Value `where` bindings (spec §3.4) are not yet in the grammar — return empty.
+  private lowerWhereBindings(_n: N): { pat: Pat; value: Expr }[] { return []; }
+
+  // Extract the `(~a >= ~b)` / `(~a = ~b)` lifetime constraints from a where_stmt.
+  private lowerLifetimeConstraints(n: N): import("./ast.js").LifetimeConstraint[] {
+    const out: import("./ast.js").LifetimeConstraint[] = [];
+    for (const c of n.namedChildren) {
+      if (c.type !== "lifetime_constraint") continue;
+      const refs = c.namedChildren.filter(r => r.type === "lifetime_ref");
+      if (refs.length !== 2) continue;
+      const op = c.children.some(ch => ch.text === ">=") ? "outlives" : "eq";
+      const lhs = this.lowerLifetimeRef(refs[0]!);
+      const rhs = this.lowerLifetimeRef(refs[1]!);
+      if (lhs && rhs) out.push({ lhs, op, rhs });
+    }
+    return out;
+  }
+
+  private lowerLifetimeRef(ref: N): import("./ast.js").LifetimeRef | null {
+    const inner = ref.namedChildren[0];
+    if (!inner) return null;
+    if (inner.type === "lifetime_var") return { tag: "LVar", name: inner.text };
+    if (inner.type === "lifetime_of_type") {
+      const id = inner.namedChildren.find(c => c.type === "lower_id" || c.type === "upper_id");
+      return id ? { tag: "LOf", binding: id.text } : null;
+    }
+    return null;
+  }
+
+  private lowerBody(nodes: N[]): Expr {
+    if (nodes.length === 1 && isExprKind(nodes[0]!.type)) return this.lowerExpr(nodes[0]!);
+    const stmts = nodes.map(n => this.lowerStmt(n));
+    const span = nodes[0]
+      ? this.sp(nodes[0])
+      : { start: { line: 0, col: 0, offset: 0 }, end: { line: 0, col: 0, offset: 0 }, source: this.file };
+    return { tag: "Do", stmts, span };
+  }
+
+  // ── Type definitions ────────────────────────────────────────────────────────
+
+  private lowerTypeDef(n: N): Decl {
+    const named = n.namedChildren;
+    const name   = named.find(c => c.type === "upper_id")?.text ?? "?";
+    const params = named.filter(c => c.type === "lower_id").map(c => c.text);
+    let body: TypeBody;
+
+    if (named.some(c => c.type === "adt_variant")) {
+      body = { tag: "TBAdt", variants: named.filter(c => c.type === "adt_variant").map(v => this.lowerVariant(v)) };
+    } else if (n.text.includes("extern")) {
+      const rt = named.find(c => c.type === "record_type");
+      const fields = (rt?.namedChildren.filter(c => c.type === "type_field") ?? []).map(f => ({
+        name: f.namedChildren[0]!.text,
+        type: this.lowerTypeRef(f.namedChildren[1]!),
+      }));
+      body = { tag: "TBExtern", fields, align: null };
+    } else {
+      const typeNode = named.find(isTypeKind);
+      // `type T = Base where <pred>` — the predicate is the named expr right after
+      // the `where` token (refers to the refined value as `value`); its presence
+      // marks a refinement. (Locate it via `where` because the type *name* is an
+      // `upper_id`, which is itself an expr-kind and would otherwise be picked up.)
+      const whereIdx = n.children.findIndex(c => c.type === "where");
+      const predNode = whereIdx >= 0
+        ? n.children.slice(whereIdx + 1).find(c => c.isNamed && isExprKind(c.type))
+        : undefined;
+      const pred = predNode ? this.lowerExpr(predNode) : null;
+      body = typeNode
+        ? { tag: "TBAlias", ref: this.lowerTypeRef(typeNode), pred }
+        : { tag: "TBAlias", ref: { tag: "TRNamed", name: "Unknown", args: [] }, pred };
+    }
+
+    return { tag: "DType", name, params, body, span: this.sp(n) };
+  }
+
+  private lowerVariant(n: N): AdtVariant {
+    const name = n.namedChildren.find(c => c.type === "upper_id")?.text ?? "?";
+    const payload = n.namedChildren.find(isTypeKind);
+    return { name, payload: payload ? this.lowerTypeRef(payload) : null, span: this.sp(n) };
+  }
+
+  // ── Store definitions ───────────────────────────────────────────────────────
+
+  private lowerStoreDef(n: N): Decl {
+    const name = n.namedChildren.find(c => c.type === "upper_id")?.text ?? "?";
+
+    const stateBlock = n.namedChildren.find(c => c.type === "state_block");
+    const fields = (stateBlock?.namedChildren.filter(c => c.type === "state_field") ?? []).map(f => {
+      const kids = f.namedChildren;
+      const nameNode = kids.find(c => c.type === "lower_id");
+      // The default value is the trailing expr — exclude the field-name id and
+      // the type node (a bare `lower_id` also counts as an expression).
+      const valNode = kids.find(c => c !== nameNode && !isTypeKind(c) && isExprKind(c.type));
+      return {
+        name:     nameNode?.text ?? "?",
+        type:     this.lowerTypeRef(kids.find(isTypeKind) ?? kids[0]!),
+        default_: valNode ? this.lowerExpr(valNode) : null,
+      };
+    });
+
+    const msgBlock = n.namedChildren.find(c => c.type === "messages_block");
+    const messages = (msgBlock?.namedChildren.filter(c => c.type === "message_def") ?? []).map(m => {
+      // Body is either a single inline expr, or a block of statements (do-block).
+      // Exclude the message name (upper_id) and params — the upper_id also counts
+      // as an expression, so a naive find() would grab the name itself.
+      const bodyNodes = m.namedChildren.filter(c => c.type !== "upper_id" && c.type !== "param");
+      const stmts = bodyNodes.filter(c => isStmtKind(c.type));
+      const exprBody = bodyNodes.find(c => isExprKind(c.type));
+      const span = this.sp(m);
+      const body: Expr = stmts.length > 0
+        ? { tag: "Do", stmts: stmts.map(s => this.lowerStmt(s)), span }
+        : exprBody ? this.lowerExpr(exprBody) : { tag: "Lit", lit: { tag: "Unit" }, span };
+      return {
+        name:   m.namedChildren.find(c => c.type === "upper_id")?.text ?? "?",
+        // Filter out zero-length phantom params from `Msg ()` (empty parens in grammar)
+        params: m.namedChildren.filter(c => c.type === "param" && c.text.trim().length > 0).map(p => this.lowerParam(p)),
+        body,
+      };
+    });
+
+    const pubBlock = n.namedChildren.find(c => c.type === "pub_block");
+    const pubs = (pubBlock?.namedChildren.filter(c => c.type === "pub_field") ?? []).map(p => {
+      const nameNode = p.namedChildren.find(c => c.type === "lower_id");
+      // `pub name = expr` — the body is the expr after the name; a bare `pub name`
+      // (no `=`) re-exports the state field, so there is no separate body node.
+      const valNode = p.namedChildren.find(c => c !== nameNode && isExprKind(c.type));
+      return {
+        name: nameNode?.text ?? "?",
+        body: valNode ? this.lowerExpr(valNode) : null,
+      };
+    });
+
+    return { tag: "DStore", name, fields, messages, pubs, span: this.sp(n) };
+  }
+
+  // ── First-class saga declarations ────────────────────────────────────────────
+
+  // Deprecated `saga Name(...): T [over Store]` keyword. Lowers to the same
+  // DSaga node as the canonical `machine … persisted` form, then emits a
+  // deprecation warning on the surface keyword.
+  private lowerSagaDef(n: N): Decl {
+    const name = n.namedChildren.find(c => c.type === "upper_id")?.text ?? "?";
+    const params = n.namedChildren.filter(c => c.type === "param").map(p => this.lowerParam(p));
+    const retNode = n.namedChildren.find(isTypeKind);
+    const ret = retNode ? this.lowerTypeRef(retNode) : null;
+    // `over StoreName` — explicit backing store; else the saga is auto-backed
+    // (its own store named after the saga).
+    const overNode = n.namedChildren.find(c => c.type === "over_clause");
+    const store = overNode?.namedChildren.find(c => c.type === "upper_id")?.text ?? null;
+    const steps = n.namedChildren.filter(c => c.type === "saga_step").map(s => this.lowerMachineStep(s));
+    this.diagnostics.push({
+      kind: "warning",
+      span: this.sp(n),
+      message: "`saga` is deprecated; write `machine … persisted over Store`.",
+    });
+    return { tag: "DSaga", name, params, ret, store, persisted: true, deprecated: true, steps, span: this.sp(n) };
+  }
+
+  // Canonical `machine Name(...): T persisted [over Store]`. A durable/compensating
+  // machine — identical runtime semantics to `saga`. Lowers to the same DSaga node.
+  private lowerMachineDef(n: N): Decl {
+    const name = n.namedChildren.find(c => c.type === "upper_id")?.text ?? "?";
+    const params = n.namedChildren.filter(c => c.type === "param").map(p => this.lowerParam(p));
+    const retNode = n.namedChildren.find(isTypeKind);
+    const ret = retNode ? this.lowerTypeRef(retNode) : null;
+    // The grammar places an optional `over` backing-store upper_id AFTER the return
+    // type's upper_id(s). The last upper_id that is neither the name nor part of the
+    // return type is the explicit backing store. We identify it as a direct
+    // `upper_id` child of the machine_def that is not the leading name and not nested
+    // inside the type node.
+    const directUppers = n.namedChildren.filter(c => c.type === "upper_id");
+    // First upper_id is the machine name; a trailing direct upper_id (when present)
+    // is the `over Store` target (the return type is wrapped in a *_type node).
+    const store = directUppers.length > 1 ? directUppers[directUppers.length - 1]!.text : null;
+    const steps = n.namedChildren.filter(c => c.type === "saga_step").map(s => this.lowerMachineStep(s));
+    return { tag: "DSaga", name, params, ret, store, persisted: true, deprecated: false, steps, span: this.sp(n) };
+  }
+
+  // ── Machine steps ───────────────────────────────────────────────────────────
+
+  private lowerMachineStep(n: N): import("./ast.js").MachineStep {
+    const span = this.sp(n);
+    // First atom_lit is the state name; the lower_ids after it are step params.
+    const atom = n.namedChildren.find(c => c.type === "atom_lit");
+    const name = atom?.namedChildren[0]?.text ?? atom?.text?.replace(/^:/, "") ?? "?";
+    const params = n.namedChildren
+      .filter(c => c.type === "lower_id" && c !== atom?.namedChildren[0])
+      .map(c => c.text);
+    // Everything after the state header is the body.
+    const bodyNodes = n.namedChildren.filter(c => c !== atom && c.type !== "lower_id");
+    return { name, params, body: this.lowerStepBody(bodyNodes), span };
+  }
+
+  // Lower a step/branch body, grouping concurrency constructs that span several
+  // sibling nodes: `go..go` (+ `| branches` = a join) and `race {..}` (+ branches).
+  private lowerStepBody(nodes: N[]): import("./ast.js").SagaStmt[] {
+    const out: import("./ast.js").SagaStmt[] = [];
+    let i = 0;
+    while (i < nodes.length) {
+      const n = nodes[i]!;
+      const span = this.sp(n);
+      const isGo = (x: N) => x.type === "go_stmt" || x.type === "go_expr";
+      if (isGo(n)) {
+        const tasks: Expr[] = [];
+        while (i < nodes.length && isGo(nodes[i]!)) {
+          const inner = nodes[i]!.namedChildren.find(c => isExprKind(c.type)) ?? nodes[i]!.namedChildren[0]!;
+          tasks.push(this.lowerExpr(inner));
+          i++;
+        }
+        const branches = this.collectSagaBranches(nodes, () => i, (k) => { i = k; });
+        if (branches.length > 0) out.push({ tag: "SagaJoin", tasks, branches, span });
+        else for (const t of tasks) out.push({ tag: "SagaGo", expr: t, span });
+      } else if (n.type === "race_block") {
+        const arms = (n.namedChildren).map(a => {
+          const arm = a.type === "race_arm" ? a.namedChildren[0]! : a;
+          // `after Ns` carries a duration_lit; capture it so the race can sleep.
+          if (arm.type === "after_stmt") return { kind: "after" as const, expr: arm.namedChildren[0] ? this.lowerExpr(arm.namedChildren[0]) : null };
+          if (arm.type === "until_stmt") return { kind: "until" as const, expr: arm.namedChildren[0] ? this.lowerExpr(arm.namedChildren[0]) : null };
+          return { kind: "go" as const, expr: arm.namedChildren[0] ? this.lowerExpr(arm.namedChildren[0]) : null };
+        });
+        i++;
+        const branches = this.collectSagaBranches(nodes, () => i, (k) => { i = k; });
+        out.push({ tag: "SagaRace", arms, branches, span });
+      } else if (n.type === "saga_branch") {
+        // Stray branch without a preceding go/race — skip (shouldn't normally occur).
+        i++;
+      } else {
+        out.push(...this.lowerSagaStmt(n));
+        i++;
+      }
+    }
+    return out;
+  }
+
+  private collectSagaBranches(nodes: N[], get: () => number, set: (k: number) => void): import("./ast.js").SagaBranch[] {
+    const branches: import("./ast.js").SagaBranch[] = [];
+    let i = get();
+    while (i < nodes.length && nodes[i]!.type === "saga_branch") {
+      branches.push(this.lowerSagaBranch(nodes[i]!));
+      i++;
+    }
+    set(i);
+    return branches;
+  }
+
+  private lowerSagaBranch(b: N): import("./ast.js").SagaBranch {
+    const patNode = b.namedChildren.find(c => isPatKind(c.type));
+    const pat: Pat = patNode ? this.lowerPat(patNode) : { tag: "PWild", span: this.sp(b) };
+    const bodyNodes = b.namedChildren.filter(c => c !== patNode);
+    return { pat, body: this.lowerSagaBranchNodes(bodyNodes) };
+  }
+
+  private lowerSagaStmt(n: N): import("./ast.js").SagaStmt[] {
+    const span = this.sp(n);
+    switch (n.type) {
+      case "step_goto":
+      case "step_inline": {
+        const atom = n.namedChildren[0];
+        const target = atom?.namedChildren[0]?.text ?? atom?.text?.replace(/^:/, "") ?? "?";
+        const args = n.namedChildren.slice(1).map(c => this.lowerExpr(c));
+        return [{ tag: "Goto", target, args, span }];
+      }
+      case "implicit_match": {
+        const subj = n.namedChildren[0]!;
+        const branches = n.namedChildren.filter(c => c.type === "saga_branch").map(b => this.lowerSagaBranch(b));
+        return [{ tag: "SagaMatch", subject: this.lowerExpr(subj), branches, span }];
+      }
+      case "rollback_stmt": {
+        // expr ? rollback :step  (defer compensation)  |  expr ?: rollback :step (recover on failure)
+        const exprNode = n.namedChildren.find(c => isExprKind(c.type))!;
+        const targetAtom = n.namedChildren.find(c => c.type === "atom_lit");
+        const target = targetAtom?.namedChildren[0]?.text ?? targetAtom?.text?.replace(/^:/, "") ?? "?";
+        const mode = n.children.some(c => !c.isNamed && c.text === "?:") ? "recover" as const : "defer" as const;
+        return [{ tag: "Rollback", expr: this.lowerExpr(exprNode), mode, target, span }];
+      }
+      case "match_expr": {
+        const [subj, ...rest] = n.namedChildren;
+        const branches = rest.filter(c => c.type === "match_branch").map(b => this.lowerSagaBranch(b));
+        return [{ tag: "SagaMatch", subject: subj ? this.lowerExpr(subj) : this.err(span), branches, span }];
+      }
+      case "if_expr": {
+        const cond = n.namedChildren[0]!;
+        const elseAnonIdx = n.children.findIndex(c => !c.isNamed && c.text === "else");
+        const thenNodes = n.namedChildren.filter(c => c !== cond && (elseAnonIdx < 0 || n.children.indexOf(c) < elseAnonIdx));
+        const elseNodes = elseAnonIdx >= 0 ? n.namedChildren.filter(c => n.children.indexOf(c) > elseAnonIdx) : [];
+        return [{
+          tag: "SagaIf",
+          cond: this.lowerExpr(cond),
+          then: this.lowerSagaBranchNodes(thenNodes),
+          else_: this.lowerSagaBranchNodes(elseNodes),
+          span,
+        }];
+      }
+      case "binding":
+      case "block_binding": {
+        const nameId = n.namedChildren.find(c => c.type === "lower_id");
+        const valNode = n.namedChildren.find(c => c !== nameId && !isTypeKind(c) && isExprKind(c.type));
+        return [{ tag: "SBindS", name: nameId?.text ?? "_", value: valNode ? this.lowerExpr(valNode) : this.err(span), span }];
+      }
+      default:
+        // A bare expression is the step's terminal/yielded value (or a side-effect).
+        if (isExprKind(n.type)) return [{ tag: "Yield", expr: this.lowerExpr(n), span }];
+        return [];
+    }
+  }
+
+  // Interpret a sequence of CST nodes appearing in a saga branch/step tail. A
+  // leading atom (`:state`, optionally followed by argument exprs) is a state
+  // transition; anything else lowers as a regular saga statement.
+  private lowerSagaBranchNodes(nodes: N[]): import("./ast.js").SagaStmt[] {
+    if (nodes.length === 0) return [];
+    const atom = this.asAtomNode(nodes[0]!);
+    if (atom) {
+      const target = atom.namedChildren[0]?.text ?? atom.text.replace(/^:/, "");
+      const args = nodes.slice(1).filter(c => isExprKind(c.type)).map(c => this.lowerExpr(c));
+      return [{ tag: "Goto", target, args, span: this.sp(nodes[0]!) }];
+    }
+    return this.lowerStepBody(nodes);
+  }
+
+  // Unwrap `literal(atom_lit)` or a bare `atom_lit` node.
+  private asAtomNode(n: N): N | null {
+    if (n.type === "atom_lit") return n;
+    if (n.type === "literal" && n.namedChildren[0]?.type === "atom_lit") return n.namedChildren[0]!;
+    return null;
+  }
+
+  // ── Type references ─────────────────────────────────────────────────────────
+
+  lowerTypeRef(n: N): TypeRef {
+    switch (n.type) {
+      case "simple_type":
+        return { tag: "TRNamed", name: n.text, args: [] };
+      case "type_var":
+        return { tag: "TRNamed", name: n.text, args: [] };  // lowercase → resolved as type var later
+      case "unit_type":
+        return { tag: "TRNamed", name: "()", args: [] };
+      case "parameterized_type": {
+        const name = n.namedChildren.find(c => c.type === "upper_id")?.text ?? "?";
+        const args = n.namedChildren
+          .filter(c => c.type === "type_or_expr")
+          .map(c => {
+            const child = c.namedChildren[0] ?? c;
+            // A compound value expression (`listLength xs`, a number, `a.b`) is a
+            // dependent-type argument → keep it as an expression. Bare identifiers
+            // (`a`) and type nodes stay type references, so ordinary generics like
+            // `List(a)` / `Result(a, e)` are unaffected.
+            if (!isTypeKind(child) && child.type !== "identifier_expr")
+              return { tag: "TRExpr" as const, expr: this.lowerExpr(child) };
+            return this.lowerTypeRef(child);
+          });
+        return { tag: "TRNamed", name, args };
+      }
+      case "record_type": {
+        const fields = n.namedChildren.filter(c => c.type === "type_field").map(f => ({
+          name: f.namedChildren[0]!.text,
+          type: this.lowerTypeRef(f.namedChildren[1]!),
+          optional: false,
+        }));
+        return { tag: "TRRecord", fields };
+      }
+      case "tuple_type":
+        return { tag: "TRTuple", elems: n.namedChildren.filter(isTypeKind).map(c => this.lowerTypeRef(c)) };
+      case "tainted_type": {
+        const inner = n.namedChildren.find(isTypeKind);
+        return { tag: "TRNamed", name: "Tainted", args: inner ? [this.lowerTypeRef(inner)] : [] };
+      }
+      case "effect_type": {
+        // Effect [caps] RetType — unpack as TRNamed("Effect", [RetType]) with caps noted
+        const { retRef } = this.unpackEffectType(n);
+        return retRef;
+      }
+      case "async_type": {
+        const inner = n.namedChildren.find(isTypeKind);
+        return { tag: "TRNamed", name: "Async", args: inner ? [this.lowerTypeRef(inner)] : [] };
+      }
+      case "result_type": {
+        const types = n.namedChildren.filter(isTypeKind).map(t => this.lowerTypeRef(t));
+        return { tag: "TRNamed", name: "Result", args: types };
+      }
+      case "array_type": {
+        const inner = n.namedChildren.find(isTypeKind);
+        return { tag: "TRNamed", name: "Array", args: inner ? [this.lowerTypeRef(inner)] : [] };
+      }
+      case "atomic_type": {
+        const inner = n.namedChildren.find(isTypeKind);
+        return { tag: "TRNamed", name: "Atomic", args: inner ? [this.lowerTypeRef(inner)] : [] };
+      }
+      case "pointer_type": {
+        // Ptr [~lifetime] T — the lifetime annotation is metadata for the borrow
+        // checker (region inference); the value-level type is just Ptr(T).
+        const lifeNode = n.namedChildren.find(c => c.type === "lifetime_var");
+        const inner = n.namedChildren.find(isTypeKind);
+        return {
+          tag: "TRPtr",
+          lifetime: lifeNode ? lifeNode.text : null,
+          inner: inner ? this.lowerTypeRef(inner) : { tag: "TRNamed", name: "Unknown", args: [] },
+        };
+      }
+      default:
+        return { tag: "TRNamed", name: n.text, args: [] };
+    }
+  }
+
+  // Unpacks Effect [cap1, cap2] RetType → { effects, retRef }
+  private unpackEffectType(n: N | null): { effects: string[]; retRef: TypeRef } {
+    const empty: TypeRef = { tag: "TRNamed", name: "()", args: [] };
+    if (!n || n.type !== "effect_type") return { effects: [], retRef: n ? this.lowerTypeRef(n) : empty };
+    const effects = n.namedChildren.filter(c => c.type === "lower_id").map(c => c.text);
+    const retNode  = n.namedChildren.find(isTypeKind);
+    return { effects, retRef: retNode ? this.lowerTypeRef(retNode) : empty };
+  }
+
+  // ── Params ──────────────────────────────────────────────────────────────────
+
+  private lowerParam(n: N): Param {
+    const span = this.sp(n);
+    const named = n.namedChildren;
+
+    // atom_lit param (:name)
+    const atom = named.find(c => c.type === "atom_lit");
+    if (atom) return { pat: { tag: "PAtom", name: atom.text.slice(1), span }, ascription: null, span };
+
+    // literal param (0, true) — clause-head dispatch on a constant value
+    const lit = named.find(c => c.type === "number" || c.type === "bool");
+    if (lit) return { pat: { tag: "PLit", lit: this.lowerLit(lit), span }, ascription: null, span };
+
+    // wildcard
+    if (named.find(c => c.type === "wildcard") || n.text === "_")
+      return { pat: { tag: "PWild", span }, ascription: null, span };
+
+    // upper_id (type pattern)
+    const upper = named.find(c => c.type === "upper_id");
+    if (upper) return { pat: { tag: "PCtor", name: upper.text, inner: null, span }, ascription: null, span };
+
+    // lower_id  or  lower_id : Type   — optionally with a `= <default>`
+    const nameId = named.find(c => c.type === "lower_id");
+    const typeNode = named.find(isTypeKind);
+    // A default is the `_expr` that follows the `=` token (distinct from a bare
+    // `number`/`bool` clause-head literal param, which is unwrapped above).
+    const eq = n.children.find(c => !c.isNamed && c.text === "=");
+    let default_: Expr | undefined;
+    if (eq) {
+      const valNode = named.find(c => c.startIndex >= eq.endIndex && isExprKind(c.type));
+      if (valNode) default_ = this.lowerExpr(valNode);
+    }
+    return {
+      pat: { tag: "PVar", name: nameId?.text ?? n.text, span },
+      ascription: typeNode ? this.lowerTypeRef(typeNode) : null,
+      ...(default_ ? { default_ } : {}),
+      span,
+    };
+  }
+
+  // A function-signature parameter list (`param_list`): lowers each `param`,
+  // flipping `keywordOnly` on for every parameter that appears after a `*`
+  // separator (`def render(node, *, theme=Dark)`).
+  private lowerParamList(n: N): Param[] {
+    const out: Param[] = [];
+    let kwOnly = false;
+    for (const c of n.namedChildren) {
+      if (c.type === "kw_separator") { kwOnly = true; continue; }
+      if (c.type !== "param") continue;
+      const p = this.lowerParam(c);
+      if (kwOnly) p.keywordOnly = true;
+      out.push(p);
+    }
+    return out;
+  }
+
+  // ── Statements ──────────────────────────────────────────────────────────────
+
+  lowerStmt(n: N): Stmt {
+    const span = this.sp(n);
+
+    switch (n.type) {
+      case "binding":
+      case "block_binding": {
+        const named = n.namedChildren;
+        const nameId  = named.find(c => c.type === "lower_id");
+        const typeNode = named.find(isTypeKind);
+        const valNode  = named.find(c => c !== nameId && !isTypeKind(c));
+        const pat: Pat = { tag: "PVar", name: nameId?.text ?? "?", span };
+        // A leading `let`/`const`/`mut` keyword means this declares a new binding;
+        // a bare `x = e` is a reassignment of an existing (mutable) binding.
+        const declares = n.children.some(c => c.type === "let" || c.type === "const" || c.type === "mut");
+        const mutable = n.children.some(c => c.type === "mut");
+        return { tag: "SBind", pat, ascription: typeNode ? this.lowerTypeRef(typeNode) : null, value: valNode ? this.lowerExpr(valNode) : this.err(span), declares, mutable, span };
+      }
+
+      case "brace_binding": {
+        // `[let|mut|const] name = expr` inside a `{ }` block. Like `binding` but
+        // no `: type` ascription (keeps the `=` vs `:` record fork one token wide).
+        const named = n.namedChildren;
+        const nameId  = named.find(c => c.type === "lower_id");
+        const valNode = named.find(c => c !== nameId && isExprKind(c.type));
+        const pat: Pat = { tag: "PVar", name: nameId?.text ?? "?", span };
+        const declares = n.children.some(c => c.type === "let" || c.type === "const" || c.type === "mut");
+        const mutable = n.children.some(c => c.type === "mut");
+        return { tag: "SBind", pat, ascription: null, value: valNode ? this.lowerExpr(valNode) : this.err(span), declares, mutable, span };
+      }
+
+      case "index_assign":
+      case "deref_assign": {
+        // `xs[i] = v` (target = array_index) or `p.* = v` (target = deref_expr).
+        const lhs = n.namedChildren[0]!;        // array_index | deref_expr
+        const valNode = n.namedChildren[1]!;    // the rhs value
+        return {
+          tag: "SAssign",
+          target: this.lowerExpr(lhs),
+          value: this.lowerExpr(valNode),
+          span,
+        };
+      }
+
+      case "destructure": {
+        const named = n.namedChildren;
+        const valNode = named.at(-1);
+        const bindings = named.slice(0, -1).filter(c => c.type === "lower_id");
+        const isRec = n.text.trimStart().startsWith("{");
+        const pat: Pat = isRec
+          ? { tag: "PRecord", fields: bindings.map(b => ({ name: b.text, pat: { tag: "PVar" as const, name: b.text, span: this.sp(b) } })), span }
+          : { tag: "PTuple", elems: bindings.map(b => ({ tag: "PVar" as const, name: b.text, span: this.sp(b) })), span };
+        return { tag: "SBind", pat, ascription: null, value: valNode ? this.lowerExpr(valNode) : this.err(span), declares: true, mutable: false, span };
+      }
+
+      case "pipe_block":
+        return { tag: "SExpr", expr: this.lowerPipeBlock(n, span), span };
+
+      case "try_block":
+        return { tag: "SExpr", expr: { tag: "Try", stmts: n.namedChildren.map(c => this.lowerStmt(c)), span }, span };
+
+      case "retry_block":
+        return { tag: "SExpr", expr: this.lowerRetryBlock(n, span), span };
+
+      case "loop_expr":
+        return { tag: "SExpr", expr: { tag: "Loop", stmts: n.namedChildren.map(c => this.lowerStmt(c)), span }, span };
+
+      case "await_stmt": {
+        const exprNode = n.namedChildren[0];
+        const branches = n.namedChildren.filter(c => c.type === "match_branch").map(b => this.lowerBranch(b));
+        return { tag: "SExpr", expr: { tag: "Await", expr: exprNode ? this.lowerExpr(exprNode) : this.err(span), branches, span }, span };
+      }
+
+      case "go_stmt": {
+        const exprNode = n.namedChildren.find(c => isExprKind(c.type));
+        return { tag: "SExpr", expr: { tag: "Go", expr: exprNode ? this.lowerExpr(exprNode) : this.err(span), span }, span };
+      }
+
+      case "if_expr":
+        return { tag: "SExpr", expr: this.lowerIfExpr(n, span), span };
+
+      case "if_pattern_expr":
+        return { tag: "SExpr", expr: this.lowerIfPatternExpr(n, span), span };
+
+      case "match_expr": {
+        const [subj, ...rest] = n.namedChildren;
+        const branches = rest.filter(c => c.type === "match_branch").map(b => this.lowerBranch(b));
+        return { tag: "SExpr", expr: { tag: "Match", subject: subj ? this.lowerExpr(subj) : this.err(span), branches, span }, span };
+      }
+      case "responsive_expr":
+        return { tag: "SExpr", expr: this.lowerResponsive(n, span), span };
+
+      // `expr |> match | ...` / `expr |> fn p -> ...` in statement position.
+      // Same shape as a pipe expression — route through lowerPipe so the branches
+      // aren't dropped (the default case would lower only the scrutinee).
+      case "pipe_match_stmt":
+      case "pipe_lambda_stmt":
+        return { tag: "SExpr", expr: this.lowerPipe(n, span), span };
+
+      default:
+        if (isExprKind(n.type)) return { tag: "SExpr", expr: this.lowerExpr(n), span };
+        // expression-statement: the expr is the sole named child
+        const child = n.namedChildren.find(c => isExprKind(c.type));
+        return { tag: "SExpr", expr: child ? this.lowerExpr(child) : this.err(span), span };
+    }
+  }
+
+  // ── Expressions ─────────────────────────────────────────────────────────────
+
+  lowerExpr(n: N): Expr {
+    const span = this.sp(n);
+
+    switch (n.type) {
+      // ── literals ──
+      case "literal": {
+        const inner = n.namedChildren[0] ?? n;
+        if (inner.type === "string") return this.lowerStringExpr(inner, span);
+        return { tag: "Lit", lit: this.lowerLit(inner), span };
+      }
+      case "string":
+        return this.lowerStringExpr(n, span);
+      case "number": case "bool": case "multiline_string":
+      case "triple_quote_string":
+      case "unit":   case "atom_lit": case "duration_lit": case "hex_color":
+      case "sigil_string": case "regex_sigil":
+        return { tag: "Lit", lit: this.lowerLit(n), span };
+
+      // ── variables ──
+      case "identifier_expr":
+        return { tag: "Var", name: (n.namedChildren[0] ?? n).text, span };
+      case "lower_id": case "upper_id":
+        return { tag: "Var", name: n.text, span };
+
+      // ── operators ──
+      case "unary_expr": {
+        const op = n.children.find(c => !c.isNamed)?.text ?? "-";
+        return { tag: "UnOp", op, expr: n.namedChildren[0] ? this.lowerExpr(n.namedChildren[0]) : this.err(span), span };
+      }
+      case "binary_expr": {
+        const [left, right] = n.namedChildren;
+        // operator is the first anonymous child that isn't empty
+        const op = n.children.find(c => !c.isNamed && c.text.trim() !== "")?.text ?? "+";
+        return { tag: "BinOp", op, left: left ? this.lowerExpr(left) : this.err(span), right: right ? this.lowerExpr(right) : this.err(span), span };
+      }
+
+      case "pipe_expr": return this.lowerPipe(n, span);
+
+      case "ternary_expr": {
+        const [cond, then_, else_] = n.namedChildren;
+        return { tag: "If", cond: cond ? this.lowerExpr(cond) : this.err(span), then: then_ ? this.lowerExpr(then_) : this.err(span), else_: else_ ? this.lowerExpr(else_) : null, span };
+      }
+
+      // ── access ──
+      case "field_access": {
+        const obj = n.namedChildren[0]!;
+        const field = n.namedChildren.at(-1)!;
+        return { tag: "Field", obj: this.lowerExpr(obj), field: field.text, span };
+      }
+      case "optional_chain": {
+        const obj = n.namedChildren[0]!;
+        const field = n.namedChildren.at(-1)!;
+        return { tag: "Field", obj: this.lowerExpr(obj), field: field.text, span };
+      }
+      case "array_index": {
+        const [obj, idx] = n.namedChildren;
+        return { tag: "Index", obj: obj ? this.lowerExpr(obj) : this.err(span), index: idx ? this.lowerExpr(idx) : this.err(span), span };
+      }
+      case "deref_expr":
+        return { tag: "Deref", expr: n.namedChildren[0] ? this.lowerExpr(n.namedChildren[0]) : this.err(span), span };
+      case "addr_of_expr":
+        return { tag: "AddrOf", expr: n.namedChildren[0] ? this.lowerExpr(n.namedChildren[0]) : this.err(span), span };
+
+      // ── error propagation ──
+      case "propagate_expr": {
+        const [expr, alt] = n.namedChildren;
+        return alt
+          ? { tag: "PropWith", expr: this.lowerExpr(expr!), alt: this.lowerExpr(alt), span }
+          : { tag: "Propagate", expr: expr ? this.lowerExpr(expr) : this.err(span), span };
+      }
+
+      // ── collections ──
+      case "range_expr": {
+        const [from, to] = n.namedChildren;
+        return { tag: "Range", from: from ? this.lowerExpr(from) : this.err(span), to: to ? this.lowerExpr(to) : this.err(span), inclusive: n.children.some(c => c.text === "..="), span };
+      }
+      case "record_literal": {
+        const fields = n.namedChildren.filter(c => c.type === "record_field").map(f => ({ name: f.namedChildren[0]!.text, value: this.lowerExpr(f.namedChildren[1]!) }));
+        return { tag: "Record", fields, span };
+      }
+      case "record_spread": {
+        // { ...base, k: v } — base record's fields, overridden by explicit fields.
+        const baseNode = n.namedChildren.find(c => c.type !== "record_field");
+        const fields = n.namedChildren.filter(c => c.type === "record_field").map(f => ({ name: f.namedChildren[0]!.text, value: this.lowerExpr(f.namedChildren[1]!) }));
+        return baseNode
+          ? { tag: "Record", fields, spread: this.lowerExpr(baseNode), span }
+          : { tag: "Record", fields, span };
+      }
+      case "list_literal":
+        return { tag: "List", elems: n.namedChildren.map(c => this.lowerExpr(c)), span };
+      case "tuple_literal":
+        return { tag: "Tuple", elems: n.namedChildren.map(c => this.lowerExpr(c)), span };
+      case "grouped":
+        return n.namedChildren[0] ? this.lowerExpr(n.namedChildren[0]) : this.err(span);
+
+      // ── calls ──
+      // Unified `call`: callee `(` positional…, name=value… `)`. The callee is any
+      // expression — `lowerExpr` turns identifier_expr→Var, field_access→Field,
+      // grouped→inner, nested call→Call (currying). Whether the head names a
+      // function or a constructor is decided downstream by its capitalization.
+      case "call": {
+        const calleeNode = n.namedChildren[0]!;
+        const fn = this.lowerExpr(calleeNode);
+        const { args, named } = this.lowerArgs(n.namedChildren.slice(1));
+        return { tag: "Call", fn, args, named, span };
+      }
+
+      // ── lambdas ──
+      case "lambda":
+        return n.namedChildren[0] ? this.lowerExpr(n.namedChildren[0]) : this.err(span);
+      case "lambda_simple": {
+        const bodyNode = n.namedChildren.at(-1)!;
+        // Params are pattern children (`fn x ->`, `fn (a, b) ->`) or the bare
+        // lower_id children of the multi-arg form (`fn (a b c) ->`).
+        const paramNodes = n.namedChildren.filter(c => c !== bodyNode && (isPatKind(c.type) || c.type === "lower_id"));
+        const params: Param[] = paramNodes.map(pn => ({
+          pat: pn.type === "lower_id" ? { tag: "PVar" as const, name: pn.text, span: this.sp(pn) } : this.lowerPat(pn),
+          ascription: null,
+          span: this.sp(pn),
+        }));
+        if (params.length === 0) params.push({ pat: { tag: "PWild", span }, ascription: null, span });
+        return { tag: "Lambda", params, body: this.lowerExpr(bodyNode), span };
+      }
+      case "lambda_block": {
+        const branches = n.namedChildren.filter(c => c.type === "match_branch").map(b => this.lowerBranch(b));
+        return { tag: "Match", subject: { tag: "Var", name: "__arg", span }, branches, span };
+      }
+
+      // ── control flow ──
+      case "match_expr": {
+        const [subj, ...rest] = n.namedChildren;
+        const branches = rest.filter(c => c.type === "match_branch").map(b => this.lowerBranch(b));
+        return { tag: "Match", subject: subj ? this.lowerExpr(subj) : this.err(span), branches, span };
+      }
+      case "responsive_expr":  return this.lowerResponsive(n, span);
+      case "if_expr":          return this.lowerIfExpr(n, span);
+      case "if_pattern_expr":  return this.lowerIfPatternExpr(n, span);
+      case "brace_block":
+        return { tag: "Do", stmts: n.namedChildren.map(c => this.lowerStmt(c)), span };
+      case "pipe_block":
+        return this.lowerPipeBlock(n, span);
+      case "try_block":
+        return { tag: "Try", stmts: n.namedChildren.map(c => this.lowerStmt(c)), span };
+      case "retry_block":
+        return this.lowerRetryBlock(n, span);
+      case "loop_expr":
+        return { tag: "Loop", stmts: n.namedChildren.map(c => this.lowerStmt(c)), span };
+      case "machine_expr":
+        return { tag: "Machine", steps: n.namedChildren.filter(c => c.type === "saga_step").map(s => this.lowerMachineStep(s)), span };
+      case "saga_expr": {
+        // `saga StoreName` — a state machine backed by a store, with rollback.
+        const store = n.namedChildren.find(c => c.type === "upper_id")?.text ?? "?";
+        const steps = n.namedChildren.filter(c => c.type === "saga_step").map(s => this.lowerMachineStep(s));
+        return { tag: "Machine", steps, store, span };
+      }
+      case "await_expr": {
+        const expr = n.namedChildren[0];
+        return { tag: "Await", expr: expr ? this.lowerExpr(expr) : this.err(span), branches: [], span };
+      }
+      case "go_expr": {
+        const inner = n.namedChildren.find(c => isExprKind(c.type)) ?? n.namedChildren[0];
+        return { tag: "Go", expr: inner ? this.lowerExpr(inner) : this.err(span), span };
+      }
+      case "resume_expr": {
+        const inner = n.namedChildren.find(c => isExprKind(c.type)) ?? n.namedChildren[0];
+        return { tag: "Resume", expr: inner ? this.lowerExpr(inner) : this.err(span), span };
+      }
+      case "drop_expr": {
+        const inner = n.namedChildren.find(c => isExprKind(c.type)) ?? n.namedChildren[0];
+        return { tag: "Drop", expr: inner ? this.lowerExpr(inner) : this.err(span), span };
+      }
+      case "break_expr":    return { tag: "Break", value: null, span };
+      case "continue_expr": return { tag: "Continue", span };
+
+      // ── misc ──
+      case "type_test": {
+        const [expr] = n.namedChildren;
+        const upper = n.namedChildren.find(c => c.type === "upper_id");
+        return { tag: "TypeTest", expr: expr ? this.lowerExpr(expr) : this.err(span), against: { tag: "TRNamed", name: upper?.text ?? "?", args: [] }, span };
+      }
+      case "for_expr": return this.lowerForExpr(n, span);
+      case "for_child": return this.lowerForChild(n, span);
+      case "send_expr": case "ask_expr": return this.lowerSendAsk(n, span);
+      case "js_block": {
+        // @js{ raw JS expression } — grammar: seq('@js{', token.immediate(/[^}]*/), '}')
+        // Extract by slicing `@js{` prefix and `}` suffix from the full node text.
+        const full = n.text;
+        const code = full.startsWith("@js{") ? full.slice(4, full.lastIndexOf("}")) : "";
+        return { tag: "JSExpr", code: code.trim(), span };
+      }
+      case "lazy_expr": return n.namedChildren[0] ? this.lowerExpr(n.namedChildren[0]) : this.err(span);
+
+      case "transaction_expr": {
+        // `transaction within { cfg }` then an indented body of statements.
+        // The optional leading record_literal is the within-config (retry/window),
+        // not a body statement.
+        const cfgNode = n.namedChildren.find(c => c.type === "record_literal") ?? null;
+        const config = cfgNode ? this.lowerExpr(cfgNode) : null;
+        const body = n.namedChildren
+          .filter(c => c !== cfgNode && (isStmtKind(c.type) || isExprKind(c.type)))
+          .map(c => this.lowerStmt(c));
+        return { tag: "Transaction", config, body, span };
+      }
+      case "comptime_block":
+      case "unsafe_block":
+        return { tag: "Do", stmts: n.namedChildren.filter(c => isStmtKind(c.type) || isExprKind(c.type)).map(c => this.lowerStmt(c)), span };
+
+      case "element":
+      case "element_leaf":
+        return this.lowerElement(n, span);
+
+      case "on_handler": {
+        // `on <event> -> <body>` (inline) or a block of statements. The event is
+        // the first named child (e.g. `onClick`); the rest is the handler body,
+        // captured as a thunk so it runs on dispatch, not at render time.
+        const eventNode = n.namedChildren[0];
+        const event = eventNode?.text ?? "on";
+        // An optional event param is a bare `lower_id` right after the event (body
+        // exprs are always wrapped nodes like identifier_expr, never bare lower_id).
+        const paramNode = n.namedChildren[1]?.type === "lower_id" ? n.namedChildren[1] : null;
+        const param = paramNode?.text ?? null;
+        const bodyNodes = n.namedChildren.slice(paramNode ? 2 : 1);
+        const body: Expr = bodyNodes.length === 1 && isExprKind(bodyNodes[0]!.type)
+          ? this.lowerExpr(bodyNodes[0]!)
+          : { tag: "Do", stmts: bodyNodes.map(c => this.lowerStmt(c)), span };
+        return { tag: "Handler", event, param, body, span };
+      }
+
+      default:
+        if (n.namedChildren.length === 1) return this.lowerExpr(n.namedChildren[0]!);
+        return this.err(span);
+    }
+  }
+
+  // ── Pipe desugar ─────────────────────────────────────────────────────────────
+
+  private lowerPipe(n: N, span: Span): Expr {
+    const [lhsNode, rhsNode] = n.namedChildren;
+    const left = lhsNode ? this.lowerExpr(lhsNode) : this.err(span);
+    if (!rhsNode) return left;
+
+    switch (rhsNode.type) {
+      case "lower_id": case "upper_id":
+        return { tag: "Call", fn: { tag: "Var", name: rhsNode.text, span: this.sp(rhsNode) }, args: [left], named: [], span };
+
+      // `x |> f(a)` / `x |> Mod.f(a)` — the piped value is spliced in as the
+      // leading positional argument; any args/named-args already written stay.
+      case "call": {
+        const inner = this.lowerExpr(rhsNode);
+        if (inner.tag === "Call") {
+          return { tag: "Call", fn: inner.fn, args: [left, ...inner.args], named: inner.named, span };
+        }
+        return { tag: "Call", fn: inner, args: [left], named: [], span };
+      }
+
+      case "pipe_match": {
+        const branches = rhsNode.namedChildren.filter(c => c.type === "match_branch").map(b => this.lowerBranch(b));
+        return { tag: "Match", subject: left, branches, span };
+      }
+
+      case "pipe_lambda_call": {
+        // fnName :cap* param -> body
+        const fnName = rhsNode.namedChildren[0]?.text ?? "?";
+        const patNode = rhsNode.namedChildren.find(c => isPatKind(c.type));
+        const bodyNode = rhsNode.namedChildren.at(-1)!;
+        const p: Param = { pat: patNode ? this.lowerPat(patNode) : { tag: "PWild", span }, ascription: null, span };
+        const lambda: Expr = { tag: "Lambda", params: [p], body: this.lowerExpr(bodyNode), span: this.sp(rhsNode) };
+        return { tag: "Call", fn: { tag: "Var", name: fnName, span }, args: [left, lambda], named: [], span };
+      }
+
+      default:
+        return { tag: "Call", fn: this.lowerExpr(rhsNode), args: [left], named: [], span };
+    }
+  }
+
+  // ── If / if-pattern ──────────────────────────────────────────────────────────
+
+  // `responsive | Mobile -> … | …` desugars to a match on the implicit
+  // `viewport.breakpoint` subject — reusing the Breakpoint exhaustiveness check.
+  private lowerResponsive(n: N, span: Span): Expr {
+    const branches = n.namedChildren
+      .filter(c => c.type === "match_branch")
+      .map(b => this.lowerBranch(b));
+    const subject: Expr = {
+      tag: "Field",
+      obj: { tag: "Var", name: "viewport", span },
+      field: "breakpoint",
+      span,
+    };
+    return { tag: "Match", subject, branches, span };
+  }
+
+  private lowerIfExpr(n: N, span: Span): Expr {
+    const named = n.namedChildren;
+    const cond = named[0]!;
+    const elseAnonIdx = n.children.findIndex(c => !c.isNamed && c.text === "else");
+
+    const thenNodes = elseAnonIdx < 0
+      ? named.slice(1)
+      : named.filter(c => n.children.indexOf(c) > 0 && n.children.indexOf(c) < elseAnonIdx);
+    const elseNodes = elseAnonIdx >= 0
+      ? named.filter(c => n.children.indexOf(c) > elseAnonIdx)
+      : [];
+
+    const toBlock = (nodes: N[]): Expr =>
+      nodes.length === 1 && isExprKind(nodes[0]!.type)
+        ? this.lowerExpr(nodes[0]!)
+        : { tag: "Do", stmts: nodes.map(s => this.lowerStmt(s)), span };
+
+    return { tag: "If", cond: this.lowerExpr(cond), then: toBlock(thenNodes), else_: elseNodes.length ? toBlock(elseNodes) : null, span };
+  }
+
+  private lowerIfPatternExpr(n: N, span: Span): Expr {
+    // if expr = pattern → desugar to match
+    const named = n.namedChildren;
+    const subj = named[0]!;
+    const patNode = named.find(c => isPatKind(c.type));
+    const elseAnonIdx = n.children.findIndex(c => !c.isNamed && c.text === "else");
+
+    const isBodyNode = (c: N): boolean => c !== subj && !isPatKind(c.type);
+    const thenNodes = named.filter(c => isBodyNode(c) && (elseAnonIdx < 0 || n.children.indexOf(c) < elseAnonIdx));
+    const elseNodes = elseAnonIdx >= 0 ? named.filter(c => isBodyNode(c) && n.children.indexOf(c) > elseAnonIdx) : [];
+
+    const thenExpr: Expr = { tag: "Do", stmts: thenNodes.map(s => this.lowerStmt(s)), span };
+    const elseExpr: Expr | null = elseNodes.length ? { tag: "Do", stmts: elseNodes.map(s => this.lowerStmt(s)), span } : null;
+    const pat: Pat = patNode ? this.lowerPat(patNode) : { tag: "PWild", span };
+
+    const branches: Branch[] = [
+      { pat, guard: null, body: thenExpr, span },
+      ...(elseExpr ? [{ pat: { tag: "PWild" as const, span }, guard: null, body: elseExpr, span }] : []),
+    ];
+    return { tag: "Match", subject: this.lowerExpr(subj), branches, span };
+  }
+
+  // ── For / send / ask ─────────────────────────────────────────────────────────
+
+  private lowerForExpr(n: N, span: Span): Expr {
+    const clauses: import("./ast.js").ForClause[] = [];
+    // The body is the expression after `->`; the generators and filters are the
+    // for_generator / for_clause nodes — anything else is the body.
+    const bodyNode = n.namedChildren.find(c => c.type !== "for_generator" && c.type !== "for_clause");
+    for (const c of n.namedChildren) {
+      if (c === bodyNode) continue;
+      if (c.type === "for_generator") clauses.push(this.lowerForGen(c, span));
+      else if (c.type === "for_clause") {
+        const inner = c.namedChildren[0];
+        if (inner?.type === "for_generator") clauses.push(this.lowerForGen(inner, span));
+        else if (inner) clauses.push({ tag: "Filter", cond: this.lowerExpr(inner) });
+      }
+    }
+    return {
+      tag: "For",
+      clauses,
+      body: bodyNode ? this.lowerExpr(bodyNode) : this.err(span),
+      span,
+    };
+  }
+
+  // `for r in rows` → a list comprehension `for (r = rows) -> <body>`, where the
+  // per-item element is auto-keyed: if it sets no `id`/`key` prop of its own, we
+  // stamp `key = r.id` (the implicit SQL-primary-key default). An item type without
+  // an `id` field then fails type-checking on `r.id` — that *is* the "you must key
+  // it" enforcement (add an `id`, or set an explicit `id`/`key` on the element).
+  private lowerForChild(n: N, span: Span): Expr {
+    const binding = n.namedChildren.find(c => c.type === "lower_id")?.text ?? "_";
+    const bodyNode = n.namedChildren.find(c => c.type === "element" || c.type === "element_leaf");
+    const srcNode  = n.namedChildren.find(c => c.type !== "lower_id" && c !== bodyNode);
+    const body = bodyNode ? this.lowerExpr(bodyNode) : this.err(span);
+    if (body.tag === "Element" && !body.props.some(p => p.name === "id" || p.name === "key"))
+      body.props.push({
+        name: "key",
+        value: { tag: "Field", obj: { tag: "Var", name: binding, span }, field: "id", span },
+      });
+    return {
+      tag: "For",
+      clauses: [{ tag: "Gen", binding: { tag: "PVar", name: binding, span }, iter: srcNode ? this.lowerExpr(srcNode) : this.err(span) }],
+      body,
+      span,
+    };
+  }
+
+  private lowerForGen(gen: N, span: Span): import("./ast.js").ForClause {
+    const binding = gen.namedChildren.find(c => c.type === "lower_id")?.text ?? "_";
+    const src = gen.namedChildren.find(c => c.type === "for_source");
+    const iterNode = src?.namedChildren[0];
+    return {
+      tag: "Gen",
+      binding: { tag: "PVar", name: binding, span },
+      iter: iterNode ? this.lowerExpr(iterNode) : this.err(span),
+    };
+  }
+
+  private lowerSendAsk(n: N, span: Span): Expr {
+    const storeName = n.namedChildren[0]?.text ?? "?";
+    const msgNode   = n.namedChildren[1];
+    if (!msgNode) return { tag: "Lit", lit: { tag: "Unit" }, span };
+
+    if (n.type === "send_expr") {
+      // `send Stream (Push v)` or `send Store (Msg args)` — preserve the store name
+      // so the runtime can route to the right stream queue or store mailbox.
+      return { tag: "Send", store: storeName, msg: this.lowerExpr(msgNode), span };
+    } else {
+      // `ask Store val` — read a pub value; equivalent to `Store.val`.
+      const inner = msgNode.type === "atom" ? (msgNode.namedChildren[0] ?? msgNode) : msgNode;
+      const fieldName = inner.type === "atom_lit"
+        ? (inner.namedChildren[0]?.text ?? inner.text.replace(/^:/, ""))
+        : inner.text;
+      return { tag: "Field", obj: { tag: "Var", name: storeName, span }, field: fieldName, span };
+    }
+  }
+
+  // ── Elements ─────────────────────────────────────────────────────────────────
+
+  private lowerElement(n: N, span: Span): Expr {
+    const name = n.namedChildren.find(c => c.type === "upper_id")?.text ?? "?";
+    const content = n.namedChildren.find(c => c.type === "element_content");
+    const props = n.namedChildren.filter(c => c.type === "prop").map(p => this.lowerProp(p));
+    const childBlock = n.namedChildren.find(c => c.type === "children_block");
+    const children = (childBlock?.namedChildren.filter(c => c.type === "child") ?? []).flatMap(c => {
+      const inner = c.namedChildren[0];
+      return inner ? [this.lowerExpr(inner)] : [];
+    });
+    const contentExpr = content?.namedChildren[0] ? this.lowerExpr(content.namedChildren[0]) : null;
+    return { tag: "Element", name, content: contentExpr, props, children, span };
+  }
+
+  private lowerProp(n: N): Prop {
+    const span = this.sp(n);
+    const nameId = n.namedChildren.find(c => c.type === "lower_id");
+    const val = n.namedChildren.find(c => c !== nameId);
+    return {
+      name: nameId?.text ?? "?",
+      value: val ? this.lowerExpr(val) : { tag: "Lit", lit: { tag: "Bool", value: true }, span },
+    };
+  }
+
+  // ── Call argument lowering ────────────────────────────────────────────────────
+  // The `call` grammar rule yields a real argument list: each child after the
+  // callee is either a positional `_expr` or a `named_arg` (name=value). Split
+  // them into the two buckets the resolver expects.
+
+  private lowerArgs(argNodes: N[]): { args: Expr[]; named: NamedArg[] } {
+    const args: Expr[] = [];
+    const named: NamedArg[] = [];
+    for (const a of argNodes) {
+      if (a.type === "named_arg") {
+        const nameNode = a.namedChildren[0]!;
+        const valNode = a.namedChildren[1]!;
+        named.push({ name: nameNode.text, value: this.lowerExpr(valNode), span: this.sp(a) });
+      } else {
+        args.push(this.lowerExpr(a));
+      }
+    }
+    return { args, named };
+  }
+
+  // ── String interpolation ─────────────────────────────────────────────────────
+
+  private lowerStringExpr(n: N, span: Span): Expr {
+    const hasInterp = n.children.some(c => c.type === "{");
+    if (!hasInterp) {
+      const value = unescapeStr(n.text.slice(1, -1));
+      return { tag: "Lit", lit: { tag: "Str", value }, span };
+    }
+
+    const raw   = n.text;           // includes surrounding quotes
+    const base  = n.startIndex;
+    const parts: Expr[] = [];
+    let textStart = 1;              // skip opening "
+
+    for (let i = 0; i < n.childCount; i++) {
+      const child = n.child(i)!;
+      const offset = child.startIndex - base;
+
+      if (child.type === "{") {
+        // flush text before this {
+        const text = unescapeStr(raw.slice(textStart, offset));
+        if (text) parts.push({ tag: "Lit", lit: { tag: "Str", value: text }, span });
+        // the next child is the interpolated expression
+        const exprChild = n.child(i + 1);
+        // An empty (`{}`) or errored interpolation has no expression to lower
+        // (tree-sitter yields an error `identifier_expr` with empty text). Report
+        // it as an error — `{…}` always interpolates, so empty braces are a
+        // mistake; literal braces must be written `\{` / `\}`. Lower the slot to
+        // an empty string so neither the type checker nor the interpreter crashes
+        // on a `Var ""` (the diagnostic is the user-facing signal).
+        const isEmpty = !exprChild?.isNamed || exprChild.hasError || exprChild.text.trim() === "";
+        if (!isEmpty) {
+          const es = this.sp(exprChild);
+          const inner = this.lowerExpr(exprChild);
+          parts.push({ tag: "Call", fn: { tag: "Var", name: "toString", span: es }, args: [inner], named: [], span: es });
+          i++; // skip expr, the } is handled next iteration
+        } else {
+          const rbrace = exprChild?.isNamed ? n.child(i + 2) : n.child(i + 1);
+          const braceSpan: Span = rbrace
+            ? { ...this.sp(child), end: this.sp(rbrace).end }
+            : this.sp(child);
+          this.diagnostics.push({
+            kind: "error",
+            span: braceSpan,
+            message: "empty interpolation: `{}` has no expression — write `{name}` to interpolate a value, or `\\{` `\\}` for literal braces",
+          });
+          parts.push({ tag: "Lit", lit: { tag: "Str", value: "" }, span });
+          if (exprChild?.isNamed) i++; // skip the empty/error node so the `}` resets textStart
+        }
+      } else if (child.type === "}") {
+        textStart = offset + 1;
+      } else if (child.type === '"' && i === n.childCount - 1) {
+        // closing quote — flush trailing text
+        const text = unescapeStr(raw.slice(textStart, offset));
+        if (text) parts.push({ tag: "Lit", lit: { tag: "Str", value: text }, span });
+      }
+    }
+
+    if (parts.length === 0) return { tag: "Lit", lit: { tag: "Str", value: "" }, span };
+    if (parts.length === 1) return parts[0]!;
+    let result = parts[0]!;
+    for (let i = 1; i < parts.length; i++)
+      result = { tag: "BinOp", op: "++", left: result, right: parts[i]!, span };
+    return result;
+  }
+
+  // ── Literals ─────────────────────────────────────────────────────────────────
+
+  lowerLit(n: N): Lit {
+    switch (n.type) {
+      case "number":           return { tag: "Num",  value: parseNumber(n.text) };
+      case "bool":             return { tag: "Bool", value: n.text === "true" };
+      case "unit":             return { tag: "Unit" };
+      case "atom_lit":         return { tag: "Atom", name: n.text.slice(1) };
+      case "duration_lit":     return { tag: "Duration", ms: parseDuration(n.text) };
+      case "triple_quote_string": return { tag: "Str", value: n.text.slice(3, -3) };
+      case "string":           return { tag: "Str",  value: unescapeStr(n.text.slice(1, -1)) };
+      case "multiline_string": {
+        const t = n.text;
+        if (t.startsWith('"""')) return { tag: "Str", value: t.slice(3, -3) };
+        return { tag: "Str", value: t.slice(1, -1) };  // backtick
+      }
+      default:                 return { tag: "Str",  value: n.text };
+    }
+  }
+
+  // ── Patterns ─────────────────────────────────────────────────────────────────
+
+  lowerPat(n: N): Pat {
+    const span = this.sp(n);
+
+    switch (n.type) {
+      case "pattern":
+      case "simple_pattern":
+        return n.namedChildren[0] ? this.lowerSimplePat(n, span) : { tag: "PWild", span };
+      case "guard_pattern": {
+        // guard is handled at branch level; return just the inner pat
+        const inner = n.namedChildren[0];
+        return inner ? this.lowerPat(inner) : { tag: "PWild", span };
+      }
+      case "binding_pattern": return { tag: "PVar",  name: n.text, span };
+      case "wildcard":        return { tag: "PWild", span };
+      case "record_pattern": {
+        const fields = n.namedChildren.filter(c => c.type === "lower_id").map(c => ({
+          name: c.text, pat: { tag: "PVar" as const, name: c.text, span: this.sp(c) },
+        }));
+        return { tag: "PRecord", fields, span };
+      }
+      case "literal": {
+        const inner = n.namedChildren[0] ?? n;
+        return { tag: "PLit", lit: this.lowerLit(inner), span };
+      }
+      case "upper_id":    return { tag: "PCtor", name: n.text, inner: null, span };
+      case "lower_id":    return { tag: "PVar",  name: n.text, span };
+      case "atom_lit":    return { tag: "PAtom", name: n.text.slice(1), span };
+      case "tuple_pattern":
+        return { tag: "PTuple", elems: n.namedChildren.filter(c => isPatKind(c.type)).map(c => this.lowerPat(c)), span };
+      default:            return { tag: "PWild", span };
+    }
+  }
+
+  private lowerSimplePat(n: N, span: Span): Pat {
+    const named = n.namedChildren;
+
+    // Upper_id  (constructor, possibly with payload)
+    const upper = named.find(c => c.type === "upper_id");
+    if (upper) {
+      const inner = named.find(c => c !== upper);
+      return { tag: "PCtor", name: upper.text, inner: inner ? this.lowerPat(inner) : null, span };
+    }
+
+    const first = named[0];
+    if (!first) {
+      // Bare text node
+      if (n.text === "_") return { tag: "PWild", span };
+      if (n.text === "[]") return { tag: "PLit", lit: { tag: "Str", value: "[]" }, span };
+      return { tag: "PVar", name: n.text, span };
+    }
+
+    return this.lowerPat(first);
+  }
+
+  // ── Branches ──────────────────────────────────────────────────────────────────
+
+  lowerBranch(n: N): Branch {
+    const span = this.sp(n);
+    // Split on the '->' token — everything named before it is a pattern, after it is the body.
+    const arrowIdx = n.children.findIndex(c => !c.isNamed && c.text === "->");
+    const patNodes = arrowIdx >= 0
+      ? n.namedChildren.filter(c => n.children.indexOf(c) < arrowIdx)
+      : n.namedChildren.filter(c => c.type === "pattern" || c.type === "simple_pattern" || c.type === "guard_pattern");
+    const bodyNodes = arrowIdx >= 0
+      ? n.namedChildren.filter(c => n.children.indexOf(c) > arrowIdx)
+      : [];
+
+    let pat: Pat = { tag: "PWild", span };
+    let guard: Expr | null = null;
+
+    if (patNodes.length >= 1) {
+      const first = patNodes[0]!;
+      // guard_pattern may be the first node directly, or wrapped in a pattern node
+      const guardNode = first.type === "guard_pattern" ? first
+        : (first.type === "pattern" && first.namedChildren[0]?.type === "guard_pattern")
+          ? first.namedChildren[0]!
+          : null;
+      if (guardNode) {
+        const [innerPat, guardExpr] = guardNode.namedChildren;
+        pat   = innerPat  ? this.lowerPat(innerPat)   : pat;
+        guard = guardExpr ? this.lowerExpr(guardExpr) : null;
+      } else {
+        pat = this.lowerPat(first);
+      }
+    }
+
+    const body = bodyNodes.length ? this.lowerBranchBody(bodyNodes, span) : this.err(span);
+    return { pat, guard, body, span };
+  }
+
+  // `pipe` block: thread each line's result into `ret` for the next line.
+  // `a; b ret; c ret` becomes `ret = a; ret = b ret; c ret` — a Do block whose
+  // value is the last line (which still sees the prior `ret`). Reuses Do, so no
+  // infer/eval changes are needed. Bindings written explicitly pass through.
+  private lowerPipeBlock(n: N, span: Span): Expr {
+    const stmts = n.namedChildren.map(c => this.lowerStmt(c));
+    const threaded: Stmt[] = stmts.map((s, i) => {
+      const isLast = i === stmts.length - 1;
+      if (!isLast && s.tag === "SExpr") {
+        return { tag: "SBind", pat: { tag: "PVar", name: "ret", span: s.span }, ascription: null, value: s.expr, declares: true, mutable: false, span: s.span };
+      }
+      return s;
+    });
+    return { tag: "Do", stmts: threaded, span };
+  }
+
+  // `retry [N] [D]` block. The count/schedule and optional bare duration delay
+  // sit on the `retry` line; body statements are indented below. The delay is the
+  // bare `duration_lit` on the header row; the count is the other header expr.
+  private lowerRetryBlock(n: N, span: Span): Expr {
+    const row = n.startPosition.row;
+    const onRow = (c: N) => c.startPosition.row === row;
+    const delayNode = n.namedChildren.find(c => c.type === "duration_lit" && onRow(c)) ?? null;
+    const countNode = n.namedChildren.find(c => isExprKind(c.type) && onRow(c) && c !== delayNode) ?? null;
+    const count = countNode ? this.lowerExpr(countNode) : null;
+    const delay = delayNode ? this.lowerExpr(delayNode) : null;
+    const bodyNodes = n.namedChildren.filter(c => c !== countNode && c !== delayNode);
+    return { tag: "Retry", count, delay, stmts: bodyNodes.map(c => this.lowerStmt(c)), span };
+  }
+
+  // A branch body is the run of CST nodes after `->`. They are direct siblings of
+  // the `match_branch` (not wrapped in a block node): a single inline expression,
+  // a single statement (e.g. a bare `x = e` reassignment, which parses as a
+  // `binding`), or several indented statements. A lone expression node is lowered
+  // as an expression so the branch keeps its value; anything else is a Do block of
+  // statements so reassignments (`SBind` declares:false) and multi-line bodies are
+  // preserved rather than having the assignment's children flattened away.
+  private lowerBranchBody(nodes: N[], span: Span): Expr {
+    if (nodes.length === 1 && isExprKind(nodes[0]!.type)) return this.lowerExpr(nodes[0]!);
+    return { tag: "Do", stmts: nodes.map(c => this.lowerStmt(c)), span };
+  }
+}

@@ -1,0 +1,475 @@
+================================================================================
+binding: simple
+================================================================================
+
+def foo(): Number
+  x = 5
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (literal
+        (number)))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+binding: mut
+================================================================================
+
+def foo(): Number
+  mut x = 5
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (literal
+        (number)))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+binding: with type annotation
+================================================================================
+
+def foo(): Number
+  x : Number = 5
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (simple_type
+        (upper_id))
+      (literal
+        (number)))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+binding: mut with type annotation
+================================================================================
+
+def foo(): Number
+  mut x : Number = 5
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (simple_type
+        (upper_id))
+      (literal
+        (number)))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+ask binding
+================================================================================
+
+def foo(): String
+  result = ask Store GetValue
+  result
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (ask_expr
+        (upper_id)
+        (atom
+          (upper_id))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+destructure: record
+================================================================================
+
+def foo(): String
+  { name, age } = user
+  name
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (destructure
+      (lower_id)
+      (lower_id)
+      (identifier_expr
+        (lower_id)))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+destructure: tuple
+================================================================================
+
+def foo(): Number
+  (a, b) = pair
+  a
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (destructure
+      (lower_id)
+      (lower_id)
+      (identifier_expr
+        (lower_id)))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+if: without else
+================================================================================
+
+def foo(): Number
+  if x > 0
+    42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (if_expr
+      (binary_expr
+        (identifier_expr
+          (lower_id))
+        (literal
+          (number)))
+      (literal
+        (number)))))
+
+================================================================================
+if: with else
+================================================================================
+
+def foo(): Number
+  if x > 0
+    1
+  else
+    0
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (if_expr
+      (binary_expr
+        (identifier_expr
+          (lower_id))
+        (literal
+          (number)))
+      (literal
+        (number))
+      (literal
+        (number)))))
+
+================================================================================
+index assign
+================================================================================
+
+def foo(): Number
+  buf[0] = 42
+  buf[idx] = buf[0] + 1
+  0
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (index_assign
+      (array_index
+        (identifier_expr
+          (lower_id))
+        (literal
+          (number)))
+      (literal
+        (number)))
+    (index_assign
+      (array_index
+        (identifier_expr
+          (lower_id))
+        (identifier_expr
+          (lower_id)))
+      (binary_expr
+        (array_index
+          (identifier_expr
+            (lower_id))
+          (literal
+            (number)))
+        (literal
+          (number))))
+    (literal
+      (number))))
+
+================================================================================
+binding: let
+================================================================================
+
+def foo(): Number
+  let x = 5
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (literal
+        (number)))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+binding: const
+================================================================================
+
+def foo(): Number
+  const x = 5
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (literal
+        (number)))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+binding: let mut
+================================================================================
+
+def foo(): Number
+  let mut x = 5
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (literal
+        (number)))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+brace block as binding RHS
+================================================================================
+
+def foo(): Number
+  area = { x = 5; x }
+  area
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (brace_block
+        (brace_binding
+          (lower_id)
+          (literal
+            (number)))
+        (identifier_expr
+          (lower_id))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+propagate: ?
+================================================================================
+
+def foo(): Result String Error
+  x = fetchUser?
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (result_type
+      (simple_type
+        (upper_id))
+      (simple_type
+        (upper_id)))
+    (binding
+      (lower_id)
+      (propagate_expr
+        (identifier_expr
+          (lower_id))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+propagate: ?: with type
+================================================================================
+
+def foo(): Result String Error
+  x = fetchUser ?: NotFound
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (result_type
+      (simple_type
+        (upper_id))
+      (simple_type
+        (upper_id)))
+    (binding
+      (lower_id)
+      (propagate_expr
+        (identifier_expr
+          (lower_id))
+        (identifier_expr
+          (upper_id))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+drop: release a value
+================================================================================
+
+def f(): Unit
+  let g = 5
+  drop g
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (literal
+        (number)))
+    (drop_expr
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+brace block: multi-line with semicolons
+================================================================================
+
+def f(): Number
+  area = {
+    w = 3;
+    w * 2
+  }
+  area
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (brace_block
+        (brace_binding
+          (lower_id)
+          (literal
+            (number)))
+        (binary_expr
+          (identifier_expr
+            (lower_id))
+          (literal
+            (number)))))
+    (identifier_expr
+      (lower_id))))

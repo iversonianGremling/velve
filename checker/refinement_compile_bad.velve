@@ -1,0 +1,17 @@
+-- Every call below passes a constant literal that VIOLATES its parameter's
+-- refinement predicate, so `check` must report one error per call site.
+
+type NonZero = Number where value != 0
+type Age     = Number where 0 <= value && value <= 150
+type Email   = String where matches(value, "^[^@ ]+@[^@ ]+.[^@ ]+$")
+
+def birthday(a: Age): Number -> a + 1
+def reciprocalOf(n: NonZero): Number -> 100 / n
+def greet(e: Email): String -> "hi {e}"
+
+def main(): Number
+  let a = birthday((200))           -- 200 > 150  → error
+  let b = birthday((0 - 1))         -- folded to -1 < 0 → error
+  let c = reciprocalOf((0))         -- 0 != 0 is false → error
+  let e = greet(("not-an-email"))   -- fails matches → error
+  a

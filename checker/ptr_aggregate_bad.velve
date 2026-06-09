@@ -1,0 +1,20 @@
+-- A pointer into an aggregate borrows its container, so the same region rules apply.
+
+-- returning a pointer to a local list's element: the list dies with the frame
+@low
+def danglingElem(): Ptr Number
+  mut xs = [1, 2, 3]
+  xs[1].&        -- ERROR: returns a pointer into local 'xs'
+
+-- dropping the container while an element pointer still borrows it
+@low
+def dropBorrowed(): Unit
+  mut xs = [1, 2, 3]
+  let p = xs[0].&
+  drop xs        -- ERROR: 'xs' is still borrowed by 'p'
+
+-- returning a pointer to a local record's field
+@low
+def danglingField(): Ptr Number
+  mut rec = { count: 0 }
+  rec.count.&    -- ERROR: returns a pointer into local 'rec'

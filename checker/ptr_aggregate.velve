@@ -1,0 +1,43 @@
+-- Pointers into aggregates: `xs[i].&` and `rec.f.&` produce a VPtr whose read/write
+-- alias the element in place, so writing through the pointer is observable at the
+-- container. Also exercises direct `xs[i] = v` assignment.
+
+-- write through a pointer to a list element
+@low
+def viaElemPtr(): Unit
+  mut xs = [1, 2, 3]
+  let p = xs[1].&
+  p.* = 99
+  println(("elem ptr: {xs}"))        -- [1, 99, 3]
+
+-- read the current value back through the pointer (aliasing, not a snapshot)
+@low
+def readThrough(): Number
+  mut xs = [10, 20, 30]
+  let p = xs[2].&
+  xs[2] = 77                        -- mutate the element directly
+  p.*                               -- pointer sees the new value → 77
+
+-- direct index assignment now mutates in place
+@low
+def directIndex(): Unit
+  mut xs = [0, 0, 0]
+  xs[0] = 1
+  xs[1] = 2
+  xs[2] = 3
+  println(("direct: {xs}"))           -- [1, 2, 3]
+
+-- pointer to a record field, written through
+@low
+def viaFieldPtr(): Unit
+  mut rec = { count: 0, name: "a" }
+  let p = rec.count.&
+  p.* = 5
+  println(("field ptr: {rec.count}")) -- 5
+
+@low
+def main(): Unit
+  viaElemPtr()
+  println(("read through: {readThrough()}"))
+  directIndex()
+  viaFieldPtr()

@@ -1,0 +1,122 @@
+-- ── Real-time dashboard UI
+-- Shows: stores, Async state, elements, events, for expressions, pattern styling
+-- Note: uses inline props + `on` handlers as children (the forms the grammar supports)
+
+type Report = { id: Number, title: String, status: Atom, author: String, score: Number }
+
+-- ── Store ─────────────────────────────────────────────────────────────────────
+
+store Reports
+  state
+    items   : Async List(Report) = Before
+    sortKey : Atom               = :score
+    filter  : Atom               = :all
+  messages
+    Load ->
+      { items: During, sortKey: sortKey, filter: filter }
+    Loaded (data: List(Report)) ->
+      { items: After(data), sortKey: sortKey, filter: filter }
+    Failed (msg: String) ->
+      { items: Error(msg), sortKey: sortKey, filter: filter }
+    SetSort (key: Atom) ->
+      { items: items, sortKey: key, filter: filter }
+    SetFilter (f: Atom) ->
+      { items: items, sortKey: sortKey, filter: f }
+  pub
+    isLoading    = items is During
+    currentItems = items
+    activeSort   = sortKey
+    activeFilter = filter
+
+-- ── Data loading ──────────────────────────────────────────────────────────────
+
+def loadReports(): Effect [network] ()
+  send Reports Load
+  match netGet("/api/reports")
+    | Ok raw ->
+      match decodeReports(raw)
+        | Ok reports -> send Reports (Loaded(reports))
+        | Error msg  -> send Reports (Failed("decode error: {msg}"))
+    | Error msg -> send Reports (Failed(msg))
+
+def deleteReport(id: Number): Effect [network] ()
+  netDelete("/api/reports/{id}")?
+  send Reports Load
+
+-- ── Style helpers (multi-clause atom dispatch) ────────────────────────────────
+
+def statusColor(:resolved): String -> "#22c55e"
+def statusColor(:pending):  String -> "#f59e0b"
+def statusColor(:ignored):  String -> "#6b7280"
+def statusColor(_):         String -> "#94a3b8"
+
+def statusLabel(:resolved): String -> "Resolved"
+def statusLabel(:pending):  String -> "Pending"
+def statusLabel(:ignored):  String -> "Ignored"
+def statusLabel(_):         String -> "Unknown"
+
+def scoreColor(score: Number): String
+  score > 80 ? "#22c55e" : score > 50 ? "#f59e0b" : "#ef4444"
+
+-- ── List helpers ──────────────────────────────────────────────────────────────
+
+def filtered(rs: List(Report), f: Atom): List(Report)
+  f == :all ? rs : for (r = %rs, r.status == f) -> r
+
+def sorted(rs: List(Report), by: Atom): List(Report)
+  match by
+    | :title  -> sortByTitle(rs)
+    | :author -> sortByAuthor(rs)
+    | ->         sortByScore(rs)
+
+-- ── Components ────────────────────────────────────────────────────────────────
+
+def reportRow(r: Report): Element
+  Row padding=12 gap=16 background=#fff radius=8
+    Column gap=4
+      Text (r.title) size=14 weight=600
+      Text (r.author) size=12 color=#6b7280
+    Spacer
+    Text (statusLabel(r).status) size=12 color=(statusColor(r).status)
+    Text (r.score) size=12 color=(scoreColor(r).score)
+    Button (deleteLabel) size=small
+      on onClick -> deleteReport(r).id
+
+def filterTab(label: String, key: Atom): Element
+  Button (label) variant=ghost
+    on onClick -> send Reports (SetFilter(key))
+
+def sortBtn(label: String, key: Atom): Element
+  Button (label) size=small
+    on onClick -> send Reports (SetSort(key))
+
+-- ── View ──────────────────────────────────────────────────────────────────────
+
+def reportList(rs: List(Report)): Element
+  visible = filtered((sorted(rs, Reports).activeSort), Reports).activeFilter
+  Column gap=8
+    for (r = %visible) -> reportRow r
+
+def view(): Element
+  Column gap=24 padding=24
+    Row align=center
+      Text "Reports" size=24 weight=700
+      Spacer
+      Button "Refresh" size=small
+        on onClick -> loadReports
+
+    Row gap=8
+      filterTab "All" :all
+      filterTab "Pending" :pending
+      filterTab "Resolved" :resolved
+
+    Row gap=4
+      Text "Sort:" size=12 color=#9ca3af
+      sortBtn("Score", :score)
+      sortBtn("Title", :title)
+
+    match Reports.currentItems
+      | Before    -> Text "Not loaded" color=#9ca3af
+      | During    -> Text "Loading" color=#6366f1
+      | Error msg -> Text (msg) color=#ef4444
+      | After rs  -> reportList rs

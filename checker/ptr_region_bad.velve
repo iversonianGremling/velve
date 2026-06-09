@@ -1,0 +1,17 @@
+-- Each function should trigger exactly one lifetime error.
+
+-- frameParam: address of a by-value parameter's frame copy escapes
+@low
+def addrOfParam(n: Number): Ptr Number
+  n.&
+
+-- lifetime mismatch: signature promises ~x but returns a ~y borrow
+@low
+def pickWrong(a: Ptr ~x Number, b: Ptr ~y Number, c: Bool): Ptr ~x Number
+  c ? a : b
+
+-- frameParam via an intermediate binding
+@low
+def addrOfParamIndirect(n: Number): Ptr Number
+  let p = n.&
+  p

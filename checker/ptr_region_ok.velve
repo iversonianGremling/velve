@@ -1,0 +1,21 @@
+-- Valid lifetime cases — all of these must type-check with NO borrow errors.
+
+-- pass-through: returning a borrow the caller gave us is fine
+def identity(buf: Ptr ~a Number): Ptr ~a Number
+  buf
+
+-- choosing between two borrows of the SAME lifetime, under that lifetime
+def pick(a: Ptr ~x Number, b: Ptr ~x Number, c: Bool): Ptr ~x Number
+  c ? a : b
+
+-- a copy of a pointer parameter is still caller-owned
+def alias(buf: Ptr ~a Number): Ptr ~a Number
+  let p = buf
+  p
+
+-- unannotated pointers: no lifetime constraint to violate
+def passthrough(buf: Ptr Number): Ptr Number
+  buf
+
+def main(): Unit
+  println(("region ok"))

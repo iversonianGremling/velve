@@ -1,0 +1,24 @@
+-- Browser host (§8 follow-on): `domHost(view, steps)` emits a self-contained HTML
+-- page that mounts the initial render and REPLAYS the recorded event→patch session
+-- against the live DOM via the JS applier. (Live in-browser velve execution needs
+-- a velve→JS compiler — the documented remaining gap.)
+
+store Counter
+  state
+    n : Number = 0
+  messages
+    Inc -> { n: n + 1 }
+  pub
+    count = n
+
+def view(): Element
+  Column gap=8 padding=16 background=#0d1117
+    Text "count {Counter.count}" size=14 color=#ffffff
+    Button "Increment" id="inc" size=12 background=#4FC1FF color=#000000
+      on onClick -> send Counter (Inc())
+
+def main(): Unit
+  print((domHost(view, [
+    { target: "inc", event: "onClick" },
+    { target: "inc", event: "onClick" }
+  ])))

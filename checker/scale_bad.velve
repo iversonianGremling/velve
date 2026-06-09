@@ -1,0 +1,9 @@
+type Space     = Number where value==0 || value==4 || value==8 || value==12 || value==16 || value==24 || value==32
+type TypeScale = Number where value==11 || value==12 || value==14 || value==16 || value==20 || value==24 || value==32
+
+def view(): Element
+  Column gap=13 padding=10         -- both off the Space scale → 2 errors
+    Text "x" size=15               -- off the TypeScale → 1 error
+
+def main(): Unit
+  print((html((view()))))

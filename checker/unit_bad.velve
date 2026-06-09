@@ -1,0 +1,8 @@
+-- Each should error: a Length prop given a String, and a String prop given a Length.
+def view(): Element
+  Column gap="wide"           -- gap is Length, got String
+    Text "x" color=Fill        -- color is String, got Length
+    Box width=true             -- width is Length, got Bool
+
+def main(): Unit
+  print((html((view()))))

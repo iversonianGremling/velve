@@ -1,0 +1,25 @@
+-- Live-host focus/scroll preservation fixture: a keyed list of text Inputs that
+-- gets REORDERED by a store message. Reconciliation moves the DOM nodes (which blurs
+-- a focused input and would drop its text selection); mountLive must restore both.
+-- Each Input sets its own id (= key), so it survives reorder by identity.
+
+type Row = { id: String }
+
+store Rows
+  state
+    items : List(Row) = [ { id: "alpha" }, { id: "beta" }, { id: "gamma" } ]
+  messages
+    Flip -> { items: reverse((items)) }
+  pub
+    all = items
+
+def view(): Element
+  Column gap=4 id="root"
+    Button "flip" id="flip" size=12
+      on onClick -> send Rows (Flip())
+    Column gap=2 id="list"
+      for r in Rows.all
+        Input id=(r.id) value=(r.id)
+
+def main(): Unit
+  print(("fixture"))

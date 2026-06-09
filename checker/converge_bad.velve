@@ -1,0 +1,11 @@
+-- Convergence must reject cycles. Here A.width ← B.width and B.width ← A.width
+-- form a same-prop cycle; the (element, prop) graph is not acyclic, so `html`
+-- raises a convergence-cycle error.
+
+def view(): Element
+  Row gap=8
+    Box height=10 width=(next.width) background=#1e2130
+    Box height=10 width=(prev.width) background=#161b22
+
+def main(): Unit
+  print((html((view()))))

@@ -1,0 +1,43 @@
+-- Slice-extraction (§2.11): `xs[lo..hi]` yields a sub-region of the same container.
+-- List/String slices are value copies; a slice of a POINTER is an aliasing view that
+-- carries the parent buffer's lifetime, so it is returnable under a `where` clause.
+
+-- value-copy slice of a list parameter (returnable — it's a copy, no aliasing)
+@low
+def midList(xs: List(Number)): List(Number)
+  xs[1..4]
+
+-- inclusive range slice
+@low
+def headInc(xs: List(Number)): List(Number)
+  xs[0..=2]
+
+-- string slice
+@low
+def firstWord(s: String): String
+  s[0..5]
+
+-- pointer slice carrying the caller's lifetime: a sub-region of `buf` lives exactly as
+-- long as `buf` does, so returning it under `where (buf.~ = result.~)` is sound.
+@low
+def firstHalf(buf: Ptr ~a List(Number)): Ptr ~a List(Number)
+  where (buf.~ = result.~)
+  buf[0..3]
+
+@low
+def main(): Number
+  let nums = [10, 20, 30, 40, 50, 60]
+  let mid = midList(nums)            -- [20, 30, 40]
+  let hd  = headInc(nums)            -- [10, 20, 30]
+  let s   = firstWord("hello world") -- "hello"
+  let p   = nums.&
+  let fh  = firstHalf(p)             -- pointer slice → aliases nums[0..3]
+  let got = fh.*                    -- read sub-region → [10, 20, 30]
+  print(("mid={mid} hd={hd} s={s} got={got}"))
+  -- write-through: a pointer slice is a VIEW, so writing it splices the parent buffer
+  fh.* = [99, 98, 97]
+  print(("nums after write={nums}"))  -- [99, 98, 97, 40, 50, 60]
+  -- 3 + 3 + 5 + 3 = 14
+  let total = (length(mid)) + (length(hd)) + (length(s)) + (length(got))
+  print(("total={total}"))
+  total

@@ -1,0 +1,381 @@
+================================================================================
+send: simple
+================================================================================
+
+def foo(): Number
+  send Store Close
+  42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (send_expr
+      (upper_id)
+      (atom
+        (upper_id)))
+    (literal
+      (number))))
+
+================================================================================
+send: with record payload
+================================================================================
+
+def foo(): Number
+  send Store (Update({ id: 1 }))
+  42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (send_expr
+      (upper_id)
+      (atom
+        (grouped
+          (call
+            (identifier_expr
+              (upper_id))
+            (record_literal
+              (record_field
+                (lower_id)
+                (literal
+                  (number))))))))
+    (literal
+      (number))))
+
+================================================================================
+ask: simple
+================================================================================
+
+def foo(): Number
+  result = ask Store GetValue timeout=5000
+  42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (ask_expr
+        (upper_id)
+        (atom
+          (upper_id))
+        (number)))
+    (literal
+      (number))))
+
+================================================================================
+transaction: simple
+================================================================================
+
+def foo(): Number
+  transaction
+    x = 1
+    x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (transaction_expr
+      (binding
+        (lower_id)
+        (literal
+          (number)))
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+transaction: with within
+================================================================================
+
+def foo(): Number
+  transaction within { timeout: 5000 }
+    x = 1
+    x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (transaction_expr
+      (record_literal
+        (record_field
+          (lower_id)
+          (literal
+            (number))))
+      (binding
+        (lower_id)
+        (literal
+          (number)))
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+on handler: inline
+================================================================================
+
+def foo(): Number
+  on onClick -> send Store Close
+  42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (on_handler
+      (lower_id)
+      (send_expr
+        (upper_id)
+        (atom
+          (upper_id))))
+    (literal
+      (number))))
+
+================================================================================
+on handler: block body
+================================================================================
+
+def foo(): Number
+  on onClick ->
+    x = 1
+    send Store Close
+  42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (on_handler
+      (lower_id)
+      (binding
+        (lower_id)
+        (literal
+          (number)))
+      (send_expr
+        (upper_id)
+        (atom
+          (upper_id))))
+    (literal
+      (number))))
+
+================================================================================
+lambda: single param
+================================================================================
+
+def foo(): Number
+  f = fn x -> x
+  42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (lambda
+        (lambda_simple
+          (simple_pattern
+            (binding_pattern
+              (lower_id)))
+          (identifier_expr
+            (lower_id)))))
+    (literal
+      (number))))
+
+================================================================================
+lambda: wildcard param
+================================================================================
+
+def foo(): Number
+  f = fn _ -> 42
+  42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (lambda
+        (lambda_simple
+          (simple_pattern
+            (wildcard))
+          (literal
+            (number)))))
+    (literal
+      (number))))
+
+================================================================================
+lambda: no param
+================================================================================
+
+def foo(): Number
+  f = fn -> 42
+  42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (lambda
+        (lambda_simple
+          (literal
+            (number)))))
+    (literal
+      (number))))
+
+================================================================================
+lambda: multi-branch
+================================================================================
+
+def foo(): Number
+  f = fn
+    | Ok v -> v
+    | Error _ -> 0
+  42
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (block_binding
+      (lower_id)
+      (lambda_block
+        (match_branch
+          (pattern
+            (simple_pattern
+              (upper_id)
+              (simple_pattern
+                (binding_pattern
+                  (lower_id)))))
+          (identifier_expr
+            (lower_id)))
+        (match_branch
+          (pattern
+            (simple_pattern
+              (upper_id)
+              (simple_pattern
+                (wildcard))))
+          (literal
+            (number)))))
+    (literal
+      (number))))
+
+================================================================================
+lambda: as argument
+================================================================================
+
+def foo(): List
+  process(items, (fn x -> x))
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (call
+      (identifier_expr
+        (lower_id))
+      (identifier_expr
+        (lower_id))
+      (grouped
+        (lambda
+          (lambda_simple
+            (simple_pattern
+              (binding_pattern
+                (lower_id)))
+            (identifier_expr
+              (lower_id))))))))
+
+================================================================================
+on handler: with event param
+================================================================================
+
+def view(): Element
+  Input value=""
+    on onInput e -> send Form (SetName((e.value)))
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (element
+      (upper_id)
+      (prop
+        (lower_id)
+        (atom
+          (literal
+            (string))))
+      (children_block
+        (child
+          (on_handler
+            (lower_id)
+            (lower_id)
+            (send_expr
+              (upper_id)
+              (atom
+                (grouped
+                  (call
+                    (identifier_expr
+                      (upper_id))
+                    (grouped
+                      (field_access
+                        (identifier_expr
+                          (lower_id))
+                        (lower_id)))))))))))))

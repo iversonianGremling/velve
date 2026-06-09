@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>velve · theme devtool (dev mode)</title>
+<style>
+  * { box-sizing: border-box; }
+  :root { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { margin: 0; }
+
+  /* ── THE APP (styled only from role vars; this is what velve emits) ───────── */
+  #app { min-height: 100vh; background: var(--surface); transition: background .15s; padding: 48px 24px; }
+  .feed { max-width: 640px; margin: 0 auto; }
+  .ph { color: var(--text); opacity: .6; font-size: 13px; font-weight: 600; letter-spacing: .03em; margin: 0 0 20px; }
+  .card { background: var(--raised); border: 1px solid var(--border); border-radius: 14px;
+          padding: 22px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.16), 0 10px 30px rgba(0,0,0,.08); }
+  .card h3 { color: var(--text); margin: 0 0 7px; font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
+  .card p  { color: var(--text); margin: 0 0 16px; font-size: 14px; line-height: 1.55; }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .tag { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+         background: var(--accentSoft); color: var(--accentInk); }
+  .btn { margin-left: auto; background: var(--primary); color: var(--onPrimary); border: 0;
+         border-radius: 9px; padding: 10px 18px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+  /* ── THE DEVTOOL CHROME (its own neutral skin; stripped in prod builds) ──── */
+  #fab { position: fixed; right: 18px; bottom: 18px; z-index: 50; width: 46px; height: 46px; border-radius: 50%;
+         border: 1px solid #2a2f3c; background: #14171f; color: #e8eaf0; font-size: 19px; cursor: pointer;
+         box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+  #dev { position: fixed; right: 18px; bottom: 74px; z-index: 50; width: 330px; max-height: 84vh; overflow-y: auto;
+         background: #0f1218; color: #d7dae3; border: 1px solid #262c39; border-radius: 14px; padding: 16px;
+         box-shadow: 0 18px 50px rgba(0,0,0,.5); display: none; font-size: 12.5px; }
+  #dev.open { display: block; }
+  #dev h4 { font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: #7e8595; margin: 16px 0 8px; }
+  #dev h4:first-child { margin-top: 0; }
+  .badge-row { display: flex; gap: 6px; margin: 2px 0 4px; }
+  .tabs { display: flex; gap: 4px; background: #0a0c11; border: 1px solid #20262f; border-radius: 9px; padding: 3px; }
+  .tabs button { flex: 1; border: 0; background: transparent; color: #9aa1b0; font: inherit; font-size: 11.5px;
+                 padding: 6px; border-radius: 6px; cursor: pointer; }
+  .tabs button.on { background: #232b3a; color: #fff; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { border: 1px solid #262c39; background: #161a22; color: #c4c9d4; font: inherit; font-size: 11.5px;
+                  padding: 5px 10px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .chips button.on { border-color: #5b8cff; background: #1b2436; color: #fff; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; border: 1px solid rgba(255,255,255,.2); }
+  .pane { display: none; } .pane.on { display: block; }
+  .field label { display: flex; justify-content: space-between; color: #aab0bd; margin: 10px 0 4px; }
+  .field label b { color: #fff; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: #6ea8ff; }
+  input[type=text], textarea { width: 100%; background: #0a0c11; border: 1px solid #262c39; border-radius: 8px;
+                     color: #e8eaf0; font: inherit; font-size: 12px; padding: 8px; font-family: ui-monospace, monospace; }
+  textarea { resize: vertical; min-height: 58px; }
+  .apply { margin-top: 8px; width: 100%; border: 0; background: #2b6cf0; color: #fff; font: inherit; font-size: 12px;
+           font-weight: 600; padding: 8px; border-radius: 8px; cursor: pointer; }
+  .swatches { display: grid; grid-template-columns: repeat(6,1fr); gap: 5px; margin-top: 4px; }
+  .swatches .s { aspect-ratio: 1; border-radius: 6px; border: 1px solid rgba(255,255,255,.1); }
+  .badge { font-size: 10.5px; padding: 4px 8px; border-radius: 7px; background: #0a0c11; border: 1px solid #20262f; }
+  .ok { color: #6ee7a8; } .warn { color: #ffd166; } .bad { color: #ff7a7a; }
+  .ramp { display: flex; height: 22px; border-radius: 6px; overflow: hidden; margin-top: 6px; border: 1px solid #20262f; }
+  .ramp span { flex: 1; }
+  .note { color: #6b7280; font-size: 10.5px; line-height: 1.5; margin-top: 10px; }
+  code { font-family: ui-monospace, monospace; color: #8be0c0; }
+</style>
+</head>
+<body>
+  <!-- The app — pure content, every color a role var -->
+  <div id="app">
+    <div class="feed">
+      <p class="ph">velve · weekly digest</p>
+      <div class="card">
+        <h3>Design tokens that don't rot</h3>
+        <p>Why your dark mode shouldn't be a second palette — and how a tone ladder gives you legibility for free.</p>
+        <div class="row"><span class="tag">design</span><span class="muted">3 min · Jun 8</span><button class="btn">Read</button></div>
+      </div>
+      <div class="card">
+        <h3>Words over hex codes</h3>
+        <p>Name a color by its job and its vibe; the compiler fills in the rest — and catches your typos.</p>
+        <div class="row"><span class="tag">velve</span><span class="muted">6 min · Jun 7</span><button class="btn">Read</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- The devtool (this whole thing is dev-mode-only; absent from prod bundles) -->
+  <button id="fab" title="Theme (dev)">🎨</button>
+  <div id="dev">
+    <div class="badge-row" id="contrast"></div>
+
+    <h4>How you spell colors</h4>
+    <div class="tabs" id="tabs">
+      <button data-t="words" class="on">Words</button>
+      <button data-t="numbers">Numbers</button>
+      <button data-t="hex">Hex</button>
+      <button data-t="import">Import</button>
+      <button data-t="target">Target</button>
+    </div>
+
+    <!-- WORDS (the readable default → closed types → autocomplete + no typos) -->
+    <div class="pane on" data-pane="words">
+      <h4>Brand hue</h4>
+      <div class="chips" id="hues"></div>
+      <h4>Vividness</h4>
+      <div class="chips" id="vivs"></div>
+      <h4>Contrast</h4>
+      <div class="chips" id="cons"></div>
+    </div>
+
+    <!-- NUMBERS (same state, raw) -->
+    <div class="pane" data-pane="numbers">
+      <div class="field"><label>hue <b id="nHue">275°</b></label><input id="rHue" type="range" min="0" max="360" value="275"></div>
+      <div class="field"><label>chroma <b id="nChr">0.15</b></label><input id="rChr" type="range" min="0" max="0.3" step="0.005" value="0.15"></div>
+      <div class="field"><label>grey tint <b id="nTint">0.012</b></label><input id="rTint" type="range" min="0" max="0.04" step="0.002" value="0.012"></div>
+      <div class="field"><label>contrast <b id="nCon">0.6</b></label><input id="rCon" type="range" min="0" max="1" step="0.02" value="0.6"></div>
+      <div class="field"><label>light vibrancy <b id="nLit">1.00</b></label><input id="rLit" type="range" min="0.5" max="1" step="0.02" value="1"></div>
+      <div class="field"><label>dark vibrancy <b id="nVib">0.72</b></label><input id="rVib" type="range" min="0.4" max="1" step="0.02" value="0.72"></div>
+      <p class="note">Accent saturation <b>per mode</b> — the gap between them is your “vibrancy contrast”.
+        Keep light bold, dark soft (Helmholtz–Kohlrausch + halation make full saturation buzz on dark).</p>
+    </div>
+
+    <!-- HEX (jic — palettes arrive as hex; converted to oklch internally) -->
+    <div class="pane" data-pane="hex">
+      <h4>Brand color (hex)</h4>
+      <input id="hexIn" type="text" value="#5b6ef0" />
+      <button class="apply" id="hexApply">Use as brand</button>
+      <p class="note">Accepted as-is, converted to OKLCH so it still derives a full ladder. (In velve a raw hex counts as a tweak — the analyzer can nudge you toward a token.)</p>
+    </div>
+
+    <!-- IMPORT (paste a palette → becomes the neutral tone ladder) -->
+    <div class="pane" data-pane="import">
+      <h4>Paste a palette (hex, any separator)</h4>
+      <textarea id="palIn">#0f172a #1e293b #334155 #64748b #94a3b8 #cbd5e1 #e2e8f0 #f1f5f9 #f8fafc</textarea>
+      <div class="ramp" id="palRamp"></div>
+      <button class="apply" id="palApply">Use as neutral ramp</button>
+      <button class="apply" id="palClear" style="background:#2a2f3c;margin-top:6px">Back to generated greys</button>
+      <p class="note">Sorted by lightness and mapped onto the tone rungs — so an imported brand palette *becomes* your surfaces/text, light & dark.</p>
+    </div>
+
+    <!-- TARGET (pin the brand's exact button colour; derive + solve the rest) -->
+    <div class="pane" data-pane="target">
+      <h4>Pin primary to an exact colour</h4>
+      <input id="tgtIn" type="text" value="#5b6ef0" />
+      <button class="apply" id="tgtApply">Pin as primary</button>
+      <button class="apply" id="tgtClear" style="background:#2a2f3c;margin-top:6px">Unpin (derive)</button>
+      <p class="note">The button becomes <b>exactly</b> this colour; <code>onPrimary</code> is <b>solved</b> for
+        the most legible text on it (watch the badge — a mid-tone brand colour may not clear AA, which is the
+        honest signal). The other accents derive from its hue; dark mode lifts &amp; softens it.</p>
+    </div>
+
+    <h4>Derived roles</h4>
+    <div class="swatches" id="swatches"></div>
+
+    <h4>Accent engine</h4>
+    <div class="chips"><button id="cuspT" class="on">Gamut-cusp ✓</button></div>
+    <p class="note">Seats the button at its hue's most-saturated lightness — lime/amber rise &amp; brighten,
+      blue/violet stay mid. Legibility shown as <b>APCA Lc</b> (≈60 = UI / large text, ≈75 = body). Toggle off to compare.</p>
+
+    <h4>Polarity</h4>
+    <div class="chips"><button data-p="light" class="on" id="pL">☀ Light</button><button data-p="dark" id="pD">🌙 Dark</button></div>
+
+    <p class="note">This panel is injected only in <b>dev mode</b>; production bundles ship without it. The app reads roles only — no color literals, no <code>dark:</code>.</p>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ── named vocabularies: words ARE just nice presets over the numeric dials ───
+const HUES = { Rose:12, Amber:65, Lime:120, Emerald:155, Teal:185, Cyan:212, Azure:250, Indigo:275, Violet:300, Plum:330 };
+const VIVS = { Muted:0.045, Soft:0.09, Bold:0.15, Vivid:0.22 };
+const CONS = { Calm:0.30, Normal:0.60, Crisp:0.90 };
+
+const S = { hue:275, chroma:0.15, tint:0.012, contrast:0.6, lightVib:1.0, vibrancy:0.72, cusp:true, polarity:"light", ramp:null, target:null };
+
+// ── color math: OKLCH ⇄ linear sRGB (so we can take hex IN and prove contrast) ─
+const oklchStr = (L,C,H) => `oklch(${L.toFixed(3)} ${Math.max(0,C).toFixed(3)} ${H.toFixed(1)})`;
+function oklchToLin(L,C,H){ const h=H*Math.PI/180,a=C*Math.cos(h),b=C*Math.sin(h);
+  const l=(L+0.3963377774*a+0.2158037573*b)**3, m=(L-0.1055613458*a-0.0638541728*b)**3, s=(L-0.0894841775*a-1.2914855480*b)**3, c=x=>Math.min(1,Math.max(0,x));
+  return [c(4.0767416621*l-3.3077115913*m+0.2309699292*s), c(-1.2684380046*l+2.6097574011*m-0.3413193965*s), c(-0.0041960863*l-0.7034186147*m+1.7076147010*s)]; }
+const lum=(L,C,H)=>{const[r,g,b]=oklchToLin(L,C,H);return 0.2126*r+0.7152*g+0.0722*b;};
+const ratio=(a,b)=>{const x=lum(...a),y=lum(...b),hi=Math.max(x,y),lo=Math.min(x,y);return (hi+0.05)/(lo+0.05);};
+
+// ── gamut cusp: the lightness where a hue is MOST saturated (lime peaks light,
+//    blue peaks mid). Fixes "lime/amber buttons look dark" — they were forced to a
+//    blue's lightness, where lime is just olive. ───────────────────────────────
+function oklchRaw(L,C,H){ const h=H*Math.PI/180,a=C*Math.cos(h),b=C*Math.sin(h);
+  const l=(L+0.3963377774*a+0.2158037573*b)**3, m=(L-0.1055613458*a-0.0638541728*b)**3, s=(L-0.0894841775*a-1.2914855480*b)**3;
+  return [4.0767416621*l-3.3077115913*m+0.2309699292*s, -1.2684380046*l+2.6097574011*m-0.3413193965*s, -0.0041960863*l-0.7034186147*m+1.7076147010*s]; }
+const inGamut=(L,C,H)=>{ const [r,g,b]=oklchRaw(L,C,H), e=1e-4; return r>=-e&&r<=1+e&&g>=-e&&g<=1+e&&b>=-e&&b<=1+e; };
+const maxChroma=(L,H)=>{ let lo=0,hi=0.4; for(let i=0;i<20;i++){const m=(lo+hi)/2; inGamut(L,m,H)?lo=m:hi=m;} return lo; };
+function cusp(H){ let best=[0.5,0]; for(let L=0.04;L<=0.99;L+=0.005){ const C=maxChroma(L,H); if(C>best[1]) best=[L,C]; } return best; }
+
+// ── APCA (the WCAG-3 perceptual contrast metric, Lc): polarity-aware, respects the
+//    perceptual "lumps" WCAG's flat ratio ignores. ──────────────────────────────
+const lin2srgb=c=>{ c=Math.min(1,Math.max(0,c)); return c<=0.0031308? 12.92*c : 1.055*c**(1/2.4)-0.055; };
+const apcaY=lch=>{ const s=oklchToLin(...lch).map(lin2srgb); return 0.2126*s[0]**2.4+0.7152*s[1]**2.4+0.0722*s[2]**2.4; };
+function apcaLc(txt,bg){ let Yt=apcaY(txt),Yb=apcaY(bg); const cl=y=>y<0.022? y+(0.022-y)**1.414 : y; Yt=cl(Yt); Yb=cl(Yb);
+  let Lc; if(Yb>Yt){ const S=(Yb**0.56-Yt**0.57)*1.14; Lc=S<0.1?0:(S-0.027)*100; }
+          else     { const S=(Yb**0.65-Yt**0.62)*1.14; Lc=S>-0.1?0:(S+0.027)*100; }
+  return Math.abs(Lc); }
+function hexToOklch(hex){ const m=hex.replace('#','').match(/.{2}/g); if(!m||m.length<3) return null;
+  const lin=m.slice(0,3).map(h=>{const v=parseInt(h,16)/255; return v<=0.04045? v/12.92 : ((v+0.055)/1.055)**2.4;});
+  const [r,g,b]=lin;
+  const l=Math.cbrt(0.4122214708*r+0.5363325363*g+0.0514459929*b), n=Math.cbrt(0.2119034982*r+0.6806995451*g+0.1073969566*b), s=Math.cbrt(0.0883024619*r+0.2817188376*g+0.6299787005*b);
+  const L=0.2104542553*l+0.7936177850*n-0.0040720468*s, A=1.9779984951*l-2.4285922050*n+0.4505937099*s, B=0.0259040371*l+0.7827717662*n-0.8086757660*s;
+  let H=Math.atan2(B,A)*180/Math.PI; if(H<0)H+=360; return [L, Math.hypot(A,B), H]; }
+
+const toneL = (t,c)=>{ const lo=0.20-0.10*c, hi=0.93+0.06*c; return lo+(t/11)*(hi-lo); };
+const taper = (C,L)=> C*(1-0.5*Math.abs(L-0.55)*1.5);
+
+function roleSpec(p){ return p==="light"
+  ? { surface:["N",10],raised:["N",11],border:["N",8],text:["N",1],muted:["N",4],primary:["A",4],onPrimary:["N",11],accentSoft:["A",10],accentInk:["A",3] }
+  : { surface:["N",1], raised:["N",2], border:["N",3],text:["N",10],muted:["N",7],primary:["A",6],onPrimary:["N",0], accentSoft:["A",2], accentInk:["A",9] }; }
+
+function neutralAt(t){
+  const L = toneL(t, S.contrast);
+  if (S.ramp && S.ramp.length){ const i=Math.round((t/11)*(S.ramp.length-1)); return S.ramp[i]; }
+  return [L, taper(S.tint, L), S.hue];
+}
+const accentAt = t => {
+  const L = toneL(t, S.contrast);
+  // Polarity-aware chroma: light keeps the bold accent; dark scales it down so the
+  // accent doesn't vibrate against a near-black surface (and dark already uses a
+  // lighter accent tone — the Material "tone 40 → tone 80" move).
+  let C = taper(S.chroma, L);
+  C *= (S.polarity === "dark") ? S.vibrancy : S.lightVib;   // per-mode vibrancy
+  return [L, C, S.hue];
+};
+
+function primaryColor(){
+  const vib = S.polarity==="dark" ? S.vibrancy : S.lightVib;
+  // Vividness scales WITHIN the cusp ceiling: cusp fixes the lightness + the max
+  // chroma; the vividness dial chooses how much of it to use (Muted → Vivid).
+  const frac = Math.min(1, Math.max(0.25, S.chroma/0.20));
+  // Target: pin the button to the EXACT brand colour (light); dark lifts + softens.
+  if (S.target) return S.polarity==="light" ? S.target.slice()
+    : [Math.min(0.78, S.target[0]+0.12), S.target[1]*S.vibrancy, S.target[2]];
+  // Gamut cusp: seat the button at the hue's most-saturated lightness.
+  if (S.cusp){
+    const [cl, cc] = cusp(S.hue);
+    if (S.polarity==="light") return [cl, cc*frac*vib, S.hue];
+    const L = Math.max(cl, 0.60);                 // lift dark buttons so they pop
+    return [L, maxChroma(L, S.hue)*frac*vib, S.hue];
+  }
+  return accentAt(S.polarity==="light" ? 4 : 6);  // legacy fixed-tone
+}
+function derive(){
+  const spec = roleSpec(S.polarity), out = {};
+  for (const [role,[w,t]] of Object.entries(spec)){
+    if (role==="onPrimary" || role==="primary") continue;  // primary derived, onPrimary solved
+    out[role] = w==="N" ? neutralAt(t) : accentAt(t);
+  }
+  out.primary = primaryColor();
+  // Solve onPrimary with APCA: the neutral end with the stronger perceptual contrast.
+  const lo = neutralAt(0), hi = neutralAt(11);
+  out.onPrimary = apcaLc(hi, out.primary) >= apcaLc(lo, out.primary) ? hi : lo;
+  return out;
+}
+
+function render(){
+  const c = derive(), app = $("app");
+  for (const [role,lch] of Object.entries(c)) app.style.setProperty("--"+role, oklchStr(...lch));
+
+  $("swatches").innerHTML = ["surface","raised","border","text","muted","primary"]
+    .map(r=>`<div class="s" title="${r}" style="background:${oklchStr(...c[r])}"></div>`).join("");
+
+  const mk=(label,txt,bg)=>{const lc=apcaLc(txt,bg),cl=lc>=60?"ok":lc>=45?"warn":"bad",
+    t=lc>=75?"body":lc>=60?"UI":lc>=45?"large":"low";
+    return `<span class="badge">${label} <b class="${cl}">Lc ${lc.toFixed(0)} · ${t}</b></span>`;};
+  $("contrast").innerHTML = mk("text",c.text,c.surface)+mk("button",c.onPrimary,c.primary);
+
+  // keep the numeric sliders mirroring the state
+  $("rHue").value=S.hue; $("nHue").textContent=Math.round(S.hue)+"°";
+  $("rChr").value=S.chroma; $("nChr").textContent=S.chroma.toFixed(3);
+  $("rTint").value=S.tint; $("nTint").textContent=S.tint.toFixed(3);
+  $("rCon").value=S.contrast; $("nCon").textContent=S.contrast.toFixed(2);
+  $("rLit").value=S.lightVib; $("nLit").textContent=S.lightVib.toFixed(2);
+  $("rVib").value=S.vibrancy; $("nVib").textContent=S.vibrancy.toFixed(2);
+}
+
+// ── wire the words ───────────────────────────────────────────────────────────
+function chipGroup(host, dict, get, set){
+  $(host).innerHTML = Object.entries(dict).map(([name,val])=>{
+    const sw = host==="hues" ? oklchStr(0.6, 0.16, val) : host==="vivs" ? oklchStr(0.6, val, S.hue) : "#5b8cff";
+    return `<button data-v="${val}"><span class="dot" style="background:${sw}"></span>${name}</button>`;}).join("");
+  [...$(host).children].forEach(b=>{ b.classList.toggle("on", Math.abs(+b.dataset.v-get())<1e-6);
+    b.onclick=()=>{ set(+b.dataset.v); [...$(host).children].forEach(x=>x.classList.toggle("on",x===b)); render(); }; });
+}
+function wireWords(){
+  chipGroup("hues", HUES, ()=>S.hue, v=>S.hue=v);
+  chipGroup("vivs", VIVS, ()=>S.chroma, v=>S.chroma=v);
+  chipGroup("cons", CONS, ()=>S.contrast, v=>S.contrast=v);
+}
+
+// numbers
+[["rHue","hue"],["rChr","chroma"],["rTint","tint"],["rCon","contrast"],["rLit","lightVib"],["rVib","vibrancy"]].forEach(([id,key])=>
+  $(id).addEventListener("input",e=>{ S[key]=+e.target.value; wireWords(); render(); }));
+
+// hex
+$("hexApply").onclick=()=>{ const c=hexToOklch($("hexIn").value.trim()); if(!c)return; S.hue=c[2]; S.chroma=Math.min(0.3,c[1]); wireWords(); render(); };
+
+// target — pin the exact brand colour to `primary`, derive the rest from its hue
+$("tgtApply").onclick=()=>{ const c=hexToOklch($("tgtIn").value.trim()); if(!c)return; S.target=c; S.hue=c[2]; S.chroma=Math.min(0.3,c[1]); wireWords(); render(); };
+$("tgtClear").onclick=()=>{ S.target=null; render(); };
+
+// accent engine — gamut-cusp on/off
+$("cuspT").onclick=()=>{ S.cusp=!S.cusp; $("cuspT").classList.toggle("on",S.cusp); $("cuspT").textContent="Gamut-cusp "+(S.cusp?"✓":"✗"); render(); };
+
+// import palette
+function parsePalette(){ return ($("palIn").value.match(/#?[0-9a-fA-F]{6}/g)||[]).map(h=>hexToOklch(h.startsWith('#')?h:'#'+h)).filter(Boolean).sort((a,b)=>a[0]-b[0]); }
+function showRamp(){ const p=parsePalette(); $("palRamp").innerHTML=p.map(c=>`<span style="background:${oklchStr(...c)}"></span>`).join(""); }
+$("palIn").addEventListener("input",showRamp);
+$("palApply").onclick=()=>{ S.ramp=parsePalette(); render(); };
+$("palClear").onclick=()=>{ S.ramp=null; render(); };
+
+// tabs / polarity / fab
+$("tabs").onclick=e=>{ const b=e.target.closest("button"); if(!b)return;
+  [...$("tabs").children].forEach(x=>x.classList.toggle("on",x===b));
+  document.querySelectorAll(".pane").forEach(p=>p.classList.toggle("on",p.dataset.pane===b.dataset.t)); };
+$("pL").onclick=()=>{S.polarity="light";$("pL").classList.add("on");$("pD").classList.remove("on");render();};
+$("pD").onclick=()=>{S.polarity="dark";$("pD").classList.add("on");$("pL").classList.remove("on");render();};
+$("fab").onclick=()=>$("dev").classList.toggle("open");
+
+wireWords(); showRamp(); render(); $("dev").classList.add("open");
+</script>
+</body>
+</html>

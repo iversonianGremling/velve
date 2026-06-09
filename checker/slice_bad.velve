@@ -1,0 +1,20 @@
+-- Slice-extraction borrow violations (§2.11). A slice of a pointer into LOCAL storage
+-- dangles once the frame returns; a pointer-parameter slice whose lifetime is not
+-- known to outlive the declared result is rejected.
+
+-- 1. slice of a pointer into a body-local buffer → dangles when returned
+@low
+def leak(): Ptr List(Number)
+  let local = [1, 2, 3, 4]
+  let p = local.&
+  p[0..2]
+
+-- 2. slice of a pointer parameter whose lifetime (~y) is not known to outlive the
+--    declared result lifetime (~x) → rejected (no `where` relating them)
+@low
+def wrongLife(a: Ptr ~x List(Number), b: Ptr ~y List(Number)): Ptr ~x List(Number)
+  b[0..1]
+
+@low
+def main(): Number
+  0

@@ -1,0 +1,25 @@
+-- Compile-time refinement literal checking: a constant argument passed to a
+-- parameter of refinement type has its predicate evaluated at check time. In-range
+-- literals pass; non-constant arguments are skipped (still guarded at runtime by
+-- `.parse`). This file is all-valid and should check clean + run.
+
+type NonZero = Number where value != 0
+type Age     = Number where 0 <= value && value <= 150
+type Email   = String where matches(value, "^[^@ ]+@[^@ ]+.[^@ ]+$")
+
+def birthday(a: Age): Number -> a + 1
+def reciprocalOf(n: NonZero): Number -> 100 / n
+def greet(e: Email): String -> "hi {e}"
+
+def main(): Number
+  let a = birthday((30))            -- 30 in [0,150] ✓
+  let b = birthday((0 + 150))       -- folded to 150 ✓ (boundary)
+  let c = reciprocalOf((4))         -- 4 != 0 ✓
+  let e = greet(("u@host.io"))      -- matches ✓
+
+  -- Non-constant argument: predicate can't be folded, so no compile-time check;
+  -- the value still type-checks as Age (transparent to Number).
+  let n = birthday((a))
+
+  println(("a={a} b={b} c={c} e={e} n={n}"))
+  a

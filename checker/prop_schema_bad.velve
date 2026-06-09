@@ -1,0 +1,8 @@
+-- Each line below should now be a prop-type error (was silently accepted before).
+def view(): Element
+  Column gap=#ff0000 padding=16          -- gap wants Number, got String(hex)
+    Text "hi" size="big" color=#ffffff   -- size wants Number, got String
+    Button "ok" radius=true              -- radius wants Number, got Bool
+
+def main(): Unit
+  print((html((view()))))

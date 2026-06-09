@@ -1,0 +1,22 @@
+-- Deprecated-alias fixture: the `saga` keyword still parses and runs, lowering to
+-- the same construct as `machine … persisted`. `check` emits a deprecation warning
+-- on the `saga` keyword (line 8); `run` behaves identically to the machine form.
+
+store GreetState
+  state
+    phase : Atom = :idle
+  messages
+    SetPhase (p: Atom) -> { phase: p }
+  pub
+    currentPhase = phase
+
+saga Greet(name: String): String
+  over GreetState
+  :start
+    :done ("hello " ++ name)
+  :done r
+    r
+
+def main(): String
+  print((Greet(("world"))))
+  "done"

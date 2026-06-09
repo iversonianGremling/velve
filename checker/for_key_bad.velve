@@ -1,0 +1,14 @@
+-- A `for r in rows` item type with no `id` field can't be auto-keyed: the implicit
+-- `key = r.id` fails to type-check (no such field). That IS the "you must key it"
+-- enforcement — the fix is to add an `id`, or set an explicit `id`/`key` on the
+-- element. Expect 1 error (missing record field 'id').
+
+type Row = { title: String }
+
+def rows(): List(Row)
+  [ { title: "Alpha" }, { title: "Beta" } ]
+
+def view(): Element
+  Column gap=8
+    for r in rows()
+      Text (r.title) size=14

@@ -1,0 +1,18 @@
+-- Pointers (§2.11): `.&` borrows, `.*` dereferences, `Ptr T` is the type.
+-- This file is the *valid* case — it should type-check and run cleanly.
+
+@low
+def deref(p: Ptr Number): Number
+  p.*
+
+@low
+def main(): Unit
+  let x = 41
+  let p = x.&
+  -- read through the pointer
+  println(("x.&.* = {p.*}"))
+  -- pass a pointer to a function and deref it there
+  println(("deref(p) = {deref((p))}"))
+  -- pointer round-trips back to the original value
+  let y = p.*
+  println(("y = {y}"))

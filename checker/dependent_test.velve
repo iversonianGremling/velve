@@ -1,0 +1,24 @@
+-- Dependent refinement types: a refinement parameterized over a value its predicate
+-- references. The dependent argument (`length xs`) refers to ANOTHER parameter, and
+-- is resolved from the actual call arguments at check time. Every call below is
+-- in-bounds, so this file checks clean and runs.
+
+type InBounds n  = Number where 0 <= value && value < n
+type NonEmpty a  = List(a) where length(value) > 0
+
+def at(xs: List(Number), i: InBounds(length(xs))): Number -> xs[i]
+
+def firstOf(xs: NonEmpty(Number)): Number -> xs[0]
+
+def main(): Number
+  let a = at([10, 20, 30], 0)   -- 0 in [0,3) ✓ (dependent bound folded + checked)
+  let b = at([10, 20, 30], 2)   -- 2 in [0,3) ✓ (boundary)
+  let c = firstOf(([1, 2, 3]))    -- non-empty ✓
+
+  -- Index from a variable: predicate can't be folded → no compile-time check,
+  -- still type-checks as Number (transparent to base).
+  let idx = 1
+  let d = at([4, 5, 6], idx)
+
+  println(("a={a} b={b} c={c} d={d}"))
+  a

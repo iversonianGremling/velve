@@ -1,0 +1,26 @@
+-- #8: the headless retained runtime. `interactive(view, steps)` renders the
+-- view, then for each scripted event fires the handler → the store mutates →
+-- the view is re-run → the new tree is DIFFED against the old one, emitting the
+-- minimal patch a browser host would apply. This proves on-handlers + stores
+-- actually drive the UI (they were inert `data-on*` markers before).
+
+store Counter
+  state
+    n : Number = 0
+  messages
+    Inc -> { n: n + 1 }
+  pub
+    count = n
+
+def view(): Element
+  Column gap=8 padding=16 background=#0d1117
+    Text "count {Counter.count}" size=14 color=#ffffff
+    Button "Increment" id="inc" size=12 background=#4FC1FF color=#000000
+      on onClick -> send Counter (Inc())
+
+def main(): Unit
+  print((interactive(view, [
+    { target: "inc", event: "onClick" },
+    { target: "inc", event: "onClick" },
+    { target: "inc", event: "onClick" }
+  ])))

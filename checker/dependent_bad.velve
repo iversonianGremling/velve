@@ -1,0 +1,17 @@
+-- Each call passes constant arguments that VIOLATE the dependent refinement: the
+-- bound `n` is folded from the (literal) list argument, so `check` reports one error
+-- per call site.
+
+type InBounds n  = Number where 0 <= value && value < n
+type NonEmpty a  = List(a) where length(value) > 0
+
+def at(xs: List(Number), i: InBounds(length(xs))): Number -> xs[i]
+
+def firstOf(xs: NonEmpty(Number)): Number -> xs[0]
+
+def main(): Number
+  let a = at([10, 20, 30], 3)     -- 3 not < 3 (length) → error
+  let b = at([10, 20, 30], 0 - 1) -- folds to -1, not >= 0 → error
+  let c = at([5, 6], 7)           -- 7 not < 2 → error
+  let d = firstOf(([]))             -- empty list, length 0 not > 0 → error
+  a

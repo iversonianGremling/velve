@@ -1,0 +1,36 @@
+-- Json + io std modules (runtime demo).
+--   Json is uppercase → namespace calls (Json.parse) work.
+--   io is lowercase → use NAMED imports (lowercase `io.x` calls don't parse).
+--   io ops are Async(Result …) → `await` to unwrap before matching.
+-- NOTE: a literal `{` in a string starts interpolation, so JSON object text
+-- can't be written as a string literal — build it with Json.stringify (whose
+-- OUTPUT braces are a runtime value, not source), or parse a brace-free array.
+import Json from "std/json"
+import { writeFile, readFile, exists } from "io"
+
+def main(): Unit
+  -- stringify a record, then round-trip parse the produced text
+  let s = Json.stringify(({ name: "velve", count: 3, ok: true }))
+  print(("stringify: {s}"))
+  Json.parse((s)) |> match
+    | Ok v    -> print(("round-trip parse: ok"))
+    | Error e -> print(("parse err: {e}"))
+  -- parse a brace-free array, and an invalid input
+  Json.parse(("[1, 2, 3]")) |> match
+    | Ok v    -> print(("array parse: ok"))
+    | Error e -> print(("array parse err: {e}"))
+  Json.parse(("not json")) |> match
+    | Ok v    -> print(("unexpected ok"))
+    | Error e -> print(("invalid parse: caught"))
+
+  -- io: write then read back, check existence (await unwraps Async(Result))
+  let w = await writeFile("/tmp/velve_demo.txt", "hello from velve")
+  w |> match
+    | Ok _    -> print(("write: ok"))
+    | Error e -> print(("write err: {e}"))
+  let r = await readFile(("/tmp/velve_demo.txt"))
+  r |> match
+    | Ok content -> print(("read: {content}"))
+    | Error e    -> print(("read err: {e}"))
+  let present = await exists(("/tmp/velve_demo.txt"))
+  print(("exists: {present}"))

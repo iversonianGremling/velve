@@ -1,0 +1,14 @@
+-- Opt-in token scales: defining these refinement types turns on enforcement.
+-- (Sane defaults — copy/adjust per project. Absent → no enforcement, nothing breaks.)
+type Space     = Number where value==0 || value==4 || value==8 || value==12 || value==16 || value==24 || value==32 || value==48 || value==64
+type TypeScale = Number where value==11 || value==12 || value==14 || value==16 || value==20 || value==24 || value==32
+
+def view(): Element
+  Column gap=8 padding=16          -- on-scale → silent
+    Text "Title" size=24
+    Text "Body"  size=14
+    Box   margin={raw((13))}         -- off-scale but acknowledged via raw() → no error
+    Box   width={Px(13)}            -- explicit unit → opaque to scale → no error
+
+def main(): Unit
+  print((html((view()))))

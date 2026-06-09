@@ -1,0 +1,205 @@
+import low   from "std/low"
+import gpu   from "std/gpu"
+import audio from "std/audio"
+
+module particleSystem
+  capabilities: [render, memory, network]
+
+  -- ── Types ─────────────────────────────────────────────────────────────
+
+  type Vec2 = { x: Number, y: Number }
+
+  type Vec4 = { x: Number, y: Number, z: Number, w: Number }
+
+  type Particle = { position: Vec2, velocity: Vec2, color: Vec4, life: Number, size: Number, rotation: Number, mass: Number }
+
+  type Emitter = { id: Number, position: Vec2, rate: Number, spread: Number, speed: Number, life: Number, color: Vec4, colorEnd: Vec4, sizeStart: Number, sizeEnd: Number, gravity: Number, turbulence: Number, blendMode: BlendMode, active: Bool }
+
+  type BlendMode
+    =   Additive
+      | Alpha
+      | Multiply
+      | Screen
+
+  type ForceField = { position: Vec2, strength: Number, radius: Number, kind: ForceKind }
+
+  type ForceKind
+    =  Attract
+      | Repel
+      | Vortex { spin: Number }
+      | Turbulence { frequency: Number, amplitude: Number }
+
+  type SimConfig = { maxParticles: Number, deltaTime: Number, bounds: { min: Vec2, max: Vec2 }, drag: Number }
+
+  -- ── GPU Kernels ────────────────────────────────────────────────────────
+
+  @kernel{
+    def emitParticles(particles: Array(n, Particle), emitter: Array(1, Emitter), seeds: Array(n, Number), maxParticles: Number, count: Number): Number
+      idx = gpu.threadId
+      idx >= count ? break
+      e     = emitter[0]
+      angle = seeds[idx] * e.spread
+      speed = seeds[idx] * e.speed
+      life  = seeds[idx] * e.life
+      newParticle = Particle({ position: e.position, velocity: { x: 0.0, y: 0.0 }, color: e.color, life: life, size: e.sizeStart, rotation: seeds([idx]), mass: 0.1 })
+
+    def simulateParticles(particles: Array(n, Particle), forces: Array(m, ForceField), numForces: Number, config: Array(1, SimConfig), output: Array(n, Particle)): Number
+      idx = gpu.threadId
+      p   = particles[idx]
+      cfg = config[0]
+      p.life <= 0.0 ? break
+      mut ax = 0.0
+      mut ay = 0.0
+      vx = p.velocity.x + ax * cfg.deltaTime
+      vy = p.velocity.y + ay * cfg.deltaTime
+      px = p.position.x + vx * cfg.deltaTime
+      py = p.position.y + vy * cfg.deltaTime
+      lifeRatio = p.life / 2.0
+      newOutput = Particle({ position: { x: px, y: py }, velocity: { x: vx, y: vy }, color: { x: p.color.x * lifeRatio, y: p.color.y * lifeRatio, z: p.color.z * lifeRatio, w: p.color.w * lifeRatio }, life: p.life - cfg.deltaTime, size: p.size * lifeRatio, rotation: p.rotation + vx * 0.1, mass: p.mass })
+
+    def renderParticles(particles: Array(n, Particle), framebuf: Array(m, Vec4), width: Number, height: Number): Number
+      idx    = gpu.threadId
+      p      = particles[idx]
+      p.life <= 0.0 ? break
+      radius = p.size / 2.0
+
+    def analyzeFrequencies(fftData: Array(n, Number), bandEnergy: Array(8, Number), bandSize: Number): Number
+      idx  = gpu.threadId
+      band = idx / bandSize
+      band >= 8 ? break
+  }
+
+  -- ── Stores ─────────────────────────────────────────────────────────────
+
+  store Simulation
+    state
+      emitters   : List     = []
+      forces     : List     = []
+      config     : SimConfig = { maxParticles: 500000, deltaTime: 0.016, bounds: { min: { x: 0.0, y: 0.0 }, max: { x: 1920.0, y: 1080.0 } }, drag: 0.98 }
+      running    : Bool     = false
+      frameCount : Number   = 0
+      bandEnergy : List     = [0, 0, 0, 0, 0, 0, 0, 0]
+
+    messages
+      AddEmitter (e: Emitter) ->
+        { emitters: emitters }
+
+      RemoveEmitter (id: Number) ->
+        { emitters: emitters |> filter e -> e.id != id }
+
+      UpdateEmitter (id: Number, updated: Emitter) ->
+        { emitters: emitters |> map em -> em.id == id ? updated : em }
+
+      AddForce (f: ForceField) ->
+        { forces: forces }
+
+      RemoveForce (idx: Number) ->
+        { forces: forces }
+
+      UpdateConfig (cfg: SimConfig) ->
+        { config: cfg }
+
+      UpdateBandEnergy (bands: List) ->
+        { bandEnergy: bands }
+
+      Start -> { running: true }
+      Stop  -> { running: false }
+      Tick  -> { frameCount: frameCount + 1 }
+
+    pub
+      emitters
+      forces
+      config
+      running
+      frameCount
+      bandEnergy
+
+  store UI
+    state
+      selectedEmitter : Number = 0
+      showSettings    : Bool   = false
+      showStats       : Bool   = true
+      mousePos        : Vec2   = { x: 0.0, y: 0.0 }
+      fps             : Number = 0.0
+      particleCount   : Number = 0
+
+    messages
+      SelectEmitter (id: Number)      -> { selectedEmitter: id }
+      ToggleSettings                  -> { showSettings: !showSettings }
+      ToggleStats                     -> { showStats: !showStats }
+      UpdateMouse (pos: Vec2)         -> { mousePos: pos }
+      UpdateFPS (f: Number)           -> { fps: f }
+      UpdateParticleCount (n: Number) -> { particleCount: n }
+
+    pub
+      selectedEmitter
+      showSettings
+      showStats
+      mousePos
+      fps
+      particleCount
+
+  -- ── Simulation loop ────────────────────────────────────────────────────
+
+  def simulationLoop(): Number
+    if Simulation.running
+      send Simulation Tick
+      send UI (UpdateParticleCount(0))
+
+  -- ── Audio loop ─────────────────────────────────────────────────────────
+
+  def audioLoop(): Number
+    Simulation.emitters |> map((fn emitter -> send Simulation (UpdateEmitter((emitter.id), emitter))))
+
+  -- ── View ───────────────────────────────────────────────────────────────
+
+  def statsPanel(): Element
+    Column gap=4 padding=12 background=#00000088
+      Text label="FPS: {UI.fps}" size=11 color=#ffffff
+      Text label="Particles: {UI.particleCount}" size=11 color=#ffffff
+      Text label="Emitters: {Simulation.emitters}" size=11 color=#ffffff
+
+  def toolbar(): Element
+    Row gap=8 padding=12
+      Button size=sm onClick -> send Simulation Stop label="Stop"
+      Button size=sm onClick -> send UI ToggleSettings label="Settings"
+      Button size=sm onClick -> send UI ToggleStats label="Stats"
+
+  def emitterCard(emitter: Emitter): Element
+    Card padding=12 radius=6 background=#0d1117 onClick -> send UI (SelectEmitter((emitter.id)))
+      Row gap=6 alignCenter
+        Text label="{emitter.id}" size=12 color=#ffffff
+        Button size=xs onClick -> send Simulation (RemoveEmitter((emitter.id))) label="✕"
+
+  def emitterList(): Element
+    Column gap=8
+      { Simulation.emitters |> map((fn e -> emitterCard(e))) }
+
+  def forceCard(force: ForceField, i: Number): Element
+    label = match force.kind
+      | Attract      -> "Attract"
+      | Repel        -> "Repel"
+      | Vortex _     -> "Vortex"
+      | Turbulence _ -> "Turbulence"
+    Card padding=12 radius=6 background=#0d1117 onClick -> send UI (SelectForce(i))
+      Row alignCenter justifyBetween
+        Text label={label} size=12 color=#ffffff
+        Button size=xs onClick -> send Simulation (RemoveForce(i)) label="✕"
+
+  def settingsPanel(): Element
+    Column width=320 background=#0f1117 padding=16 gap=16
+      Text label="Particle System" size=14 weight=bold color=#ffffff
+      Text label="Emitters" size=12 weight=bold color=#666
+      emitterList
+      Text label="Force Fields" size=12 weight=bold color=#666
+
+  def view(): Element
+    Stack width=Fill height=Fill background=#000000
+    on onRender ->
+      send Simulation Start
+    Canvas width=Fill height=Fill src={Simulation.frameCount}
+    if UI.showStats
+      statsPanel
+    toolbar
+    if UI.showSettings
+      settingsPanel

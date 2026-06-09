@@ -1,0 +1,45 @@
+-- Color stdlib extensions: distance, tonal scales, CVD simulation, ANSI snap,
+-- and named hue constructors (values seated at the gamut cusp).
+
+import { oklch, deltaE, ramp, shades, tints, simulate, nearestAnsi, toHex,
+         rose, amber, lime, emerald, teal, cyan, azure, indigo, violet, plum } from "Color"
+
+def main(): Unit
+  let brand = oklch(0.55, 0.17, 262)            -- a blue
+  let other = oklch(0.55, 0.17, 130)            -- a green at same L/C
+
+  -- perceptual distance (ΔEOK): 0 to self, larger across hue
+  print(("dE self   {deltaE(brand, brand)}"))
+  print(("dE hue    {deltaE(brand, other)}"))
+
+  -- tonal scale dark→light
+  let r = ramp(brand, 5)
+  print(("ramp      {length((r))}  {toHex((r[0]))} .. {toHex((r[4]))}"))
+
+  -- shades (darker) and tints (lighter)
+  let sh = shades(brand, 3)
+  let ti = tints(brand, 3)
+  print(("shades    {toHex((sh[0]))} {toHex((sh[1]))} {toHex((sh[2]))}"))
+  print(("tints     {toHex((ti[0]))} {toHex((ti[1]))} {toHex((ti[2]))}"))
+
+  -- CVD simulation, all four kinds
+  let p = simulate(brand, "protanopia")
+  let d = simulate(brand, "deuteranopia")
+  let t = simulate(brand, "tritanopia")
+  let ac = simulate(brand, "achromatopsia")
+  let un = simulate(brand, "bogus")
+  print(("protan    {toHex((p))}"))
+  print(("deuter    {toHex((d))}"))
+  print(("tritan    {toHex((t))}"))
+  print(("achroma   {toHex((ac))}"))
+  print(("unknown   {toHex((un))}"))
+
+  -- nearest ANSI terminal colour index 0–15
+  print(("ansi blue {nearestAnsi((brand))}"))
+  print(("ansi red  {nearestAnsi((oklch(0.55, 0.22, 25)))}"))
+
+  -- named hues
+  print(("rose      {toHex((rose))}"))
+  print(("emerald   {toHex((emerald))}"))
+  print(("violet    {toHex((violet))}"))
+  print(("amber     {toHex((amber))}"))

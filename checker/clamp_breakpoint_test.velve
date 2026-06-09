@@ -1,0 +1,35 @@
+-- #5 (styles): Clamp band + Breakpoint closed type.
+-- Clamp lo hi  → a Length that lowers to CSS clamp(lo, 100%, hi).
+-- Breakpoint   → a closed variant; `match` over it is exhaustiveness-checked.
+
+-- Clamp is a Length, so it is valid wherever a box-model length prop is.
+def card(): Element
+  Box width=(Clamp(280, 720)) padding=16 radius=8 background=#0d1117
+    Text "fluid card" size=14 color=#ffffff
+
+-- A responsive value is just `Breakpoint -> Length`, authored as a match.
+-- (Until the convergence pass lands, callers pass a concrete breakpoint.)
+def widthFor(bp: Breakpoint): Length
+  match bp
+    | Mobile  -> Fill
+    | Tablet  -> Pct((80))
+    | Desktop -> Px((320))
+    | Wide    -> Clamp(320, 480)
+
+-- Responsive value via the read-only `viewport` root (§9.1): a `match` over
+-- `viewport.breakpoint`, exhaustiveness-checked like any Breakpoint match.
+def responsiveWidth(): Length
+  match viewport.breakpoint
+    | Mobile  -> Fill
+    | Tablet  -> Pct((80))
+    | Desktop -> Px((320))
+    | Wide    -> Clamp(320, 480)
+
+def view(): Element
+  Column gap=16 padding=24 background=#000000
+    { card() }
+    Box width=(widthFor((Desktop))) height=40 background=#1e2130
+    Box width=(responsiveWidth()) height=40 background=#161b22
+
+def main(): Unit
+  print((html((view()))))

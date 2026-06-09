@@ -1,0 +1,17 @@
+-- Literal params in clause heads: a `def` clause can dispatch on a constant
+-- value (number or bool), so recursive base cases read naturally and the head
+-- pattern set mixes literals with binders.
+
+def fib(0): Number -> 0
+def fib(1): Number -> 1
+def fib(n: Number): Number -> fib((n - 1)) + fib((n - 2))
+
+def yesno(true): String  -> "yes"
+def yesno(false): String -> "no"
+
+def main(): Number
+  let a = fib((10))
+  let b = yesno((true))
+  let c = yesno((false))
+  println(("fib(10)={a} yesno(true)={b} yesno(false)={c}"))
+  a

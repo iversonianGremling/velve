@@ -1,0 +1,956 @@
+================================================================================
+number: binary literal
+================================================================================
+
+def foo(): Number
+  0b1010
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (number))))
+
+================================================================================
+number: hex literal
+================================================================================
+
+def foo(): Number
+  0xFF
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (number))))
+
+================================================================================
+number: underscore separator
+================================================================================
+
+def foo(): Number
+  1_000_000
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (number))))
+
+================================================================================
+type: unit
+================================================================================
+
+def foo(): ()
+  ()
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (unit_type)
+    (literal
+      (unit))))
+
+================================================================================
+type: list parameterized
+================================================================================
+
+def foo(items: List(Number)): List(Number)
+  items
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (parameterized_type
+          (upper_id)
+          (type_or_expr
+            (identifier_expr
+              (upper_id))))))
+    (parameterized_type
+      (upper_id)
+      (type_or_expr
+        (identifier_expr
+          (upper_id))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+range: exclusive
+================================================================================
+
+def foo(): Number
+  1..10
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (range_expr
+      (literal
+        (number))
+      (atom
+        (literal
+          (number))))))
+
+================================================================================
+range: inclusive
+================================================================================
+
+def foo(): Number
+  1..=10
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (range_expr
+      (literal
+        (number))
+      (atom
+        (literal
+          (number))))))
+
+================================================================================
+loop block
+================================================================================
+
+def foo(): Number
+  loop
+    x = 1
+    break
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (loop_expr
+      (binding
+        (lower_id)
+        (literal
+          (number)))
+      (break_expr))))
+
+================================================================================
+sigil: raw string
+================================================================================
+
+def foo(): String
+  r"raw \n string"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (sigil_string))))
+
+================================================================================
+sigil: regex
+================================================================================
+
+def foo(): String
+  rx/[a-z]+/
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (regex_sigil))))
+
+================================================================================
+multi-pattern match branch
+================================================================================
+
+def foo(s: Status): String
+  match s
+    | Active | Running -> "on"
+    | Idle -> "off"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (simple_type
+          (upper_id))))
+    (simple_type
+      (upper_id))
+    (match_expr
+      (identifier_expr
+        (lower_id))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (upper_id)))
+        (pattern
+          (simple_pattern
+            (upper_id)))
+        (literal
+          (string)))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (upper_id)))
+        (literal
+          (string))))))
+
+================================================================================
+as binding in pattern: Ok response { body }
+================================================================================
+
+def foo(): String
+  match getResponse
+    | Ok response { body } -> body
+    | Error msg -> msg
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (match_expr
+      (identifier_expr
+        (lower_id))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (upper_id)
+            (lower_id)
+            (record_pattern
+              (lower_id))))
+        (identifier_expr
+          (lower_id)))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (upper_id)
+            (simple_pattern
+              (binding_pattern
+                (lower_id)))))
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+if pattern match
+================================================================================
+
+def foo(): String
+  if getUser = Ok x
+    x
+  else
+    "none"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (if_pattern_expr
+      (identifier_expr
+        (lower_id))
+      (simple_pattern
+        (upper_id)
+        (simple_pattern
+          (binding_pattern
+            (lower_id))))
+      (identifier_expr
+        (lower_id))
+      (literal
+        (string)))))
+
+================================================================================
+where: type constraint
+================================================================================
+
+def sort(items: List(a)): List(a)
+  where a: Comparable
+  items
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (parameterized_type
+          (upper_id)
+          (type_or_expr
+            (identifier_expr
+              (lower_id))))))
+    (parameterized_type
+      (upper_id)
+      (type_or_expr
+        (identifier_expr
+          (lower_id))))
+    (where_stmt
+      (lower_id)
+      (upper_id))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+atom literal
+================================================================================
+
+def foo(): Number
+  x = :circle
+  0
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (literal
+        (atom_lit)))
+    (literal
+      (number))))
+
+================================================================================
+single-line def
+================================================================================
+
+def double(x: Number): Number -> x * 2
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (simple_type
+          (upper_id))))
+    (simple_type
+      (upper_id))
+    (binary_expr
+      (identifier_expr
+        (lower_id))
+      (literal
+        (number)))))
+
+================================================================================
+for expr: basic range
+================================================================================
+
+def foo(): List
+  for (x = 1..10) -> (x * 2)
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (for_expr
+      (for_generator
+        (lower_id)
+        (for_source
+          (range_expr
+            (literal
+              (number))
+            (atom
+              (literal
+                (number))))))
+      (grouped
+        (binary_expr
+          (identifier_expr
+            (lower_id))
+          (literal
+            (number)))))))
+
+================================================================================
+for expr: with filter
+================================================================================
+
+def foo(): List
+  for (x = 1..10, x > 3) -> x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (for_expr
+      (for_generator
+        (lower_id)
+        (for_source
+          (range_expr
+            (literal
+              (number))
+            (atom
+              (literal
+                (number))))))
+      (for_clause
+        (binary_expr
+          (identifier_expr
+            (lower_id))
+          (literal
+            (number))))
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+for expr: list source with %
+================================================================================
+
+def foo(): List
+  for (i = %rows, j = %cols) -> i
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (for_expr
+      (for_generator
+        (lower_id)
+        (for_source
+          (identifier_expr
+            (lower_id))))
+      (for_clause
+        (for_generator
+          (lower_id)
+          (for_source
+            (identifier_expr
+              (lower_id)))))
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+function sig: type-only declaration
+================================================================================
+
+def describe(Atom, Number): String
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_sig
+    (lower_id)
+    (simple_type
+      (upper_id))
+    (simple_type
+      (upper_id))
+    (simple_type
+      (upper_id))))
+
+================================================================================
+multi-clause: atom pattern param
+================================================================================
+
+def describe(:circle, r: Number): String -> "hello"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (atom_lit))
+      (param
+        (lower_id)
+        (simple_type
+          (upper_id))))
+    (simple_type
+      (upper_id))
+    (literal
+      (string))))
+
+================================================================================
+propagate: ?: with expression
+================================================================================
+
+def foo(): Result String Error
+  x = fetch ?: Error("not found")
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (result_type
+      (simple_type
+        (upper_id))
+      (simple_type
+        (upper_id)))
+    (binding
+      (lower_id)
+      (call
+        (propagate_expr
+          (identifier_expr
+            (lower_id))
+          (identifier_expr
+            (upper_id)))
+        (literal
+          (string))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+ask with = binding (body block)
+================================================================================
+
+def foo(): Effect [session] Number
+  appSt = ask Session GetState
+  appSt.count
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (effect_type
+      (lower_id)
+      (simple_type
+        (upper_id)))
+    (binding
+      (lower_id)
+      (ask_expr
+        (upper_id)
+        (atom
+          (upper_id))))
+    (field_access
+      (identifier_expr
+        (lower_id))
+      (lower_id))))
+
+================================================================================
+await: inline expression
+================================================================================
+
+def foo(): Effect [stream] Number
+  x = await ResponseStream
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (effect_type
+      (lower_id)
+      (simple_type
+        (upper_id)))
+    (binding
+      (lower_id)
+      (await_expr
+        (identifier_expr
+          (upper_id))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+await: with match branches
+================================================================================
+
+def foo(): Effect [stream] ()
+  loop
+    await ResponseStream
+      | Push chunk -> send UI (Append(chunk))
+      | Done       -> break
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (effect_type
+      (lower_id)
+      (unit_type))
+    (loop_expr
+      (await_stmt
+        (identifier_expr
+          (upper_id))
+        (match_branch
+          (pattern
+            (simple_pattern
+              (upper_id)
+              (simple_pattern
+                (binding_pattern
+                  (lower_id)))))
+          (send_expr
+            (upper_id)
+            (atom
+              (grouped
+                (call
+                  (identifier_expr
+                    (upper_id))
+                  (identifier_expr
+                    (lower_id)))))))
+        (match_branch
+          (pattern
+            (simple_pattern
+              (upper_id)))
+          (break_expr))))))
+
+================================================================================
+tuple: two elements
+================================================================================
+
+def foo(): (Number, String)
+  (42, "hello")
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (tuple_type
+      (simple_type
+        (upper_id))
+      (simple_type
+        (upper_id)))
+    (tuple_literal
+      (literal
+        (number))
+      (literal
+        (string)))))
+
+================================================================================
+tuple: three elements
+================================================================================
+
+def foo(): ()
+  x = (1, 2, 3)
+  ()
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (unit_type)
+    (binding
+      (lower_id)
+      (tuple_literal
+        (literal
+          (number))
+        (literal
+          (number))
+        (literal
+          (number))))
+    (literal
+      (unit))))
+
+================================================================================
+multiline: arithmetic continuation
+================================================================================
+
+def foo(): Number
+  x = 1
+    + 2
+    + 3
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (binary_expr
+        (binary_expr
+          (literal
+            (number))
+          (literal
+            (number)))
+        (literal
+          (number))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+list concat operator ++
+================================================================================
+
+def foo(): List
+  xs ++ [y]
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binary_expr
+      (identifier_expr
+        (lower_id))
+      (list_literal
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+parenthesized constructor pattern
+================================================================================
+
+def foo(): Number
+  match x
+    | Ok (Chunk c) -> 1
+    | -> 0
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (match_expr
+      (identifier_expr
+        (lower_id))
+      (match_branch
+        (pattern
+          (simple_pattern
+            (upper_id)
+            (simple_pattern
+              (pattern
+                (simple_pattern
+                  (upper_id)
+                  (simple_pattern
+                    (binding_pattern
+                      (lower_id))))))))
+        (literal
+          (number)))
+      (match_branch
+        (literal
+          (number))))))
+
+================================================================================
+element with content atom and props
+================================================================================
+
+def foo(): Element
+  Text "hello" size=12 color=#fff
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (element
+      (upper_id)
+      (element_content
+        (literal
+          (string)))
+      (prop
+        (lower_id)
+        (atom
+          (literal
+            (number))))
+      (prop
+        (lower_id)
+        (atom
+          (literal
+            (hex_color)))))))
+
+================================================================================
+standalone go statement
+================================================================================
+
+def foo(): ()
+  go runTask(x)
+  ()
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (unit_type)
+    (go_expr
+      (call
+        (identifier_expr
+          (lower_id))
+        (identifier_expr
+          (lower_id))))
+    (literal
+      (unit))))
+
+================================================================================
+stream: declaration and send
+================================================================================
+
+stream Numbers : Number
+
+def producer(): Unit
+  send Numbers (Push(10))
+
+--------------------------------------------------------------------------------
+
+(program
+  (stream_def
+    (upper_id)
+    (simple_type
+      (upper_id)))
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (send_expr
+      (upper_id)
+      (atom
+        (grouped
+          (call
+            (identifier_expr
+              (upper_id))
+            (literal
+              (number))))))))
+
+================================================================================
+transaction: within config and body
+================================================================================
+
+def f(): Result Number String
+  transaction within { maxRetry: 2 }
+    x = compute()?
+    x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (result_type
+      (simple_type
+        (upper_id))
+      (simple_type
+        (upper_id)))
+    (transaction_expr
+      (record_literal
+        (record_field
+          (lower_id)
+          (literal
+            (number))))
+      (binding
+        (lower_id)
+        (propagate_expr
+          (call
+            (identifier_expr
+              (lower_id)))))
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+for comprehension: body right-extends
+================================================================================
+
+def f(): T
+  for (x = 1..4) -> x * 2 + 1
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (for_expr
+      (for_generator
+        (lower_id)
+        (for_source
+          (range_expr
+            (literal
+              (number))
+            (atom
+              (literal
+                (number))))))
+      (binary_expr
+        (binary_expr
+          (identifier_expr
+            (lower_id))
+          (literal
+            (number)))
+        (literal
+          (number))))))

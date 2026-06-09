@@ -1,0 +1,485 @@
+================================================================================
+machine: basic state machine
+================================================================================
+
+def run(): ()
+  machine
+    :idle
+      x = 1
+      :done
+
+    :done -> ()
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (unit_type)
+    (machine_expr
+      (saga_step
+        (atom_lit)
+        (binding
+          (lower_id)
+          (literal
+            (number)))
+        (step_goto
+          (atom_lit)))
+      (saga_step
+        (atom_lit)
+        (literal
+          (unit))))))
+
+================================================================================
+machine: with implicit match
+================================================================================
+
+def run(input: String): ()
+  machine
+    :validate input
+      validate(input)
+        | Ok clean -> :process clean
+        | Error e  -> :failed e
+
+    :process clean -> ()
+    :failed e      -> ()
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (simple_type
+          (upper_id))))
+    (unit_type)
+    (machine_expr
+      (saga_step
+        (atom_lit)
+        (lower_id)
+        (implicit_match
+          (call
+            (identifier_expr
+              (lower_id))
+            (identifier_expr
+              (lower_id)))
+          (saga_branch
+            (pattern
+              (simple_pattern
+                (upper_id)
+                (simple_pattern
+                  (binding_pattern
+                    (lower_id)))))
+            (step_inline
+              (atom_lit)
+              (atom
+                (lower_id))))
+          (saga_branch
+            (pattern
+              (simple_pattern
+                (upper_id)
+                (simple_pattern
+                  (binding_pattern
+                    (lower_id)))))
+            (step_inline
+              (atom_lit)
+              (atom
+                (lower_id))))))
+      (saga_step
+        (atom_lit)
+        (lower_id)
+        (literal
+          (unit)))
+      (saga_step
+        (atom_lit)
+        (lower_id)
+        (literal
+          (unit))))))
+
+================================================================================
+saga: with store and rollback
+================================================================================
+
+def checkout(item: Item): Effect [payment] Result Receipt Error
+  saga CheckoutState
+    :reserve item
+      reserve(item) ? rollback :failed
+      :charge item
+
+    :charge item
+      charge(item) ?: rollback :reserve
+      :done
+
+    :done  -> Ok(item)
+    :failed -> Error("failed")
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (simple_type
+          (upper_id))))
+    (effect_type
+      (lower_id)
+      (result_type
+        (simple_type
+          (upper_id))
+        (simple_type
+          (upper_id))))
+    (saga_expr
+      (upper_id)
+      (saga_step
+        (atom_lit)
+        (lower_id)
+        (rollback_stmt
+          (call
+            (identifier_expr
+              (lower_id))
+            (identifier_expr
+              (lower_id)))
+          (atom_lit))
+        (step_goto
+          (atom_lit)
+          (atom
+            (lower_id))))
+      (saga_step
+        (atom_lit)
+        (lower_id)
+        (rollback_stmt
+          (call
+            (identifier_expr
+              (lower_id))
+            (identifier_expr
+              (lower_id)))
+          (atom_lit))
+        (step_goto
+          (atom_lit)))
+      (saga_step
+        (atom_lit)
+        (call
+          (identifier_expr
+            (upper_id))
+          (identifier_expr
+            (lower_id))))
+      (saga_step
+        (atom_lit)
+        (call
+          (identifier_expr
+            (upper_id))
+          (literal
+            (string)))))))
+
+================================================================================
+saga: parallel go
+================================================================================
+
+def run(): ()
+  machine
+    :fetch
+      go ask Shipping GetEta
+      go ask Loyalty GetPoints
+      | Ok eta  -> :done eta
+      | Error _ -> :failed
+
+    :done eta -> ()
+    :failed   -> ()
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (unit_type)
+    (machine_expr
+      (saga_step
+        (atom_lit)
+        (go_expr
+          (ask_expr
+            (upper_id)
+            (atom
+              (upper_id))))
+        (go_expr
+          (ask_expr
+            (upper_id)
+            (atom
+              (upper_id))))
+        (saga_branch
+          (pattern
+            (simple_pattern
+              (upper_id)
+              (simple_pattern
+                (binding_pattern
+                  (lower_id)))))
+          (step_inline
+            (atom_lit)
+            (atom
+              (lower_id))))
+        (saga_branch
+          (pattern
+            (simple_pattern
+              (upper_id)
+              (simple_pattern
+                (wildcard))))
+          (step_inline
+            (atom_lit))))
+      (saga_step
+        (atom_lit)
+        (lower_id)
+        (literal
+          (unit)))
+      (saga_step
+        (atom_lit)
+        (literal
+          (unit))))))
+
+================================================================================
+saga: race with after and until
+================================================================================
+
+def run(): ()
+  machine
+    :charge
+      race
+        go ask Payment Charge
+        after 30s
+        until ask Order IsCancelled
+      | Ok r     -> :done r
+      | Timeout  -> :retry
+      | Cancelled -> :abort
+
+    :done r  -> ()
+    :retry   -> ()
+    :abort   -> ()
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (unit_type)
+    (machine_expr
+      (saga_step
+        (atom_lit)
+        (race_block
+          (race_arm
+            (go_expr
+              (ask_expr
+                (upper_id)
+                (atom
+                  (upper_id)))))
+          (race_arm
+            (after_stmt
+              (duration_lit)))
+          (race_arm
+            (until_stmt
+              (ask_expr
+                (upper_id)
+                (atom
+                  (upper_id))))))
+        (saga_branch
+          (pattern
+            (simple_pattern
+              (upper_id)
+              (simple_pattern
+                (binding_pattern
+                  (lower_id)))))
+          (step_inline
+            (atom_lit)
+            (atom
+              (lower_id))))
+        (saga_branch
+          (pattern
+            (simple_pattern
+              (upper_id)))
+          (step_inline
+            (atom_lit)))
+        (saga_branch
+          (pattern
+            (simple_pattern
+              (upper_id)))
+          (step_inline
+            (atom_lit))))
+      (saga_step
+        (atom_lit)
+        (lower_id)
+        (literal
+          (unit)))
+      (saga_step
+        (atom_lit)
+        (literal
+          (unit)))
+      (saga_step
+        (atom_lit)
+        (literal
+          (unit))))))
+
+================================================================================
+saga: first-class top-level declaration
+================================================================================
+
+saga Checkout(stockOk: Bool): String
+  over CheckoutState
+  :reserve
+    :done "ok"
+  :done r -> r
+  :abort e -> "no"
+
+--------------------------------------------------------------------------------
+
+(program
+  (saga_def
+    (upper_id)
+    (param
+      (lower_id)
+      (simple_type
+        (upper_id)))
+    (simple_type
+      (upper_id))
+    (over_clause
+      (upper_id))
+    (saga_step
+      (atom_lit)
+      (step_goto
+        (atom_lit)
+        (atom
+          (literal
+            (string)))))
+    (saga_step
+      (atom_lit)
+      (lower_id)
+      (identifier_expr
+        (lower_id)))
+    (saga_step
+      (atom_lit)
+      (lower_id)
+      (literal
+        (string)))))
+
+================================================================================
+saga: resume a crashed instance
+================================================================================
+
+def main(): Unit
+  let r = resume Checkout(true, false)
+  print((r))
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (resume_expr
+        (call
+          (identifier_expr
+            (upper_id))
+          (literal
+            (bool))
+          (literal
+            (bool)))))
+    (call
+      (identifier_expr
+        (lower_id))
+      (grouped
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+machine persisted: first-class with explicit backing store
+================================================================================
+
+machine Checkout(stockOk: Bool): String persisted over CheckoutState
+  :reserve
+    :done "ok"
+  :done r -> r
+  :abort e -> "no"
+
+--------------------------------------------------------------------------------
+
+(program
+  (machine_def
+    (upper_id)
+    (param
+      (lower_id)
+      (simple_type
+        (upper_id)))
+    (simple_type
+      (upper_id))
+    (upper_id)
+    (saga_step
+      (atom_lit)
+      (step_goto
+        (atom_lit)
+        (atom
+          (literal
+            (string)))))
+    (saga_step
+      (atom_lit)
+      (lower_id)
+      (identifier_expr
+        (lower_id)))
+    (saga_step
+      (atom_lit)
+      (lower_id)
+      (literal
+        (string)))))
+
+================================================================================
+machine persisted: auto-backed (no over) with rollback
+================================================================================
+
+machine Ship(crashFirst: Bool): String persisted
+  :pack
+    "parcel" ? rollback :unpack
+    :done "shipped"
+  :unpack r -> undo(r)
+  :done result -> result
+
+--------------------------------------------------------------------------------
+
+(program
+  (machine_def
+    (upper_id)
+    (param
+      (lower_id)
+      (simple_type
+        (upper_id)))
+    (simple_type
+      (upper_id))
+    (saga_step
+      (atom_lit)
+      (rollback_stmt
+        (literal
+          (string))
+        (atom_lit))
+      (step_goto
+        (atom_lit)
+        (atom
+          (literal
+            (string)))))
+    (saga_step
+      (atom_lit)
+      (lower_id)
+      (call
+        (identifier_expr
+          (lower_id))
+        (identifier_expr
+          (lower_id))))
+    (saga_step
+      (atom_lit)
+      (lower_id)
+      (identifier_expr
+        (lower_id)))))

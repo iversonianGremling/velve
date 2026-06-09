@@ -1,0 +1,36 @@
+-- UI renderer: components are ordinary functions returning Element; `html`
+-- renders the tree to an HTML string. Props map to attributes + inline style;
+-- `{expr}` children interpolate (React-style); `on …` handlers are captured.
+
+type Item = { title: String, score: Number }
+
+store Counter
+  state
+    n : Number = 0
+  messages
+    Inc -> { n: n + 1 }
+  pub
+    current = n
+
+-- A reusable component (just a function → Element).
+def badge(label: String, color: String): Element
+  Text (label) size=12 color=(color) padding=4 radius=4 background=#1e2130
+
+def row(it: Item): Element
+  Row gap=12 padding=8 background=#0d1117 radius=6
+    Column gap=2
+      Text (it.title) size=14 weight=600 color=#ffffff
+      Text "score {it.score}" size=11 color=#8b949e
+    { badge("active", "#4FC1FF") }
+
+def view(): Element
+  Column gap=16 padding=24 background=#000000
+    Text "Reports" size=24 weight=700 color=#ffffff
+    Row gap=8
+      Button "Refresh" size=12 background=#4FC1FF color=#000000 radius=6
+        on onClick -> send Counter Inc
+    Column gap=8
+      { map(row, [{ title: "Alpha", score: 91 }, { title: "Beta", score: 64 }]) }
+
+def main(): Unit
+  print((html((view()))))

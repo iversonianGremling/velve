@@ -1,0 +1,25 @@
+-- Each function should trigger exactly one move error.
+-- Moves are now type-driven: only affine (non-Copy) resources move. These all use
+-- Lists, which own their data and are therefore affine.
+
+-- use-after-move: a mut List is moved to a new owner, then read
+@low
+def useAfterMove(): Number
+  mut xs = [1, 2, 3]
+  let ys = xs        -- moves xs into ys (List is affine)
+  length((xs))         -- ERROR: use of 'xs' after it was moved
+
+-- drop-after-move: moved, then dropped
+@low
+def dropAfterMove(): Unit
+  mut buf = [0, 0]
+  let owner = buf    -- moves buf
+  drop buf           -- ERROR: 'buf' was already moved
+
+-- move-then-move: two new owners of one resource
+@low
+def doubleMove(): Number
+  mut xs = [1, 2, 3]
+  let a = xs         -- moves xs
+  let b = xs         -- ERROR: use of 'xs' after it was moved
+  length((a)) + length((b))

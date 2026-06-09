@@ -1,0 +1,176 @@
+================================================================================
+function: single expression body
+================================================================================
+
+def add(x: Number, y: Number): Number
+  x + y
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (simple_type
+          (upper_id)))
+      (param
+        (lower_id)
+        (simple_type
+          (upper_id))))
+    (simple_type
+      (upper_id))
+    (binary_expr
+      (identifier_expr
+        (lower_id))
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+function: no params
+================================================================================
+
+def greet(): String
+  "hello"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (literal
+      (string))))
+
+================================================================================
+function: multistatement body
+================================================================================
+
+def fullName(user: User): String
+  name = user.name
+  surname = user.surname
+  "{name} {surname}"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (simple_type
+          (upper_id))))
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (field_access
+        (identifier_expr
+          (lower_id))
+        (lower_id)))
+    (binding
+      (lower_id)
+      (field_access
+        (identifier_expr
+          (lower_id))
+        (lower_id)))
+    (literal
+      (string
+        (identifier_expr
+          (lower_id))
+        (identifier_expr
+          (lower_id))))))
+
+================================================================================
+function: with type annotation on binding
+================================================================================
+
+def foo(): Number
+  x : Number = 5
+  x
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list)
+    (simple_type
+      (upper_id))
+    (binding
+      (lower_id)
+      (simple_type
+        (upper_id))
+      (literal
+        (number)))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+function: effectful return type
+================================================================================
+
+def fetchUser(id: Number): Effect [network] String
+  "user"
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (simple_type
+          (upper_id))))
+    (effect_type
+      (lower_id)
+      (simple_type
+        (upper_id)))
+    (literal
+      (string))))
+
+================================================================================
+function: decorated
+================================================================================
+
+@kernel
+def vertexShader(): Number
+  42
+
+--------------------------------------------------------------------------------
+
+(program
+  (decorator_def
+    (decorator
+      (lower_id))
+    (function_def
+      (lower_id)
+      (param_list)
+      (simple_type
+        (upper_id))
+      (literal
+        (number)))))
+
+================================================================================
+function: literal param (clause-head dispatch)
+================================================================================
+
+def fib(0): Number -> 0
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (number)))
+    (simple_type
+      (upper_id))
+    (literal
+      (number))))

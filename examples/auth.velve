@@ -1,0 +1,70 @@
+-- ── Authentication
+-- Shows: stores, do blocks, error propagation, atom literals, multi-clause dispatch
+
+type Role
+  = Admin
+  | Editor
+  | Viewer
+
+type User = { id: Number, name: String, role: Role }
+
+-- ── Session store ─────────────────────────────────────────────────────────────
+
+store Session
+  state
+    user  : Result User String   = Error("not logged in")
+    token : Result String String = Error("no token")
+  messages
+    SetUser (u: User, tok: String) ->
+      { user: Ok(u), token: Ok(tok) }
+    Logout ->
+      { user: Error("not logged in"), token: Error("no token") }
+  pub
+    isLoggedIn   = user is Ok
+    currentUser  = user
+    currentToken = token
+    isAdmin      = user is Ok
+
+-- ── HTTP helpers (provided by std/http) ──────────────────────────────────────
+
+def httpPost(path: String, body: String): Effect [network] Result String String
+  netPost(path, body)
+
+def httpGet(path: String): Effect [network] Result String String
+  netGet(path)
+
+-- ── API calls ─────────────────────────────────────────────────────────────────
+
+def login(email: String, password: String): Effect [network] Result User String
+  raw = httpPost("/auth/login", "{email},{password}")
+    ?: Error("network error")
+  u   = decodeUser(raw)  ?: Error("invalid response")
+  tok = extractToken(raw) ?: Error("missing token")
+  send Session (SetUser(u, tok))
+  Ok u
+
+def fetchProfile(id: Number): Effect [network] Result User String
+  tok = ask Session currentToken ?: Error("not logged in")
+  raw = httpGet("/users/{id}")    ?: Error("network error")
+  decodeUser(raw) ?: Error("bad response")
+
+def logout(): Effect [pure] ()
+  send Session Logout
+
+-- ── Role dispatch (multi-clause) ──────────────────────────────────────────────
+
+def canDelete(Admin): Bool  -> true
+def canDelete(Editor): Bool -> false
+def canDelete(Viewer): Bool -> false
+
+def canEdit(Admin): Bool  -> true
+def canEdit(Editor): Bool -> true
+def canEdit(Viewer): Bool -> false
+
+def permissionLabel(Admin): String  -> "Full access"
+def permissionLabel(Editor): String -> "Can edit"
+def permissionLabel(Viewer): String -> "Read only"
+
+def roleColor(Admin): String  -> "#ef4444"
+def roleColor(Editor): String -> "#f59e0b"
+def roleColor(Viewer): String -> "#6b7280"

@@ -1,0 +1,90 @@
+-- ── LLM agent with tool use and streaming
+-- Shows: machine, go/race/after, streaming via send/await, multi-clause tool dispatch
+
+type Message = { role: String, content: String }
+
+type AgentStep
+  = Chunk  String
+  | Tool   { name: Atom, args: String }
+  | Done
+  | Failed String
+
+-- ── Stores ───────────────────────────────────────────────────────────────────
+
+store AgentMemory
+  state
+    history : List(Message) = []
+  messages
+    Add (m: Message) -> { history: history ++ [m] }
+    Reset            -> { history: [] }
+  pub
+    log = history
+
+store OutputStream
+  state
+    buffer : List(String) = []
+    done   : Bool         = false
+  messages
+    Push (chunk: String) -> { buffer: buffer ++ [chunk], done: done }
+    Finish               -> { buffer: buffer, done: true }
+  pub
+    isDone = done
+
+-- ── Tool dispatch ─────────────────────────────────────────────────────────────
+
+def callTool(:search, args: String): Effect [network] Result String String
+  searchWeb(args)
+
+def callTool(:run_code, args: String): Effect [network] Result String String
+  execCode(args)
+
+def callTool(:read_file, args: String): Effect [fs] Result String String
+  readFile(args)
+
+def callTool(_, args: String): Effect [pure] Result String String
+  Error("unknown tool")
+
+-- ── Agent machine ─────────────────────────────────────────────────────────────
+
+def runAgent(task: String): Effect [network] Result () String
+  send AgentMemory (Add({ role: "user", content: task }))
+  machine
+
+    :think
+      race
+        go askLLM((ask AgentMemory log))
+        after 60s
+      | Ok (Chunk c) ->
+        send OutputStream (Push(c))
+        :think
+      | Ok (Tool call) -> :use_tool call
+      | Ok Done ->
+        send OutputStream Finish
+        :done
+      | Ok (Failed e) -> :failed e
+      | Timeout       -> :failed "LLM timed out"
+
+    :use_tool call
+      callTool((call.name), (call.args))
+      | Ok result ->
+        send AgentMemory (Add({ role: "tool", content: result }))
+        :think
+      | Error e -> :failed e
+
+    :done     -> Ok()
+    :failed e -> Error(e)
+
+-- ── Stream consumer ───────────────────────────────────────────────────────────
+
+def readStream(): Effect [ui] ()
+  loop
+    await OutputStream
+      | Push chunk -> send UI (Append(chunk))
+      | Finish     -> break
+
+-- ── Entry point ───────────────────────────────────────────────────────────────
+
+def chat(message: String): Effect [network, ui] ()
+  send AgentMemory Reset
+  go runAgent(message)
+  readStream

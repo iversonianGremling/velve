@@ -1,0 +1,21 @@
+-- Currying / over-application + IIFE (parenthesized-lambda) application.
+-- Both type-check (`check`) and run (`run`).
+
+def main(): Number
+  let add = fn a -> fn b -> a + b
+
+  -- over-application: a 1-arg fn whose result is applied to the rest
+  let r1 = add((10), (5))        -- 15
+  let r2 = add(3, 4)           -- 17 -> 7 (curried juxtaposition)
+
+  -- partial application down to a curried fn's declared arity
+  let plus100 = add((100))
+  let r3 = plus100((1))        -- 101
+
+  -- IIFE: apply a parenthesized lambda literal directly
+  let r4 = (fn x -> x * 2)((3))          -- 6
+  let r5 = (fn x -> x + 1)(9)           -- 10 (juxtaposition head = grouped)
+  let r6 = (fn x -> fn y -> x + y)((4), (5)) -- 9
+
+  println(("r1={r1} r2={r2} r3={r3} r4={r4} r5={r5} r6={r6}"))
+  r1

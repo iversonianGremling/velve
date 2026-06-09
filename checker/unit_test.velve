@@ -1,0 +1,10 @@
+-- Length ADT: Px/Fr/Pct carry a Number; Fit/Fill nullary. Bare number → Px.
+def view(): Element
+  Column gap=12 padding={Px(16)} width=Fill
+    Text "Fixed" size=14 width={Px(320)}
+    Text "Half"  width={Pct(50)}
+    Text "Grows" width={Fr(1)}
+    Text "Hug"   width=Fit
+
+def main(): Unit
+  print((html((view()))))

@@ -1,0 +1,22 @@
+-- TxResult(T) is a CLOSED, distinctly-typed ADT (§8). Two violations the old
+-- lenient (Result + untyped-ctor) typing could NOT catch:
+
+def t1(): TxResult(Number)
+  transaction within { maxRetry: 1 }
+    1
+
+-- 1. non-exhaustive match over TxResult — missing `Timeout` and `Cancelled`.
+def badExhaust(): Unit
+  t1() |> match
+    | Ok n       -> print(("ok {n}"))
+    | Error e    -> print(("err"))
+    | Conflict c -> print(("conf {c.retries}"))
+
+-- 2. wrong payload field — `Conflict` carries `retries`, not `attempts`.
+def badField(): Unit
+  t1() |> match
+    | Ok n       -> print(("ok {n}"))
+    | Error e    -> print(("err"))
+    | Conflict c -> print(("conf {c.attempts}"))
+    | Timeout tm -> print(("timeout {tm.after}"))
+    | Cancelled  -> print(("cancelled"))

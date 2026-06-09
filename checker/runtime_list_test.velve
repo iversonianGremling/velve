@@ -1,0 +1,24 @@
+-- Keyed dynamic list: each row carries an `id`, so reconciliation matches rows by
+-- key. Adding an item emits a single `insertChild` patch (not a re-render of the
+-- whole list).
+
+store Todos
+  state
+    items : List(String) = ["alpha", "beta"]
+  messages
+    Add(x: String) -> { items: append(items, x) }
+  pub
+    all = items
+
+def row(it: String): Element
+  Text (it) id=(it) size=12 color=#ffffff
+
+def view(): Element
+  Column gap=4 padding=12 background=#000000
+    Button "Add" id="add" size=12
+      on onClick -> send Todos (Add(("gamma")))
+    Column gap=2
+      { map(row, Todos.all) }
+
+def main(): Unit
+  print((interactive(view, [ { target: "add", event: "onClick" } ])))

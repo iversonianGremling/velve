@@ -1,0 +1,9 @@
+-- Context-validity: props valid only in the right layout context.
+def view(): Element
+  Box gap=8                 -- own-context: gap needs a flex container, Box is block
+    Text "hi" align=center  -- own-context: align needs a flex container, Text is leaf
+  Box                       -- block parent...
+    Text "x" grow=1         -- parent-context: grow needs a flex parent, Box is block
+
+def main(): Unit
+  print((html((view()))))

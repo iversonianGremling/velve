@@ -1,0 +1,25 @@
+{
+  "name": "velve-checker",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "test": "node --test dist/**/*.test.js",
+    "lsp": "node dist/lsp.js --stdio",
+    "bundle": "tsc && esbuild dist/web-entry.js --bundle --format=esm --platform=browser --external:node:fs/promises --banner:js=\"/* velve web runtime — bundled by esbuild (npm run bundle). The original module boundaries are kept as `// dist/<file>.js` comments below, in dependency order: value -> scheduler -> render -> converge -> runtime -> domhost -> eval -> browser. Run `npm run bundle:min` for the minified production build. */\" --outfile=web/app.js",
+    "bundle:min": "tsc && esbuild dist/web-entry.js --bundle --format=esm --platform=browser --external:node:fs/promises --minify --outfile=web/app.min.js"
+  },
+  "dependencies": {
+    "tree-sitter": "^0.25.0",
+    "tree-sitter-velve": "file:..",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.28.0",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.4.0"
+  }
+}

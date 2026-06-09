@@ -1,0 +1,221 @@
+-- Stores and state machines (runnable demo)
+
+-- == Stores: owned mutable state, message handlers, derived pubs ==
+
+store Counter
+  state
+    count : Number = 0
+    step  : Number = 1
+
+  messages
+    Increment ->
+      { count: count + step }
+    Add (n: Number) ->
+      { count: count + n }
+    SetStep (n: Number) ->
+      { step: n }
+    Reset ->
+      { count: 0 }
+
+  pub
+    current = count
+    doubled = count * 2
+    isZero  = count == 0
+
+store Session
+  state
+    token : Result String String = Error("not logged in")
+
+  messages
+    Login (raw: String) ->
+      if length((raw)) > 3
+        { token: Ok(raw) }
+      else
+        { token: Error("name too short") }
+    Logout ->
+      { token: Error("not logged in") }
+
+  pub
+    isLoggedIn  = token is Ok
+    activeToken = token
+
+def testStores(): Unit
+  print(("== stores =="))
+  print(("counter start: current={Counter.current}, isZero={Counter.isZero}"))
+  Increment()
+  Increment()
+  print(("after 2x Increment: current={Counter.current}, doubled={Counter.doubled}"))
+  SetStep((10))
+  Increment()
+  print(("after SetStep(10) + Increment: current={Counter.current}"))
+  Add((100))
+  print(("after Add(100): current={Counter.current}"))
+  Reset()
+  print(("after Reset: current={Counter.current}, isZero={Counter.isZero}"))
+
+  print(("session logged in: {Session.isLoggedIn}"))
+  Login(("alice"))
+  print(("after Login: isLoggedIn={Session.isLoggedIn}, token={Session.activeToken}"))
+  Logout()
+  print(("after Logout: isLoggedIn={Session.isLoggedIn}"))
+
+-- == Machines: synchronous state machines (jump-table semantics) ==
+
+-- Transitions via step_goto; terminal step yields a value.
+def trafficLight(): String
+  machine
+    :red
+      :green
+    :green
+      :yellow
+    :yellow -> "cycle complete"
+
+-- Parameterized step + transition on a branch (recursive countdown).
+def countdown(): Number
+  machine
+    :start
+      :count 5
+    :count n
+      if n <= 0
+        :done
+      else
+        :count (n - 1)
+    :done -> 0
+
+-- Implicit-match dispatch reading a closure variable.
+def classify(value: Number): String
+  machine
+    :check
+      grade((value))
+        | Ok v    -> :positive v
+        | Error e -> :negative e
+    :positive v -> "positive: {v}"
+    :negative e -> "negative: {e}"
+
+def grade(n: Number): Result Number String
+  if n > 0
+    Ok((n * 10))
+  else
+    Error(("non-positive"))
+
+def testMachines(): Unit
+  print(("== machines =="))
+  print(("traffic: {trafficLight()}"))
+  print(("countdown from 5: {countdown()}"))
+  print(("classify(7): {classify((7))}"))
+  print(("classify(-3): {classify((-3))}"))
+
+-- == Machine concurrency (synchronous deterministic model) ==
+
+-- Single `go` + join branches: run the task, match its result.
+def fetchOne(): String
+  machine
+    :start
+      go compute()
+      | Ok v    -> :done v
+      | Error e -> :failed e
+    :done v   -> "computed {v}"
+    :failed e -> "error: {e}"
+
+-- Parallel join: run several `go` tasks, match the tuple of results.
+def parallel(): String
+  machine
+    :start
+      go computeA()
+      go computeB()
+      | (x, y) -> :done x y
+    :done x y -> "got {x} and {y}"
+
+-- `race`: first `go` wins; with no `go`, `after` yields Timeout.
+def withTimeout(): String
+  machine
+    :try
+      race
+        go pay()
+        after 30s
+      | Ok r    -> :done r
+      | Timeout -> :timedout
+    :done r    -> "paid: {r}"
+    :timedout  -> "timed out"
+
+def compute(): Result Number String -> Ok((99))
+def computeA(): Number -> 10
+def computeB(): Number -> 20
+def pay(): Result String String -> Ok(("receipt-7"))
+
+def testConcurrency(): Unit
+  print(("== machine concurrency =="))
+  print(("fetchOne: {fetchOne()}"))
+  print(("parallel join: {parallel()}"))
+  print(("race: {withTimeout()}"))
+
+-- == Real async: suspendable eval, virtual-time scheduler ==
+
+def slowWork(): String
+  sleep((100000))      -- 100s in virtual time
+  "slow result"
+
+def fastWork(): Number
+  sleep((2000))
+  42
+
+-- A slow `go` (100s) racing `after 30s` — the timer wins (impossible in the
+-- old synchronous model, where a `go` always completed first).
+def slowVsTimeout(): String
+  machine
+    :try
+      race
+        go slowWork()
+        after 30s
+      | Timeout -> :timedout
+      | r       -> :done r
+    :done r    -> "completed: {r}"
+    :timedout  -> "timed out (timer beat the slow task)"
+
+def testAsync(): Unit
+  print(("== async runtime =="))
+  let f = go fastWork()              -- spawn a task, keep working
+  print(("spawned background task"))
+  let r = await f                    -- suspend here until it finishes
+  print(("awaited fastWork = {r}"))
+  print(("race: {slowVsTimeout()}"))
+
+-- == Stores as actors: concurrent message handling is serialized ==
+
+store Bank
+  state
+    balance : Number = 0
+  messages
+    Deposit (amount: Number) ->
+      let current = balance     -- read
+      sleep((5))                  -- ...suspend (would race without the mailbox)
+      { balance: current + amount }   -- write
+  pub
+    total = balance
+
+def depositMany(n: Number, amt: Number): Number
+  for (i = 1..(n + 1)) -> Deposit((amt))
+  0
+
+def testActors(): Unit
+  print(("== actors =="))
+  -- three concurrent depositors share one store; the mailbox serializes the
+  -- read-modify-write handlers, so no updates are lost.
+  let a = go depositMany(20, 10)
+  let b = go depositMany(20, 10)
+  let c = go depositMany(20, 10)
+  let x = await a
+  let y = await b
+  let z = await c
+  print(("3 tasks x 20 deposits x 10 = {Bank.total} (expect 600, no lost updates)"))
+  go Deposit((1000))              -- cast: fire-and-forget
+  Deposit((7))                    -- call: blocks until handled
+  print(("after cast + call: {Bank.total}"))
+
+def main(): Unit
+  testStores()
+  testMachines()
+  testConcurrency()
+  testAsync()
+  testActors()
+  print(("done."))

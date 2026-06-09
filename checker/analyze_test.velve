@@ -1,0 +1,22 @@
+-- #13.2: the analyzers. `analyze(view())` lints the concrete tree for value
+-- inconsistency, duplicated prop bundles, a11y problems, and empty containers.
+-- This view is deliberately messy so every analyzer fires.
+
+def view(): Element
+  Column gap=8 padding=24 background=#000000
+    -- inconsistency: many distinct paddings + colours across the subtree
+    Text "A" size=12 color=#ffffff padding=4
+    Text "B" size=12 color=#cccccc padding=8
+    Text "C" size=12 color=#aaaaaa padding=12
+    Text "D" size=12 color=#888888 padding=16
+    -- duplication: two identical Button bundles → extract a style
+    Button "Go" size=14 color=#ffffff background=#1e2130 padding=8
+    Button "Go" size=14 color=#ffffff background=#1e2130 padding=8
+    -- a11y: labelless interactive + low-contrast text
+    Button background=#4FC1FF padding=8
+    Text "faint" size=12 color=#222222
+    -- structure: empty container
+    Row gap=4
+
+def main(): Unit
+  print((analyze((view()))))

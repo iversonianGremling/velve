@@ -1,0 +1,50 @@
+-- Valid ownership cases — must type-check with NO borrow errors.
+
+-- immutable values are freely cloneable: aliasing `let` is fine
+@low
+def cloneLet(): Number
+  let x = 5
+  let y = x
+  x + y
+
+-- a mut *Copy scalar* can be rebound freely — it clones, not moves
+@low
+def copyScalar(): Number
+  mut n = 7
+  let m = n          -- n is Number (Copy) → clone, NOT a move
+  n + m              -- both still usable
+
+-- mutating a mut in place (reassign) is not a move
+@low
+def counter(): Number
+  mut n = 0
+  n = n + 1
+  n = n + 1
+  n
+
+-- passing a mut value to a function is a borrow, not a move
+@low
+def useBorrow(): Number
+  mut buf = 10
+  let a = double((buf))
+  let b = double((buf))
+  a + b
+
+@low
+def double(n: Number): Number
+  n * 2
+
+-- moving an affine resource once and using the new owner is fine
+@low
+def moveOnce(): Number
+  mut xs = [1, 2, 3]
+  let ys = xs        -- ownership transfers to ys
+  length((ys))         -- using the new owner is OK; xs is never touched again
+
+@low
+def main(): Unit
+  println(("clone {cloneLet()}"))
+  println(("copy {copyScalar()}"))
+  println(("counter {counter()}"))
+  println(("borrow {useBorrow()}"))
+  println(("moveOnce {moveOnce()}"))

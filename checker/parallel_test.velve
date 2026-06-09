@@ -1,0 +1,26 @@
+-- Parallel combinators: pmap / pfilter / parallel (runtime-backed).
+-- Each element's call is spawned as its own task on the cooperative scheduler,
+-- so independent async work OVERLAPS instead of running strictly sequentially.
+
+def double(x: Number): Number
+  x * 2
+
+def isOdd(x: Number): Bool
+  x % 2 == 1
+
+-- A "slow" job: sleep, then return. Run sequentially these would take 3*100ms of
+-- virtual time; run via pmap they overlap, so the whole batch settles at ~100ms.
+def slowSquare(x: Number): Number
+  sleep((100))
+  x * x
+
+def main(): Unit
+  -- plain parallel map / filter (data-first, pipe-friendly)
+  print(("pmap:     {[1, 2, 3, 4] |> pmap(double)}"))
+  print(("pfilter:  {[1, 2, 3, 4, 5] |> pfilter(isOdd)}"))
+
+  -- effectful mapper composes (same shape as `oks |> pmap enrich`)
+  print(("slow:     {[1, 2, 3] |> pmap(slowSquare)}"))
+
+  -- parallel: collect a list of (possibly spawned) results in order
+  print(("parallel: {parallel(([10, 20, 30]))}"))

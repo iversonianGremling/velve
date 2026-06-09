@@ -1,0 +1,210 @@
+================================================================================
+pointer type: bare
+================================================================================
+
+def foo(buf: Ptr Number): Number
+  0
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (pointer_type
+          (simple_type
+            (upper_id)))))
+    (simple_type
+      (upper_id))
+    (literal
+      (number))))
+
+================================================================================
+pointer type: with lifetime
+================================================================================
+
+def foo(buf: Ptr ~a Number): Number
+  0
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (pointer_type
+          (lifetime_var)
+          (simple_type
+            (upper_id)))))
+    (simple_type
+      (upper_id))
+    (literal
+      (number))))
+
+================================================================================
+lifetime where: equality
+================================================================================
+
+def foo(buf: Ptr Number): Ptr Number
+  where (buf.~ = result.~)
+  buf
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (pointer_type
+          (simple_type
+            (upper_id)))))
+    (pointer_type
+      (simple_type
+        (upper_id)))
+    (where_stmt
+      (lifetime_constraint
+        (lifetime_ref
+          (lifetime_of_type
+            (lower_id)))
+        (lifetime_ref
+          (lifetime_of_type
+            (lower_id)))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+lifetime where: outlives
+================================================================================
+
+def foo(a: Ptr Number, b: Ptr Number): Ptr Number
+  where (a.~ >= b.~)
+  a
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (pointer_type
+          (simple_type
+            (upper_id))))
+      (param
+        (lower_id)
+        (pointer_type
+          (simple_type
+            (upper_id)))))
+    (pointer_type
+      (simple_type
+        (upper_id)))
+    (where_stmt
+      (lifetime_constraint
+        (lifetime_ref
+          (lifetime_of_type
+            (lower_id)))
+        (lifetime_ref
+          (lifetime_of_type
+            (lower_id)))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+lifetime where: multiple constraints
+================================================================================
+
+def foo(a: Ptr Number, b: Ptr Number): Ptr Number
+  where (a.~ = result.~), (b.~ >= a.~)
+  a
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (pointer_type
+          (simple_type
+            (upper_id))))
+      (param
+        (lower_id)
+        (pointer_type
+          (simple_type
+            (upper_id)))))
+    (pointer_type
+      (simple_type
+        (upper_id)))
+    (where_stmt
+      (lifetime_constraint
+        (lifetime_ref
+          (lifetime_of_type
+            (lower_id)))
+        (lifetime_ref
+          (lifetime_of_type
+            (lower_id))))
+      (lifetime_constraint
+        (lifetime_ref
+          (lifetime_of_type
+            (lower_id)))
+        (lifetime_ref
+          (lifetime_of_type
+            (lower_id)))))
+    (identifier_expr
+      (lower_id))))
+
+================================================================================
+deref expr
+================================================================================
+
+def foo(buf: Ptr Number): Number
+  buf.*
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (pointer_type
+          (simple_type
+            (upper_id)))))
+    (simple_type
+      (upper_id))
+    (deref_expr
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+addr of expr
+================================================================================
+
+def foo(x: Number): Ptr Number
+  x.&
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_def
+    (lower_id)
+    (param_list
+      (param
+        (lower_id)
+        (simple_type
+          (upper_id))))
+    (pointer_type
+      (simple_type
+        (upper_id)))
+    (addr_of_expr
+      (identifier_expr
+        (lower_id)))))

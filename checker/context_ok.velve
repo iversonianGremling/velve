@@ -1,0 +1,10 @@
+-- Valid: container props on flex containers, flex-item props under flex parents.
+def view(): Element
+  Column gap=8 align="center"      -- gap/align OK: Column is flex
+    Row gap=12 justify="center"    -- justify OK: Row is flex
+      Text "left"  grow=1          -- grow OK: parent Row is flex
+      Text "right" basis={Px(80)}   -- basis OK: parent Row is flex
+    Box padding=16                 -- padding is context-free, OK on a block
+
+def main(): Unit
+  print((html((view()))))

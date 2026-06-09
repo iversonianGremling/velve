@@ -1,0 +1,34 @@
+-- #9: element state taxonomy. `Interaction` (precedence-resolved visual state)
+-- and `UIState` (the five UI-Stack content states) are closed builtin variants,
+-- so a style function that forgets a state WON'T COMPILE — coverage is a compile
+-- requirement, not a guideline.
+
+-- Style per interaction state — exhaustive over the 6 Material states.
+def buttonBg(s: Interaction): String
+  match s
+    | Idle     -> #1e2130
+    | Hovered  -> #2a2f45
+    | Focused  -> #34395c
+    | Pressed  -> #4FC1FF
+    | Dragged  -> #3a4060
+    | Disabled -> #15171f
+
+-- Content state per the UI Stack — Partial is the design-theory member CSS lacks.
+def listMessage(s: UIState): String
+  match s
+    | Empty   -> "Nothing here yet"
+    | Loading -> "Loading…"
+    | Partial -> "Showing partial results"
+    | Failed  -> "Something went wrong"
+    | Ideal   -> "All set"
+
+def view(): Element
+  Column gap=8 padding=16 background=#000000
+    -- precedence resolver: hovered AND focused → Focused wins over Hovered
+    Button "Save" background=(buttonBg((interactionOf(({ hovered: true, focused: true })))))
+    Text (listMessage((Partial))) size=12 color=#8b949e
+
+def main(): Unit
+  print((html((view()))))
+  -- sandbox enumeration: drive a component across every interaction state
+  print((toString((Interaction.all))))

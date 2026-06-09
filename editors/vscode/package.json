@@ -1,0 +1,73 @@
+{
+  "name": "velve-language",
+  "displayName": "Velve",
+  "description": "Language support for Velve",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:velve"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "velve",
+        "aliases": [
+          "Velve"
+        ],
+        "extensions": [
+          ".velve"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "velve",
+        "scopeName": "source.velve",
+        "path": "./syntaxes/velve.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Velve",
+      "properties": {
+        "velve.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the velve-checker directory (uses bundled server if empty)"
+        }
+      }
+    },
+    "configurationDefaults": {
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": "constant.other.symbol.velve",
+            "settings": { "foreground": "#4FC1FF" }
+          },
+          {
+            "scope": "keyword.operator.optional.velve",
+            "settings": { "foreground": "#C586C0", "fontStyle": "bold" }
+          }
+        ]
+      }
+    }
+  },
+  "main": "./out/extension.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.4.0"
+  }
+}

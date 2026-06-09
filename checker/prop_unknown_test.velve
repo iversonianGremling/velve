@@ -1,0 +1,13 @@
+-- Prop vocabulary (clean): every prop here is in its primitive's closed vocabulary.
+-- Universal props (id/ariaLabel + styling) plus per-primitive functional props
+-- (Link.to, Image.src/alt, Input.value/placeholder/disabled, Button.disabled).
+
+def view(): Element
+  Column gap=16 padding=24 background=#000000 id="root"
+    Link "Home" to="/home" color=#4FC1FF
+    Image src="/logo.png" alt="Logo" width=64 height=64 radius=8
+    Input value="" placeholder="Search…" disabled=false
+    Button "Go" disabled=false id="go" ariaLabel="go button"
+
+def main(): Unit
+  print((html((view()))))

@@ -1,0 +1,22 @@
+-- #9 deferred half: orthogonal facet enums `Toggle` and `Validity` — closed
+-- variants like `Interaction`, so a `match` that forgets a case won't compile.
+-- Plus `uiJson(view())`: the UI model as JSON (structure for tools/LLMs).
+
+def toggleIcon(t: Toggle): String
+  match t
+    | Off   -> "[ ]"
+    | On    -> "[x]"
+    | Mixed -> "[-]"
+
+def validityColor(v: Validity): String
+  match v
+    | Valid   -> #2ecc71
+    | Invalid -> #e74c3c
+    | Pending -> #f1c40f
+
+def view(): Element
+  Column gap=4 padding=8 background=#000000
+    Text (toggleIcon((On))) size=14 color=(validityColor((Valid)))
+
+def main(): Unit
+  print((uiJson((view()))))

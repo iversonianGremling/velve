@@ -1,0 +1,18 @@
+-- Keyed list rendering: `for r in rows` auto-keys each row on its `id` (the implicit
+-- SQL-primary-key default) — no hand-written key= per item. The key is the
+-- reconciliation identity, stripped from the rendered HTML (like React).
+
+type Row = { id: String, title: String, score: Number }
+
+def rows(): List(Row)
+  [ { id: "a", title: "Alpha", score: 91 },
+    { id: "b", title: "Beta",  score: 64 } ]
+
+def view(): Element
+  Column gap=8 padding=16 background=#000000
+    for r in rows()
+      Row gap=4 padding=8 background=#0d1117
+        Text (r.title) size=14 color=#ffffff
+
+def main(): Unit
+  print((html((view()))))

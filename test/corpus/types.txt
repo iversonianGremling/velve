@@ -1,0 +1,320 @@
+================================================================================
+type: simple alias
+================================================================================
+
+type Color = String
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (simple_type
+      (upper_id))))
+
+================================================================================
+type: refinement with where
+================================================================================
+
+type Age = Number where 0 <= value
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (simple_type
+      (upper_id))
+    (binary_expr
+      (literal
+        (number))
+      (identifier_expr
+        (lower_id)))))
+
+================================================================================
+type: parameterized
+================================================================================
+
+type Pair = Result String Number
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (result_type
+      (simple_type
+        (upper_id))
+      (simple_type
+        (upper_id)))))
+
+================================================================================
+type: record
+================================================================================
+
+type Point = { x: Number, y: Number }
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (record_type
+      (type_field
+        (lower_id)
+        (simple_type
+          (upper_id)))
+      (type_field
+        (lower_id)
+        (simple_type
+          (upper_id))))))
+
+================================================================================
+type: ADT variants
+================================================================================
+
+type Shape
+  = Circle { radius: Number }
+  = Rect { width: Number, height: Number }
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (adt_variant
+      (upper_id)
+      (record_type
+        (type_field
+          (lower_id)
+          (simple_type
+            (upper_id)))))
+    (adt_variant
+      (upper_id)
+      (record_type
+        (type_field
+          (lower_id)
+          (simple_type
+            (upper_id)))
+        (type_field
+          (lower_id)
+          (simple_type
+            (upper_id)))))))
+
+================================================================================
+type: ADT no payload
+================================================================================
+
+type Direction
+  = North
+  = South
+  = East
+  = West
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (adt_variant
+      (upper_id))
+    (adt_variant
+      (upper_id))
+    (adt_variant
+      (upper_id))
+    (adt_variant
+      (upper_id))))
+
+================================================================================
+type: extern record
+================================================================================
+
+type Vec4 = extern { x: Number, y: Number, z: Number, w: Number }
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (record_type
+      (type_field
+        (lower_id)
+        (simple_type
+          (upper_id)))
+      (type_field
+        (lower_id)
+        (simple_type
+          (upper_id)))
+      (type_field
+        (lower_id)
+        (simple_type
+          (upper_id)))
+      (type_field
+        (lower_id)
+        (simple_type
+          (upper_id))))))
+
+================================================================================
+type: extern with align
+================================================================================
+
+type Vec4 = extern { x: Number align=16, y: Number }
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (record_type
+      (type_field
+        (lower_id)
+        (simple_type
+          (upper_id))
+        (number))
+      (type_field
+        (lower_id)
+        (simple_type
+          (upper_id))))))
+
+================================================================================
+type: parameterized type variable
+================================================================================
+
+type Tree a
+  = Leaf
+  = Node { value: a, left: Tree, right: Tree }
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (lower_id)
+    (adt_variant
+      (upper_id))
+    (adt_variant
+      (upper_id)
+      (record_type
+        (type_field
+          (lower_id)
+          (type_var
+            (lower_id)))
+        (type_field
+          (lower_id)
+          (simple_type
+            (upper_id)))
+        (type_field
+          (lower_id)
+          (simple_type
+            (upper_id)))))))
+
+================================================================================
+type: tainted
+================================================================================
+
+type SafeInput = Tainted String
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (tainted_type
+      (simple_type
+        (upper_id)))))
+
+================================================================================
+type: async
+================================================================================
+
+type Loading = Async String
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (async_type
+      (simple_type
+        (upper_id)))))
+
+================================================================================
+type: result
+================================================================================
+
+type Outcome = Result String Number
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (result_type
+      (simple_type
+        (upper_id))
+      (simple_type
+        (upper_id)))))
+
+================================================================================
+type: effect
+================================================================================
+
+type Action = Effect [network, storage] String
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (effect_type
+      (lower_id)
+      (lower_id)
+      (simple_type
+        (upper_id)))))
+
+================================================================================
+type: result paren form
+================================================================================
+
+type Outcome = Result(String, Number)
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (result_type
+      (simple_type
+        (upper_id))
+      (simple_type
+        (upper_id)))))
+
+================================================================================
+type: async paren form
+================================================================================
+
+type Loading = Async(String)
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (async_type
+      (simple_type
+        (upper_id)))))
+
+================================================================================
+type: tainted paren form
+================================================================================
+
+type SafeInput = Tainted(String)
+
+--------------------------------------------------------------------------------
+
+(program
+  (type_def
+    (upper_id)
+    (tainted_type
+      (simple_type
+        (upper_id)))))

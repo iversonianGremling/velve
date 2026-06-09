@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>velve · theme playground</title>
+<style>
+  :root { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0d12; color: #e7e9ee; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: #9aa0ad; font-size: 13px; margin: 0 0 24px; }
+  .grid { display: grid; grid-template-columns: 360px 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel { background: #12151c; border: 1px solid #232836; border-radius: 14px; padding: 18px; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #8c93a3; margin: 0 0 14px; }
+  .hint { color: #7b8290; font-size: 11.5px; line-height: 1.5; margin: 2px 0 16px; }
+
+  .dial { margin-bottom: 16px; }
+  .dial label { display: flex; justify-content: space-between; font-size: 12.5px; color: #c4c9d4; margin-bottom: 6px; }
+  .dial label b { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: #6ea8ff; }
+  .seg { display: inline-flex; background: #0d1016; border: 1px solid #232836; border-radius: 9px; padding: 3px; gap: 3px; }
+  .seg button { border: 0; background: transparent; color: #aeb4c0; font: inherit; font-size: 12.5px; padding: 5px 14px; border-radius: 6px; cursor: pointer; }
+  .seg button.on { background: #2b3346; color: #fff; }
+
+  .roles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .role { display: flex; align-items: center; gap: 9px; font-size: 11.5px; }
+  .chip { width: 26px; height: 26px; border-radius: 7px; border: 1px solid rgba(255,255,255,.12); flex: none; }
+  .role .nm { color: #d2d6df; }
+  .role .vl { color: #6b7280; font-size: 9.5px; font-family: ui-monospace, monospace; }
+
+  .contrast { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .badge { font-size: 11px; padding: 5px 9px; border-radius: 7px; background: #0d1016; border: 1px solid #232836; display: flex; gap: 7px; align-items: center; }
+  .badge b { font-variant-numeric: tabular-nums; }
+  .ok { color: #6ee7a8; } .warn { color: #ffd166; } .bad { color: #ff7a7a; }
+
+  pre.code { background: #0d1016; border: 1px solid #232836; border-radius: 10px; padding: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.6; color: #c8cdd8; overflow-x: auto; margin: 0; }
+  pre.code .c { color: #5d6473; } pre.code .k { color: #7aa2ff; } pre.code .r { color: #8be0c0; } pre.code .s { color: #d8a878; }
+
+  /* ── the PREVIEW renders entirely from the derived role variables ───────── */
+  .stage { border-radius: 14px; padding: 26px; transition: background .15s;
+           background: var(--surface);
+           box-shadow: inset 0 0 0 1px var(--border); }
+  .stage .ph { color: var(--text); font-size: 13px; font-weight: 600; opacity: .65; margin: 0 0 16px; letter-spacing: .02em; }
+  .card { background: var(--raised); border: 1px solid var(--border); border-radius: 12px;
+          padding: 20px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 8px 24px rgba(0,0,0,.10); }
+  .card h3 { color: var(--text); margin: 0 0 6px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .card p { color: var(--text); margin: 0 0 14px; font-size: 13.5px; line-height: 1.5; }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .btn { margin-left: auto; background: var(--primary); color: var(--onPrimary);
+         border: 0; border-radius: 8px; padding: 9px 16px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>velve · theme playground</h1>
+  <p class="sub">Turn the <b>seed</b> dials on the left. Everything on the right — every surface, every text shade,
+  the button, light&nbsp;&amp;&nbsp;dark — is <b>derived</b>. Nothing here is a hand-picked colour except the two seeds.</p>
+
+  <div class="grid">
+    <!-- ── LEFT: the dials + what they derive ─────────────────────────────── -->
+    <div>
+      <div class="panel">
+        <h2>Seed · you choose these</h2>
+        <p class="hint">Two colours expressed as dials — <b>hue</b> (which colour), <b>vividness</b> (grey→neon),
+          <b>lightness</b> is not a seed dial: roles pick it per <b>tone</b>. The greys are the same hue, barely tinted.</p>
+
+        <div class="dial"><label>Brand hue <b id="vHue">262°</b></label>
+          <input id="hue" type="range" min="0" max="360" value="262"></div>
+        <div class="dial"><label>Brand vividness <b id="vChr">0.17</b></label>
+          <input id="chr" type="range" min="0" max="0.30" step="0.005" value="0.17"></div>
+        <div class="dial"><label>Grey tint (how cool the greys are) <b id="vTint">0.012</b></label>
+          <input id="tint" type="range" min="0" max="0.04" step="0.002" value="0.012"></div>
+        <div class="dial"><label>Contrast (tone spread: soft → crisp) <b id="vCon">0.6</b></label>
+          <input id="con" type="range" min="0" max="1" step="0.02" value="0.6"></div>
+        <div class="dial"><label>Polarity</label>
+          <div class="seg" id="pol"><button data-p="light" class="on">Light</button><button data-p="dark">Dark</button></div></div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <h2>Derived roles · computed for you</h2>
+        <p class="hint">A <b>role</b> = a colour's job. Each is the seed at a <b>tone</b> (a rung on its dark→light ladder).
+          <b>Polarity</b> just flips which end of the ladder is the background.</p>
+        <div class="roles" id="roles"></div>
+        <div class="contrast" id="contrast"></div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <h2>The velve that means this</h2>
+        <pre class="code"><span class="c">-- two seeds → the whole app</span>
+<span class="k">theme</span> app
+  <span class="k">seed</span>
+    neutral = <span class="s">oklch(0.5, &lt;tint&gt;, &lt;hue&gt;)</span>
+    accent  = <span class="s">oklch(0.5, &lt;vivid&gt;, &lt;hue&gt;)</span>
+  <span class="k">roles</span>
+    <span class="r">surface</span> = neutral.tone(10)   <span class="c">-- page</span>
+    <span class="r">raised</span>  = neutral.tone(11)   <span class="c">-- card</span>
+    <span class="r">text</span>    = neutral.tone(1)    <span class="c">-- ink</span>
+    <span class="r">muted</span>   = neutral.tone(4)
+    <span class="r">primary</span> = accent.tone(4)
+    <span class="r">onPrimary</span> = neutral.tone(11)
+
+<span class="k">let</span> dark = app <span class="k">with</span> { polarity: Dark }
+
+<span class="c">-- a card: only ROLES, no colours, no `dark:`</span>
+<span class="k">def</span> digest(it):
+  <span class="r">Surface</span> raised radius=12 padding=20
+    Text (it.title) role=<span class="r">text</span>
+    Text (it.blurb) role=<span class="r">text</span>
+    Row
+      Text "3 min" role=<span class="r">muted</span>
+      Button "Read" <span class="r">primary</span></pre>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: the rendered artifact, styled only from role vars ────────── -->
+    <div>
+      <div class="panel">
+        <h2>What it renders</h2>
+        <div class="stage" id="stage">
+          <p class="ph">Weekly · velve digest</p>
+          <div class="card">
+            <h3>The five things in design systems this week</h3>
+            <p>Tokens, tone ladders, and why your dark mode shouldn't be a second palette.</p>
+            <div class="row"><span class="muted">3 min read · Jun 8</span><button class="btn">Read</button></div>
+          </div>
+          <div class="card">
+            <h3>Contrast you can prove, not eyeball</h3>
+            <p>If text is tone&nbsp;1 and surface is tone&nbsp;10, they're far apart on the ladder — legible by construction.</p>
+            <div class="row"><span class="muted">6 min read · Jun 7</span><button class="btn">Read</button></div>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:14px">The two cards repeat the <b>same component</b>. Drag <b>Brand hue</b> to rebrand the
+          whole app at once; drag <b>Contrast</b> down and watch the legibility badge react; hit <b>Dark</b> — one flipped knob, no second palette.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── The exact derivation the velve `theme` block describes ───────────────────
+// A color is three dials: Lightness (0..1), Chroma (grey..vivid), Hue (0..360°).
+// A "tone" is just a rung on the lightness ladder; a "role" is the seed at a tone.
+
+const $ = id => document.getElementById(id);
+let polarity = "light";
+
+// tone(t): lightness for rung t (0=darkest … 11=lightest), spread by the contrast dial.
+function toneL(t, contrast) {
+  const lo = 0.20 - 0.10 * contrast;   // crisp → lower floor
+  const hi = 0.93 + 0.06 * contrast;   // crisp → higher ceiling
+  return lo + (t / 11) * (hi - lo);
+}
+const oklch = (L, C, H) => `oklch(${L.toFixed(3)} ${C.toFixed(3)} ${H.toFixed(1)})`;
+
+// Which seed + which rung each role uses. Polarity flips the ladder for the neutral
+// roles (background end ⇄ ink end); the accent brightens a touch in the dark.
+function roleSpecs(pol) {
+  return pol === "light"
+    ? { surface:["N",10], raised:["N",11], border:["N",8], text:["N",1],  muted:["N",4], primary:["A",4], onPrimary:["N",11] }
+    : { surface:["N",1],  raised:["N",2],  border:["N",3], text:["N",10], muted:["N",7], primary:["A",6], onPrimary:["N",0]  };
+}
+
+// ── oklch → linear sRGB → WCAG luminance, so we can SHOW the contrast holding ─
+function oklchToLin(L, C, H) {
+  const h = H * Math.PI / 180, a = C * Math.cos(h), b = C * Math.sin(h);
+  const l_ = L + 0.3963377774*a + 0.2158037573*b;
+  const m_ = L - 0.1055613458*a - 0.0638541728*b;
+  const s_ = L - 0.0894841775*a - 1.2914855480*b;
+  const l = l_**3, m = m_**3, s = s_**3;
+  const clamp = x => Math.min(1, Math.max(0, x));
+  return [
+    clamp(+4.0767416621*l - 3.3077115913*m + 0.2309699292*s),
+    clamp(-1.2684380046*l + 2.6097574011*m - 0.3413193965*s),
+    clamp(-0.0041960863*l - 0.7034186147*m + 1.7076147010*s),
+  ];
+}
+const lum = (L,C,H) => { const [r,g,b]=oklchToLin(L,C,H); return 0.2126*r + 0.7152*g + 0.0722*b; };
+function ratio(c1, c2) { const a=lum(...c1), b=lum(...c2); const hi=Math.max(a,b), lo=Math.min(a,b); return (hi+0.05)/(lo+0.05); }
+
+function render() {
+  const hue = +$("hue").value, chr = +$("chr").value, tint = +$("tint").value, con = +$("con").value;
+  $("vHue").textContent = hue + "°";
+  $("vChr").textContent = chr.toFixed(3);
+  $("vTint").textContent = tint.toFixed(3);
+  $("vCon").textContent = con.toFixed(2);
+
+  const seed = { N: { C: tint, H: hue }, A: { C: chr, H: hue } };
+  const specs = roleSpecs(polarity);
+
+  // Derive every role's actual color from (seed, tone).
+  const colorOf = {};      // role → [L,C,H]
+  for (const [role, [which, t]] of Object.entries(specs)) {
+    const s = seed[which];
+    // taper chroma toward the extremes so very light/dark tones don't oversaturate
+    const L = toneL(t, con);
+    const Ceff = s.C * (1 - 0.55 * Math.abs(L - 0.55) * 1.6);
+    colorOf[role] = [L, Math.max(0, Ceff), s.H];
+  }
+
+  // Push the roles onto the preview as CSS variables — the card reads ONLY these.
+  const stage = $("stage");
+  for (const [role, lch] of Object.entries(colorOf)) stage.style.setProperty("--" + role, oklch(...lch));
+
+  // Swatches
+  $("roles").innerHTML = Object.entries(colorOf).map(([role, lch]) =>
+    `<div class="role"><span class="chip" style="background:${oklch(...lch)}"></span>
+       <span><span class="nm">${role}</span><br><span class="vl">${oklch(...lch)}</span></span></div>`).join("");
+
+  // Contrast — proof that the tone ladder keeps text legible as you drag.
+  const mk = (label, c1, c2) => {
+    const r = ratio(c1, c2);
+    const cls = r >= 4.5 ? "ok" : r >= 3 ? "warn" : "bad";
+    const tag = r >= 4.5 ? "AA ✓" : r >= 3 ? "AA-large" : "fails";
+    return `<span class="badge">${label} <b class="${cls}">${r.toFixed(1)}:1 · ${tag}</b></span>`;
+  };
+  $("contrast").innerHTML =
+    mk("text / surface", colorOf.text, colorOf.surface) +
+    mk("onPrimary / primary", colorOf.onPrimary, colorOf.primary);
+}
+
+["hue","chr","tint","con"].forEach(id => $(id).addEventListener("input", render));
+$("pol").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  polarity = b.dataset.p;
+  [...$("pol").children].forEach(x => x.classList.toggle("on", x === b));
+  render();
+});
+render();
+</script>
+</body>
+</html>
