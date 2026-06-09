@@ -1,5 +1,6 @@
 import type { Span } from "./span.js";
 import type { Type } from "./types.js";
+import type { Edition } from "./edition.js";
 
 // Every node carries a span and (after inference) a resolved type.
 interface Node {
@@ -269,4 +270,8 @@ export interface SagaStep {
 export interface Module {
   source: string;
   decls: Decl[];
+  // The resolved language edition (SPEC §17). Set by the lowerer from the
+  // `@edition` pragma, or DEFAULT_EDITION when absent. lower/infer/eval gate
+  // edition-specific semantics on this.
+  edition: Edition;
 }

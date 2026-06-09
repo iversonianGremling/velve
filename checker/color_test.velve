@@ -5,24 +5,24 @@ import { oklch, hex, complement, triad, lighten, mix, cusp, contrast, legibleOn,
 
 def main(): Unit
   let brand = oklch(0.55, 0.17, 262)            -- a blue
-  print(("brand    {css((brand))}  {toHex((brand))}"))
-  print(("comp     {toHex((complement((brand))))}"))  -- opposite hue
-  print(("lighter  {toHex((lighten(brand, 0.15)))}"))
+  print("brand    {css(brand)}  {toHex(brand)}")
+  print("comp     {toHex(complement(brand))}")  -- opposite hue
+  print("lighter  {toHex(lighten(brand, 0.15))}")
 
   -- perceptual blend (OKLab midpoint, no muddy grey)
   let blended = mix(brand, oklch(0.75, 0.16, 130), 0.5)
-  print(("mix      {toHex((blended))}"))
+  print("mix      {toHex(blended)}")
 
   -- gamut cusp: lime seated at its most-saturated lightness (bright, not olive)
-  let lime = cusp((oklch(0.5, 0.1, 125)))
-  print(("lime cusp  l={lime.l}  {toHex((lime))}"))
+  let lime = cusp(oklch(0.5, 0.1, 125))
+  print("lime cusp  l={lime.l}  {toHex(lime)}")
 
   -- APCA legibility: pick the readable text colour for the button, measure it
-  let ink = legibleOn((brand))
-  print(("on brand   {toHex((ink))}  (APCA Lc {contrast(ink, brand)})"))
+  let ink = legibleOn(brand)
+  print("on brand   {toHex(ink)}  (APCA Lc {contrast(ink, brand)})")
 
   -- harmony as a list; pipe form too
-  let t = triad((brand))
-  print(("triad      {length((t))} colours"))
+  let t = triad(brand)
+  print("triad      {length(t)} colours")
   let warm = brand |> complement |> toHex
-  print(("pipe       {warm}"))
+  print("pipe       {warm}")

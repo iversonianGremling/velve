@@ -93,7 +93,7 @@ def sortBtn(label: String, key: Atom): Element
 -- ── View ──────────────────────────────────────────────────────────────────────
 
 def reportList(rs: List(Report)): Element
-  visible = filtered((sorted(rs, Reports).activeSort), Reports).activeFilter
+  visible = filtered(sorted(rs, Reports).activeSort, Reports).activeFilter
   Column gap=8
     for (r = %visible) -> reportRow r
 

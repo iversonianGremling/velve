@@ -1,0 +1,17 @@
+@edition "2026.6"
+
+-- Edition 2026.6 record literals use the `#{ … }` opener. This makes them
+-- unambiguous from `{ … }` blocks (no more comma-`:` vs semicolon-`=` disambiguation)
+-- and visually distinct from named-arg calls (`f(x=1)` with `=` vs `#{ x: 1 }` with
+-- `:`). Record *types* keep bare `{ … }` (unambiguous in type position).
+
+type Point = { x: Number, y: Number }
+
+def origin(): Point -> #{ x: 0, y: 0 }
+
+def shift(p: Point, dx: Number): Point -> #{ ...p, x: p.x + dx }
+
+def main(): Unit
+  o = origin()
+  moved = shift(o, 5)
+  print(moved.x)

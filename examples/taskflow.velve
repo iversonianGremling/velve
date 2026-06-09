@@ -173,7 +173,7 @@ def clampProgress(n: Number): Number
 -- ──────────────────────────────────────────────────────────────────────────
 
 def makeSorters(): List
-  byRank = fn a -> priorityRank((a.priority))
+  byRank = fn a -> priorityRank(a.priority)
   sentinel = fn _ -> 0
   noop = fn -> 0
   classify = fn
@@ -183,7 +183,7 @@ def makeSorters(): List
   [byRank, sentinel, noop, classify]
 
 def applyTransform(items: List): List
-  process(items, (fn x -> x))
+  process(items, fn x -> x)
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- Pattern matching
@@ -340,7 +340,7 @@ def taskRow(task: Task): Element
   done = isComplete(task)
   Row gap=4 background={color}
   Text label
-  Button onClick -> send Tasks (Complete((task.id))) label="Done" disabled={done}
+  Button onClick -> send Tasks (Complete(task.id)) label="Done" disabled={done}
 
 -- Column whose only child is an expression block: { tasks }
 def taskListView(tasks: List): Element

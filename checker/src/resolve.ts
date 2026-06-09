@@ -439,8 +439,10 @@ const BUILTINS = new Set([
   "Ok", "Error", "Some", "None",
   // Async(a) loading-state constructors (§2.10) — `Error` shared with Result above
   "Before", "During", "After",
-  // TxResult (transaction-outcome) constructors
-  "Conflict", "Timeout", "Cancelled",
+  // Transaction-outcome constructors. `Conflict`/`Timeout`/`Cancelled` are stable;
+  // `Committed`/`Aborted` are the 2026.6 commit/abort ctors (2026.1 reuses Ok/Error
+  // from Result above). All registered unconditionally — they only resolve as names.
+  "Conflict", "Timeout", "Cancelled", "Committed", "Aborted",
   // Layout `Length` constructors + off-scale escape + fluid band
   "Px", "Fr", "Pct", "Fit", "Fill", "raw", "Clamp",
   // Layout `Breakpoint` (closed responsive variant) + read-only viewport root

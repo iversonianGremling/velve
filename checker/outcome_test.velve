@@ -1,0 +1,39 @@
+@edition "2026.6"
+
+-- Edition 2026.6 renames the transaction-outcome ADT: `TxResult`→`Outcome`, and
+-- its commit/abort constructors `Ok`/`Error`→`Committed`/`Aborted` (the concurrency
+-- ctors `Conflict`/`Timeout`/`Cancelled` are unchanged). Unlike the 2026.1 names,
+-- `Committed`/`Aborted` do NOT collide with Result's `Ok`/`Error` — there is no
+-- constructor-sharing to disambiguate; the match below resolves purely by name.
+
+store Bank
+  state
+    a : Number = 100
+    b : Number = 0
+
+  messages
+    SetA (n: Number) ->
+      #{ a: n }
+
+  pub
+    balA = a
+
+def withdraw(bal: Number, amt: Number): Result Number String
+  if bal >= amt
+    Ok(bal - amt)
+  else
+    Error("insufficient funds")
+
+def transfer(amt: Number): Outcome(Number)
+  transaction
+    left = withdraw(Bank.balA, amt)?
+    send Bank (SetA(left))
+    amt
+
+def main(): Unit
+  transfer(30) |> match
+    | Committed n -> print("  outcome: Committed {n}")
+    | Aborted e   -> print("  outcome: Aborted {e}")
+    | Conflict c  -> print("  outcome: Conflict retries={c.retries}")
+    | Timeout t   -> print("  outcome: Timeout after={t.after}")
+    | Cancelled   -> print("  outcome: Cancelled")

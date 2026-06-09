@@ -15,7 +15,7 @@ store Bank
 
 def withdraw(bal: Number, amt: Number): Result Number String
   if bal >= amt
-    Ok((bal - amt))
+    Ok(bal - amt)
   else
     Error("insufficient funds")
 
@@ -26,7 +26,7 @@ def transfer(amt: Number): TxResult(Number)
   transaction
     left = withdraw(Bank.balA, amt)?
     send Bank (SetA(left))
-    send Bank (SetB((Bank.balB + amt)))
+    send Bank (SetB(Bank.balB + amt))
     amt
 
 def retryDemo(): TxResult(Number)
@@ -35,31 +35,31 @@ def retryDemo(): TxResult(Number)
     x
 
 def report(label: String): Unit
-  print(("{label}: A={Bank.balA} B={Bank.balB}"))
+  print("{label}: A={Bank.balA} B={Bank.balB}")
 
 def main(): Unit
-  print(("commit: transfer 30 of 100"))
-  transfer((30)) |> match
-    | Ok n       -> print(("  outcome: Ok {n}"))
-    | Error e    -> print(("  outcome: Error {e}"))
-    | Conflict c -> print(("  outcome: Conflict retries={c.retries}"))
-    | Timeout t  -> print(("  outcome: Timeout after={t.after}"))
-    | Cancelled  -> print(("  outcome: Cancelled"))
-  report(("after commit"))
+  print("commit: transfer 30 of 100")
+  transfer(30) |> match
+    | Ok n       -> print("  outcome: Ok {n}")
+    | Error e    -> print("  outcome: Error {e}")
+    | Conflict c -> print("  outcome: Conflict retries={c.retries}")
+    | Timeout t  -> print("  outcome: Timeout after={t.after}")
+    | Cancelled  -> print("  outcome: Cancelled")
+  report("after commit")
 
-  print(("rollback: transfer 9999 insufficient"))
-  transfer((9999)) |> match
-    | Ok n       -> print(("  outcome: Ok {n}"))
-    | Error e    -> print(("  outcome: Error {e}"))
-    | Conflict c -> print(("  outcome: Conflict retries={c.retries}"))
-    | Timeout t  -> print(("  outcome: Timeout after={t.after}"))
-    | Cancelled  -> print(("  outcome: Cancelled"))
-  report(("after rollback"))
+  print("rollback: transfer 9999 insufficient")
+  transfer(9999) |> match
+    | Ok n       -> print("  outcome: Ok {n}")
+    | Error e    -> print("  outcome: Error {e}")
+    | Conflict c -> print("  outcome: Conflict retries={c.retries}")
+    | Timeout t  -> print("  outcome: Timeout after={t.after}")
+    | Cancelled  -> print("  outcome: Cancelled")
+  report("after rollback")
 
-  print(("retry: configured txn that always fails"))
+  print("retry: configured txn that always fails")
   retryDemo() |> match
-    | Ok n       -> print(("  outcome: Ok {n}"))
-    | Error e    -> print(("  outcome: Error {e}"))
-    | Conflict c -> print(("  outcome: Conflict retries={c.retries}"))
-    | Timeout t  -> print(("  outcome: Timeout after={t.after}"))
-    | Cancelled  -> print(("  outcome: Cancelled"))
+    | Ok n       -> print("  outcome: Ok {n}")
+    | Error e    -> print("  outcome: Error {e}")
+    | Conflict c -> print("  outcome: Conflict retries={c.retries}")
+    | Timeout t  -> print("  outcome: Timeout after={t.after}")
+    | Cancelled  -> print("  outcome: Cancelled")

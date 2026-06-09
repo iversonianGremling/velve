@@ -149,7 +149,7 @@ module particleSystem
   -- ── Audio loop ─────────────────────────────────────────────────────────
 
   def audioLoop(): Number
-    Simulation.emitters |> map((fn emitter -> send Simulation (UpdateEmitter((emitter.id), emitter))))
+    Simulation.emitters |> map(fn emitter -> send Simulation (UpdateEmitter(emitter.id, emitter)))
 
   -- ── View ───────────────────────────────────────────────────────────────
 
@@ -166,14 +166,14 @@ module particleSystem
       Button size=sm onClick -> send UI ToggleStats label="Stats"
 
   def emitterCard(emitter: Emitter): Element
-    Card padding=12 radius=6 background=#0d1117 onClick -> send UI (SelectEmitter((emitter.id)))
+    Card padding=12 radius=6 background=#0d1117 onClick -> send UI (SelectEmitter(emitter.id))
       Row gap=6 alignCenter
         Text label="{emitter.id}" size=12 color=#ffffff
-        Button size=xs onClick -> send Simulation (RemoveEmitter((emitter.id))) label="✕"
+        Button size=xs onClick -> send Simulation (RemoveEmitter(emitter.id)) label="✕"
 
   def emitterList(): Element
     Column gap=8
-      { Simulation.emitters |> map((fn e -> emitterCard(e))) }
+      { Simulation.emitters |> map(fn e -> emitterCard(e)) }
 
   def forceCard(force: ForceField, i: Number): Element
     label = match force.kind

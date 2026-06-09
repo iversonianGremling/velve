@@ -7,4 +7,4 @@ def view(): Element
     Box padding=16                 -- padding is context-free, OK on a block
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

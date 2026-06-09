@@ -7,4 +7,4 @@ def view(): Element
     Text "Hug"   width=Fit
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

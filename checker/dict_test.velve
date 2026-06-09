@@ -13,24 +13,24 @@ def big(n: Number): Bool
 def main(): Unit
   -- build a dict via named imports
   let d = set(set(set(empty(), "a", 1), "b", 2), "c", 3)
-  print(("size: {size((d))}"))
-  print(("has b: {has(d, "b")}"))
-  print(("getOr z (default 99): {getOr(d, "z", 99)}"))
+  print("size: {size(d)}")
+  print("has b: {has(d, "b")}")
+  print("getOr z (default 99): {getOr(d, "z", 99)}")
 
   get(d, "b") |> match
-    | Some v -> print(("get b: {v}"))
-    | None   -> print(("b missing"))
+    | Some v -> print("get b: {v}")
+    | None   -> print("b missing")
 
   let d2 = delete(d, "a")
-  print(("after delete a: size {size((d2))}, keys {length((keys((d2))))}"))
+  print("after delete a: size {size(d2)}, keys {length(keys(d2))}")
 
   -- HOFs via namespace form (function-call lambda bodies)
-  let doubled = Dict.map(d, (fn x -> double((x))))
-  print(("doubled b: {Dict.getOr(doubled, "b", 0)}"))
-  let bigs = Dict.filter(d, (fn x -> big((x))))
-  print(("entries with value >= 2: {Dict.size((bigs))}"))
+  let doubled = Dict.map(d, fn x -> double(x))
+  print("doubled b: {Dict.getOr(doubled, "b", 0)}")
+  let bigs = Dict.filter(d, fn x -> big(x))
+  print("entries with value >= 2: {Dict.size(bigs)}")
 
   -- fromList / merge
-  let fromL = fromList(([("x", 10), ("y", 20)]))
+  let fromL = fromList([("x", 10), ("y", 20)])
   let merged = Dict.merge(d, fromL)
-  print(("merged size: {size((merged))}"))
+  print("merged size: {size(merged)}")

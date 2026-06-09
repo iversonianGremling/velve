@@ -8,4 +8,4 @@ def view(): Element
     Row gap=8                                 -- empty container → ⚠
 
 def main(): Unit
-  print((uiModel((view()))))
+  print(uiModel(view()))

@@ -6,4 +6,4 @@ def view(): Element
     Text "x" size=15               -- off the TypeScale → 1 error
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

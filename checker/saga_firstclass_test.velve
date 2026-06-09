@@ -22,23 +22,23 @@ machine Greet(name: String): String persisted over GreetState
 
 -- 1. Synchronous run to completion
 def testDirect(): String
-  Greet(("alice"))
+  Greet("alice")
 
 -- 2. Spawn and await
 def testGoAwait(): String
-  let h = go Greet(("bob"))
+  let h = go Greet("bob")
   await h
 
 -- 3. Alias — `let s = Greet` gives s the SagaFn type; `go s(..)` should resolve
 -- to `Saga String` not `Async String`.
 def testAlias(): String
   let s = Greet
-  let h = go s(("carol"))
+  let h = go s("carol")
   await h
 
 -- 4. Type annotation with the saga name: `Greet` as a type = handle for this saga
 def testAnnotation(): String
-  let h: Greet = go Greet(("dave"))
+  let h: Greet = go Greet("dave")
   await h
 
 def main(): String
@@ -46,8 +46,8 @@ def main(): String
   let r2 = testGoAwait()
   let r3 = testAlias()
   let r4 = testAnnotation()
-  print((r1))
-  print((r2))
-  print((r3))
-  print((r4))
+  print(r1)
+  print(r2)
+  print(r3)
+  print(r4)
   "done"

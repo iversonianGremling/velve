@@ -6,6 +6,7 @@ import type {
   Expr, Stmt, Pat, TypeRef, Decl, Module, FnClause, FnSig,
   Param, Branch, Prop, NamedArg, Lit, TypeBody, AdtVariant,
 } from "./ast.js";
+import { type Edition, DEFAULT_EDITION, EDITIONS, parseEdition, atLeast } from "./edition.js";
 
 type N = SyntaxNode;
 
@@ -32,7 +33,7 @@ const STMT_KINDS = new Set([
 
 const EXPR_KINDS = new Set([
   "literal", "identifier_expr", "unary_expr", "binary_expr", "pipe_expr",
-  "ternary_expr", "field_access", "optional_chain", "array_index",
+  "ternary_expr", "if_then_expr", "field_access", "optional_chain", "array_index",
   "deref_expr", "addr_of_expr", "propagate_expr", "range_expr",
   "if_pattern_expr", "type_test", "record_literal", "record_spread",
   "list_literal", "for_expr", "for_child", "match_expr", "responsive_expr", "if_expr", "call",
@@ -93,6 +94,10 @@ export class Lowerer {
   // the resolve/infer/exhaust/borrow diagnostics.
   readonly diagnostics: Diagnostic[] = [];
 
+  // The module's resolved edition, set at the top of `lower()`. Edition-gated
+  // surface deprecations (e.g. the ternary → if/then/else migration) read it.
+  private edition: Edition = DEFAULT_EDITION;
+
   constructor(private readonly file: string) {}
 
   private sp(n: N): Span { return spanFrom(n, this.file); }
@@ -105,7 +110,26 @@ export class Lowerer {
 
   lower(tree: Tree): Module {
     const named = tree.rootNode.namedChildren.filter(c => c.type !== "comment");
-    return { source: this.file, decls: this.lowerDeclList(named) };
+    const edition = this.lowerEdition(named.find(c => c.type === "edition_pragma") ?? null);
+    this.edition = edition;
+    const decls = this.lowerDeclList(named.filter(c => c.type !== "edition_pragma"));
+    return { source: this.file, decls, edition };
+  }
+
+  // Resolve the module's `@edition` pragma (or DEFAULT_EDITION when absent). An
+  // unrecognized edition name is a diagnostic; we fall back to the default so the
+  // rest of the pipeline still runs.
+  private lowerEdition(n: N | null): Edition {
+    if (!n) return DEFAULT_EDITION;
+    const raw = (n.childForFieldName("name")?.text ?? "").replace(/^"|"$/g, "");
+    const ed = parseEdition(raw);
+    if (ed) return ed;
+    this.diagnostics.push({
+      kind: "error",
+      message: `unknown edition "${raw}" — known editions: ${EDITIONS.join(", ")}`,
+      span: this.sp(n),
+    });
+    return DEFAULT_EDITION;
   }
 
   // Shared logic for lowering any list of declaration nodes — used by both
@@ -881,6 +905,22 @@ export class Lowerer {
       case "pipe_expr": return this.lowerPipe(n, span);
 
       case "ternary_expr": {
+        // The ternary `cond ? a : b` is DEPRECATED in favour of `if c then a else b`
+        // (if_then_expr). It is still lowered to the same `If` node, but flagged:
+        // a warning in the baseline edition, an error in 2026.6+ (SPEC §17 lifecycle).
+        const deprecated = atLeast(this.edition, "2026.6");
+        this.diagnostics.push({
+          kind: deprecated ? "error" : "warning",
+          message: deprecated
+            ? "the `cond ? a : b` ternary is removed in edition 2026.6 — use `if c then a else b`"
+            : "the `cond ? a : b` ternary is deprecated — use `if c then a else b` (rejected from edition 2026.6)",
+          span,
+        });
+        const [cond, then_, else_] = n.namedChildren;
+        return { tag: "If", cond: cond ? this.lowerExpr(cond) : this.err(span), then: then_ ? this.lowerExpr(then_) : this.err(span), else_: else_ ? this.lowerExpr(else_) : null, span };
+      }
+
+      case "if_then_expr": {
         const [cond, then_, else_] = n.namedChildren;
         return { tag: "If", cond: cond ? this.lowerExpr(cond) : this.err(span), then: then_ ? this.lowerExpr(then_) : this.err(span), else_: else_ ? this.lowerExpr(else_) : null, span };
       }
@@ -919,11 +959,13 @@ export class Lowerer {
         return { tag: "Range", from: from ? this.lowerExpr(from) : this.err(span), to: to ? this.lowerExpr(to) : this.err(span), inclusive: n.children.some(c => c.text === "..="), span };
       }
       case "record_literal": {
+        this.checkRecordOpener(n);
         const fields = n.namedChildren.filter(c => c.type === "record_field").map(f => ({ name: f.namedChildren[0]!.text, value: this.lowerExpr(f.namedChildren[1]!) }));
         return { tag: "Record", fields, span };
       }
       case "record_spread": {
-        // { ...base, k: v } — base record's fields, overridden by explicit fields.
+        // #{ ...base, k: v } — base record's fields, overridden by explicit fields.
+        this.checkRecordOpener(n);
         const baseNode = n.namedChildren.find(c => c.type !== "record_field");
         const fields = n.namedChildren.filter(c => c.type === "record_field").map(f => ({ name: f.namedChildren[0]!.text, value: this.lowerExpr(f.namedChildren[1]!) }));
         return baseNode
@@ -1223,10 +1265,42 @@ export class Lowerer {
     };
   }
 
+  // A record literal/spread opened with a bare `{` (not `#{`) is the legacy form,
+  // deprecated in favour of `#{ … }` so records never collide with `{ … }` blocks.
+  // Warn in 2026.1, error in 2026.6 (SPEC §17 lifecycle).
+  private checkRecordOpener(n: N): void {
+    if (n.children[0]?.text !== "{") return;   // already `#{` — canonical
+    const deprecated = atLeast(this.edition, "2026.6");
+    this.diagnostics.push({
+      kind: deprecated ? "error" : "warning",
+      message: deprecated
+        ? "bare `{ … }` record literals are removed in edition 2026.6 — use `#{ … }`"
+        : "bare `{ … }` record literals are deprecated — use `#{ … }` (rejected from edition 2026.6)",
+      span: this.sp(n),
+    });
+  }
+
   private lowerForGen(gen: N, span: Span): import("./ast.js").ForClause {
     const binding = gen.namedChildren.find(c => c.type === "lower_id")?.text ?? "_";
     const src = gen.namedChildren.find(c => c.type === "for_source");
-    const iterNode = src?.namedChildren[0];
+    let iterNode: N | undefined;
+    if (src) {
+      // Legacy `x = source` form (optionally `%source`). Deprecated → use `x in iter`.
+      const hasPercent = src.children.some(c => !c.isNamed && c.text === "%");
+      const deprecated = atLeast(this.edition, "2026.6");
+      const what = hasPercent ? "the `%` iteration sigil and `for (x = …)`" : "`for (x = …)`";
+      this.diagnostics.push({
+        kind: deprecated ? "error" : "warning",
+        message: deprecated
+          ? `${what} is removed in edition 2026.6 — use \`for (x in iter)\``
+          : `${what} is deprecated — use \`for (x in iter)\` (rejected from edition 2026.6)`,
+        span: this.sp(gen),
+      });
+      iterNode = src.namedChildren[0];
+    } else {
+      // New `x in iter` form: the iterable is the generator's non-binding child.
+      iterNode = gen.namedChildren.find(c => c.type !== "lower_id");
+    }
     return {
       tag: "Gen",
       binding: { tag: "PVar", name: binding, span },

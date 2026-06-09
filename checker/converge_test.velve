@@ -3,7 +3,7 @@
 -- (element, prop) references form no cycle. Resolved in topological order.
 
 def view(): Element
-  Column gap=16 padding=24 height=(sum((children.height))) background=#0d1117
+  Column gap=16 padding=24 height=(sum(children.height)) background=#0d1117
     -- self: radius derived from this element's own padding
     Box height=40 padding=20 radius=(self.padding / 2) background=#1e2130
     -- parent: width from the containing Column's padding
@@ -13,4 +13,4 @@ def view(): Element
     Box height=20 width=(prev.width) background=#22272e
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

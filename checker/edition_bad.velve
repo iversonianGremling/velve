@@ -1,0 +1,7 @@
+-- An unrecognized edition name is a checker error (not a parse error): the pragma
+-- still parses, but the lowerer rejects the unknown edition and falls back to the
+-- default so the rest of the pipeline keeps running.
+@edition "1999.0"
+
+def main(): Unit
+  print("unreachable edition")

@@ -14,7 +14,7 @@ type SortError = String
 
 def sortTasks(tasks: List(a)): Result List(a) SortError
   where a: Comparable
-  tasks.length == 0 ? Error("empty list") : Ok((tasks |> sortBy(identity)))
+  tasks.length == 0 ? Error("empty list") : Ok(tasks |> sortBy(identity))
 
 -- ── RUST: Lifetime-bounded buffer slice ───────────────────────────────────
 --
@@ -154,7 +154,7 @@ def evens(): List
 def upperTriangle(n: Number): List
   for (i = 0..n, j = i..n) -> { a: i, b: j }
 
-def activeGridCells(grid: List(List((String))), rows: Number, cols: Number): List
+def activeGridCells(grid: List(List(String)), rows: Number, cols: Number): List
   for (i = 0..rows, j = 0..cols, grid[i][j] == "#") -> { row: i, col: j }
 
 -- ── Multi-pattern + as-binding ────────────────────────────────────────────

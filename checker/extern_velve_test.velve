@@ -5,11 +5,11 @@ def collect(s: Stream(Number), acc: List(Number)): List(Number)
     | Done -> acc
 
 def wire(push, done): Unit
-  push((10))
-  push((20))
-  push((30))
+  push(10)
+  push(20)
+  push(30)
   done()
 
 def main(): Unit
-  let r = collect(externSource((wire)), [])
-  print(("received {r}  count {length((r))}"))
+  let r = collect(externSource(wire), [])
+  print("received {r}  count {length(r)}")

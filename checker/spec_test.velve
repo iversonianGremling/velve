@@ -3,12 +3,12 @@
 -- Primitives (2.1)
 
 def testPrimitives(): Unit
-  print(("== primitives =="))
+  print("== primitives ==")
   let n = 42
   let s = "hello"
   let b = true
   let a = :ok
-  print(("n={n}, s={s}, b={b}, a={a}"))
+  print("n={n}, s={s}, b={b}, a={a}")
 
 -- ADTs (2.3)
 
@@ -24,10 +24,10 @@ def area(shape: Shape): Number
     | Point    -> 0
 
 def testAdt(): Unit
-  print(("== ADTs =="))
-  print(("circle(5)={area((Circle((5))))}"))
-  print(("rect(4)={area((Rect((4))))}"))
-  print(("point={area((Point))}"))
+  print("== ADTs ==")
+  print("circle(5)={area(Circle(5))}")
+  print("rect(4)={area(Rect(4))}")
+  print("point={area(Point)}")
 
 -- Atoms (2.4)
 
@@ -39,36 +39,36 @@ def describeAtom(s: Atom): String
     | _        -> "unknown"
 
 def testAtoms(): Unit
-  print(("== atoms =="))
-  print((":ok => {describeAtom((:ok))}"))
-  print((":error => {describeAtom((:error))}"))
-  print((":pending => {describeAtom((:pending))}"))
+  print("== atoms ==")
+  print(":ok => {describeAtom(:ok)}")
+  print(":error => {describeAtom(:error)}")
+  print(":pending => {describeAtom(:pending)}")
 
 -- Tuples
 
 def testTuples(): Unit
-  print(("== tuples =="))
+  print("== tuples ==")
   let p = (3, 7)
   let q = ("hello", 42, true)
-  print(("pair={p}"))
-  print(("triple={q}"))
+  print("pair={p}")
+  print("triple={q}")
 
 -- Result type (2.2)
 
 def safeDivide(a: Number, b: Number): Result Number String
   if b == 0
-    Error(("division by zero"))
+    Error("division by zero")
   else
-    Ok((a / b))
+    Ok(a / b)
 
 def testResult(): Unit
-  print(("== Result =="))
+  print("== Result ==")
   match safeDivide(10, 2)
-    | Ok n    -> print(("10 / 2 = {n}"))
-    | Error e -> print(("error: {e}"))
+    | Ok n    -> print("10 / 2 = {n}")
+    | Error e -> print("error: {e}")
   match safeDivide(10, 0)
-    | Ok n    -> print(("10 / 0 = {n}"))
-    | Error e -> print(("error: {e}"))
+    | Ok n    -> print("10 / 0 = {n}")
+    | Error e -> print("error: {e}")
 
 -- Multi-clause functions (3.4)
 
@@ -77,10 +77,10 @@ def describe(:rect, w: Number): String -> "rect side={w}"
 def describe(:point): String -> "just a point"
 
 def testMultiClause(): Unit
-  print(("== multi-clause =="))
-  print((describe(:circle, 5)))
-  print((describe(:rect, 4)))
-  print((describe((:point))))
+  print("== multi-clause ==")
+  print(describe(:circle, 5))
+  print(describe(:rect, 4))
+  print(describe(:point))
 
 -- Guards (3.5)
 
@@ -91,21 +91,21 @@ def classify(n: Number): String
     | _          -> "negative"
 
 def testGuards(): Unit
-  print(("== guards =="))
-  print(("5 is {classify((5))}"))
-  print(("0 is {classify((0))}"))
-  print(("-3 is {classify((-3))}"))
+  print("== guards ==")
+  print("5 is {classify(5)}")
+  print("0 is {classify(0)}")
+  print("-3 is {classify(-3)}")
 
 -- Lambdas (3.6)
 
-def applyTwice(f, x): Number -> f((f((x))))
+def applyTwice(f, x): Number -> f(f(x))
 
 def testLambdas(): Unit
-  print(("== lambdas =="))
+  print("== lambdas ==")
   let inc    = fn x -> (x + 1)
   let double = fn x -> (x * 2)
-  print(("applyTwice(inc, 3) = {applyTwice(inc, 3)}"))
-  print(("applyTwice(double, 3) = {applyTwice(double, 3)}"))
+  print("applyTwice(inc, 3) = {applyTwice(inc, 3)}")
+  print("applyTwice(double, 3) = {applyTwice(double, 3)}")
 
 -- Pipes (3.7)
 
@@ -114,59 +114,59 @@ def tripled(x: Number): Number -> x * 3
 def squared(x: Number): Number -> x * x
 
 def testPipes(): Unit
-  print(("== pipes =="))
+  print("== pipes ==")
   let result = 3 |> addOne |> tripled |> squared
-  print(("3 |> addOne |> tripled |> squared = {result}"))
+  print("3 |> addOne |> tripled |> squared = {result}")
 
 -- For / list comprehensions (3.8)
 
 def testFor(): Unit
-  print(("== for =="))
+  print("== for ==")
   let squares = for (i = 1..6) -> (i * i)
-  print(("squares 1..5 = {squares}"))
+  print("squares 1..5 = {squares}")
   let nums = for (i = 1..11) -> i
   let isEven = fn x -> ((x % 2) == 0)
-  print(("evens 1..10 = {filter(isEven, nums)}"))
+  print("evens 1..10 = {filter(isEven, nums)}")
 
 -- Do blocks (3.9)
 
 def testDo(): Unit
-  print(("== do blocks =="))
+  print("== do blocks ==")
   let x = 10
   let y = x + 5
   let z = y * 2
-  print(("x={x}, y={y}, z={z}"))
+  print("x={x}, y={y}, z={z}")
 
 -- Error propagation (3.11)
 
 def step1(x: Number): Result Number String
   if x > 0
-    Ok((x * 2))
+    Ok(x * 2)
   else
-    Error(("non-positive: {x}"))
+    Error("non-positive: {x}")
 
 def step2(x: Number): Result Number String
   if x < 100
-    Ok((x + 1))
+    Ok(x + 1)
   else
-    Error(("too large: {x}"))
+    Error("too large: {x}")
 
 def pipeline(x: Number): Result Number String
-  let a = step1((x))?
-  let b = step2((a))?
-  Ok((b))
+  let a = step1(x)?
+  let b = step2(a)?
+  Ok(b)
 
 def testPropagation(): Unit
-  print(("== error propagation =="))
-  match pipeline((5))
-    | Ok n    -> print(("pipeline(5) = {n}"))
-    | Error e -> print(("pipeline(5) failed: {e}"))
-  match pipeline((-1))
-    | Ok n    -> print(("pipeline(-1) = {n}"))
-    | Error e -> print(("pipeline(-1) failed: {e}"))
-  match pipeline((60))
-    | Ok n    -> print(("pipeline(60) = {n}"))
-    | Error e -> print(("pipeline(60) failed: {e}"))
+  print("== error propagation ==")
+  match pipeline(5)
+    | Ok n    -> print("pipeline(5) = {n}")
+    | Error e -> print("pipeline(5) failed: {e}")
+  match pipeline(-1)
+    | Ok n    -> print("pipeline(-1) = {n}")
+    | Error e -> print("pipeline(-1) failed: {e}")
+  match pipeline(60)
+    | Ok n    -> print("pipeline(60) = {n}")
+    | Error e -> print("pipeline(60) failed: {e}")
 
 -- List operations
 
@@ -175,44 +175,44 @@ def isPos(n: Number): Bool -> n > 0
 def dbl(x: Number): Number -> x * 2
 
 def testListOps(): Unit
-  print(("== list ops =="))
+  print("== list ops ==")
   let nums = [1, -2, 3, -4, 5]
-  print(("nums = {nums}"))
-  print(("positives = {filter(isPos, nums)}"))
-  print(("doubled = {map(dbl, nums)}"))
-  print(("sum = {foldl(sumTwo, 0, nums)}"))
-  print(("length = {length((nums))}"))
-  print(("reversed = {reverse((nums))}"))
-  print(("head = {head((nums))}"))
-  print(("tail = {tail((nums))}"))
-  print(("zip = {zip([1, 2, 3], [4, 5, 6])}"))
+  print("nums = {nums}")
+  print("positives = {filter(isPos, nums)}")
+  print("doubled = {map(dbl, nums)}")
+  print("sum = {foldl(sumTwo, 0, nums)}")
+  print("length = {length(nums)}")
+  print("reversed = {reverse(nums)}")
+  print("head = {head(nums)}")
+  print("tail = {tail(nums)}")
+  print("zip = {zip([1, 2, 3], [4, 5, 6])}")
 
 -- Strings
 
 def testStrings(): Unit
-  print(("== strings =="))
+  print("== strings ==")
   let s = "Hello, world!"
   let w = "world"
   let sep = " / "
-  print(("upper = {toUpperCase((s))}"))
-  print(("lower = {toLowerCase((s))}"))
-  print(("length = {length((s))}"))
-  print(("contains world = {contains(s, w)}"))
+  print("upper = {toUpperCase(s)}")
+  print("lower = {toLowerCase(s)}")
+  print("length = {length(s)}")
+  print("contains world = {contains(s, w)}")
   let parts = split(s, ", ")
-  print(("split = {parts}"))
-  print(("join = {join(parts, sep)}"))
+  print("split = {parts}")
+  print("join = {join(parts, sep)}")
   let c = "foo" ++ "bar" ++ "baz"
-  print(("concat = {c}"))
+  print("concat = {c}")
 
 -- Multiline strings
 
 def testMultiline(): Unit
-  print(("== multiline strings =="))
+  print("== multiline strings ==")
   let poem = """Roses are red,
 Violets are blue,
 Velve is typed,
 And fast too."""
-    print((poem))
+    print(poem)
 
 -- Recursion
 
@@ -220,17 +220,17 @@ def fibonacci(n: Number): Number
   match n
     | 0 -> 0
     | 1 -> 1
-    | n -> fibonacci((n - 1)) + fibonacci((n - 2))
+    | n -> fibonacci(n - 1) + fibonacci(n - 2)
 
 def factorial(n: Number): Number
   match n
     | 0 -> 1
-    | n -> n * factorial((n - 1))
+    | n -> n * factorial(n - 1)
 
 def testRecursion(): Unit
-  print(("== recursion =="))
-  print(("fibonacci(10) = {fibonacci((10))}"))
-  print(("factorial(10) = {factorial((10))}"))
+  print("== recursion ==")
+  print("fibonacci(10) = {fibonacci(10)}")
+  print("factorial(10) = {factorial(10)}")
 
 -- If / else
 
@@ -247,19 +247,19 @@ def myMax(a: Number, b: Number): Number
     b
 
 def testIf(): Unit
-  print(("== if/else =="))
-  print(("abs(-7) = {myAbs((-7))}"))
-  print(("abs(3) = {myAbs((3))}"))
-  print(("max(4, 9) = {myMax(4, 9)}"))
+  print("== if/else ==")
+  print("abs(-7) = {myAbs(-7)}")
+  print("abs(3) = {myAbs(3)}")
+  print("max(4, 9) = {myMax(4, 9)}")
 
 -- Ranges
 
 def testRange(): Unit
-  print(("== ranges =="))
+  print("== ranges ==")
   let r1 = for (i = 1..=5) -> i
-  print(("1..=5 = {r1}"))
+  print("1..=5 = {r1}")
   let r2 = for (i = 0..5) -> (i * i)
-  print(("squares 0..4 = {r2}"))
+  print("squares 0..4 = {r2}")
 
 -- Main
 
@@ -282,4 +282,4 @@ def main(): Unit
   testRecursion()
   testIf()
   testRange()
-  print(("done."))
+  print("done.")

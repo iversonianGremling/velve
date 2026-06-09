@@ -1,0 +1,11 @@
+-- Editions (SPEC §17): a module opts into a dated edition with an `@edition`
+-- pragma on its first line. The pragma parses, is stripped from the decl list,
+-- and resolves onto Module.edition. This file pins edition "2026.6"; under the
+-- no-op Phase 0 gate it type-checks exactly as it would without the pragma.
+@edition "2026.6"
+
+def greet(name: String): String
+  "hi {name}"
+
+def main(): Unit
+  print(greet("velve"))

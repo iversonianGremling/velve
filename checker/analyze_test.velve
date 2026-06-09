@@ -19,4 +19,4 @@ def view(): Element
     Row gap=4
 
 def main(): Unit
-  print((analyze((view()))))
+  print(analyze(view()))

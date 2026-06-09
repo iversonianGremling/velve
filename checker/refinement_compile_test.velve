@@ -12,14 +12,14 @@ def reciprocalOf(n: NonZero): Number -> 100 / n
 def greet(e: Email): String -> "hi {e}"
 
 def main(): Number
-  let a = birthday((30))            -- 30 in [0,150] ✓
-  let b = birthday((0 + 150))       -- folded to 150 ✓ (boundary)
-  let c = reciprocalOf((4))         -- 4 != 0 ✓
-  let e = greet(("u@host.io"))      -- matches ✓
+  let a = birthday(30)            -- 30 in [0,150] ✓
+  let b = birthday(0 + 150)       -- folded to 150 ✓ (boundary)
+  let c = reciprocalOf(4)         -- 4 != 0 ✓
+  let e = greet("u@host.io")      -- matches ✓
 
   -- Non-constant argument: predicate can't be folded, so no compile-time check;
   -- the value still type-checks as Age (transparent to Number).
-  let n = birthday((a))
+  let n = birthday(a)
 
-  println(("a={a} b={b} c={c} e={e} n={n}"))
+  println("a={a} b={b} c={c} e={e} n={n}")
   a

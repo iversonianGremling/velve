@@ -18,5 +18,5 @@ saga Greet(name: String): String
     r
 
 def main(): String
-  print((Greet(("world"))))
+  print(Greet("world"))
   "done"

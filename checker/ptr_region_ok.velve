@@ -18,4 +18,4 @@ def passthrough(buf: Ptr Number): Ptr Number
   buf
 
 def main(): Unit
-  println(("region ok"))
+  println("region ok")

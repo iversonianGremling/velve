@@ -26,8 +26,8 @@ def counter(): Number
 @low
 def useBorrow(): Number
   mut buf = 10
-  let a = double((buf))
-  let b = double((buf))
+  let a = double(buf)
+  let b = double(buf)
   a + b
 
 @low
@@ -39,12 +39,12 @@ def double(n: Number): Number
 def moveOnce(): Number
   mut xs = [1, 2, 3]
   let ys = xs        -- ownership transfers to ys
-  length((ys))         -- using the new owner is OK; xs is never touched again
+  length(ys)         -- using the new owner is OK; xs is never touched again
 
 @low
 def main(): Unit
-  println(("clone {cloneLet()}"))
-  println(("copy {copyScalar()}"))
-  println(("counter {counter()}"))
-  println(("borrow {useBorrow()}"))
-  println(("moveOnce {moveOnce()}"))
+  println("clone {cloneLet()}")
+  println("copy {copyScalar()}")
+  println("counter {counter()}")
+  println("borrow {useBorrow()}")
+  println("moveOnce {moveOnce()}")

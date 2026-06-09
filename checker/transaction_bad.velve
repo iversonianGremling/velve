@@ -8,15 +8,15 @@ def t1(): TxResult(Number)
 -- 1. non-exhaustive match over TxResult — missing `Timeout` and `Cancelled`.
 def badExhaust(): Unit
   t1() |> match
-    | Ok n       -> print(("ok {n}"))
-    | Error e    -> print(("err"))
-    | Conflict c -> print(("conf {c.retries}"))
+    | Ok n       -> print("ok {n}")
+    | Error e    -> print("err")
+    | Conflict c -> print("conf {c.retries}")
 
 -- 2. wrong payload field — `Conflict` carries `retries`, not `attempts`.
 def badField(): Unit
   t1() |> match
-    | Ok n       -> print(("ok {n}"))
-    | Error e    -> print(("err"))
-    | Conflict c -> print(("conf {c.attempts}"))
-    | Timeout tm -> print(("timeout {tm.after}"))
-    | Cancelled  -> print(("cancelled"))
+    | Ok n       -> print("ok {n}")
+    | Error e    -> print("err")
+    | Conflict c -> print("conf {c.attempts}")
+    | Timeout tm -> print("timeout {tm.after}")
+    | Cancelled  -> print("cancelled")

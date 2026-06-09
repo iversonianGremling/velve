@@ -28,7 +28,7 @@ store Session
 
   messages
     Login (raw: String) ->
-      if length((raw)) > 3
+      if length(raw) > 3
         { token: Ok(raw) }
       else
         { token: Error("name too short") }
@@ -40,24 +40,24 @@ store Session
     activeToken = token
 
 def testStores(): Unit
-  print(("== stores =="))
-  print(("counter start: current={Counter.current}, isZero={Counter.isZero}"))
+  print("== stores ==")
+  print("counter start: current={Counter.current}, isZero={Counter.isZero}")
   Increment()
   Increment()
-  print(("after 2x Increment: current={Counter.current}, doubled={Counter.doubled}"))
-  SetStep((10))
+  print("after 2x Increment: current={Counter.current}, doubled={Counter.doubled}")
+  SetStep(10)
   Increment()
-  print(("after SetStep(10) + Increment: current={Counter.current}"))
-  Add((100))
-  print(("after Add(100): current={Counter.current}"))
+  print("after SetStep(10) + Increment: current={Counter.current}")
+  Add(100)
+  print("after Add(100): current={Counter.current}")
   Reset()
-  print(("after Reset: current={Counter.current}, isZero={Counter.isZero}"))
+  print("after Reset: current={Counter.current}, isZero={Counter.isZero}")
 
-  print(("session logged in: {Session.isLoggedIn}"))
-  Login(("alice"))
-  print(("after Login: isLoggedIn={Session.isLoggedIn}, token={Session.activeToken}"))
+  print("session logged in: {Session.isLoggedIn}")
+  Login("alice")
+  print("after Login: isLoggedIn={Session.isLoggedIn}, token={Session.activeToken}")
   Logout()
-  print(("after Logout: isLoggedIn={Session.isLoggedIn}"))
+  print("after Logout: isLoggedIn={Session.isLoggedIn}")
 
 -- == Machines: synchronous state machines (jump-table semantics) ==
 
@@ -86,7 +86,7 @@ def countdown(): Number
 def classify(value: Number): String
   machine
     :check
-      grade((value))
+      grade(value)
         | Ok v    -> :positive v
         | Error e -> :negative e
     :positive v -> "positive: {v}"
@@ -94,16 +94,16 @@ def classify(value: Number): String
 
 def grade(n: Number): Result Number String
   if n > 0
-    Ok((n * 10))
+    Ok(n * 10)
   else
-    Error(("non-positive"))
+    Error("non-positive")
 
 def testMachines(): Unit
-  print(("== machines =="))
-  print(("traffic: {trafficLight()}"))
-  print(("countdown from 5: {countdown()}"))
-  print(("classify(7): {classify((7))}"))
-  print(("classify(-3): {classify((-3))}"))
+  print("== machines ==")
+  print("traffic: {trafficLight()}")
+  print("countdown from 5: {countdown()}")
+  print("classify(7): {classify(7)}")
+  print("classify(-3): {classify(-3)}")
 
 -- == Machine concurrency (synchronous deterministic model) ==
 
@@ -138,25 +138,25 @@ def withTimeout(): String
     :done r    -> "paid: {r}"
     :timedout  -> "timed out"
 
-def compute(): Result Number String -> Ok((99))
+def compute(): Result Number String -> Ok(99)
 def computeA(): Number -> 10
 def computeB(): Number -> 20
-def pay(): Result String String -> Ok(("receipt-7"))
+def pay(): Result String String -> Ok("receipt-7")
 
 def testConcurrency(): Unit
-  print(("== machine concurrency =="))
-  print(("fetchOne: {fetchOne()}"))
-  print(("parallel join: {parallel()}"))
-  print(("race: {withTimeout()}"))
+  print("== machine concurrency ==")
+  print("fetchOne: {fetchOne()}")
+  print("parallel join: {parallel()}")
+  print("race: {withTimeout()}")
 
 -- == Real async: suspendable eval, virtual-time scheduler ==
 
 def slowWork(): String
-  sleep((100000))      -- 100s in virtual time
+  sleep(100000)      -- 100s in virtual time
   "slow result"
 
 def fastWork(): Number
-  sleep((2000))
+  sleep(2000)
   42
 
 -- A slow `go` (100s) racing `after 30s` — the timer wins (impossible in the
@@ -173,12 +173,12 @@ def slowVsTimeout(): String
     :timedout  -> "timed out (timer beat the slow task)"
 
 def testAsync(): Unit
-  print(("== async runtime =="))
+  print("== async runtime ==")
   let f = go fastWork()              -- spawn a task, keep working
-  print(("spawned background task"))
+  print("spawned background task")
   let r = await f                    -- suspend here until it finishes
-  print(("awaited fastWork = {r}"))
-  print(("race: {slowVsTimeout()}"))
+  print("awaited fastWork = {r}")
+  print("race: {slowVsTimeout()}")
 
 -- == Stores as actors: concurrent message handling is serialized ==
 
@@ -188,17 +188,17 @@ store Bank
   messages
     Deposit (amount: Number) ->
       let current = balance     -- read
-      sleep((5))                  -- ...suspend (would race without the mailbox)
+      sleep(5)                  -- ...suspend (would race without the mailbox)
       { balance: current + amount }   -- write
   pub
     total = balance
 
 def depositMany(n: Number, amt: Number): Number
-  for (i = 1..(n + 1)) -> Deposit((amt))
+  for (i = 1..(n + 1)) -> Deposit(amt)
   0
 
 def testActors(): Unit
-  print(("== actors =="))
+  print("== actors ==")
   -- three concurrent depositors share one store; the mailbox serializes the
   -- read-modify-write handlers, so no updates are lost.
   let a = go depositMany(20, 10)
@@ -207,10 +207,10 @@ def testActors(): Unit
   let x = await a
   let y = await b
   let z = await c
-  print(("3 tasks x 20 deposits x 10 = {Bank.total} (expect 600, no lost updates)"))
-  go Deposit((1000))              -- cast: fire-and-forget
-  Deposit((7))                    -- call: blocks until handled
-  print(("after cast + call: {Bank.total}"))
+  print("3 tasks x 20 deposits x 10 = {Bank.total} (expect 600, no lost updates)")
+  go Deposit(1000)              -- cast: fire-and-forget
+  Deposit(7)                    -- call: blocks until handled
+  print("after cast + call: {Bank.total}")
 
 def main(): Unit
   testStores()
@@ -218,4 +218,4 @@ def main(): Unit
   testConcurrency()
   testAsync()
   testActors()
-  print(("done."))
+  print("done.")

@@ -10,27 +10,27 @@ import { writeFile, readFile, exists } from "io"
 
 def main(): Unit
   -- stringify a record, then round-trip parse the produced text
-  let s = Json.stringify(({ name: "velve", count: 3, ok: true }))
-  print(("stringify: {s}"))
-  Json.parse((s)) |> match
-    | Ok v    -> print(("round-trip parse: ok"))
-    | Error e -> print(("parse err: {e}"))
+  let s = Json.stringify({ name: "velve", count: 3, ok: true })
+  print("stringify: {s}")
+  Json.parse(s) |> match
+    | Ok v    -> print("round-trip parse: ok")
+    | Error e -> print("parse err: {e}")
   -- parse a brace-free array, and an invalid input
-  Json.parse(("[1, 2, 3]")) |> match
-    | Ok v    -> print(("array parse: ok"))
-    | Error e -> print(("array parse err: {e}"))
-  Json.parse(("not json")) |> match
-    | Ok v    -> print(("unexpected ok"))
-    | Error e -> print(("invalid parse: caught"))
+  Json.parse("[1, 2, 3]") |> match
+    | Ok v    -> print("array parse: ok")
+    | Error e -> print("array parse err: {e}")
+  Json.parse("not json") |> match
+    | Ok v    -> print("unexpected ok")
+    | Error e -> print("invalid parse: caught")
 
   -- io: write then read back, check existence (await unwraps Async(Result))
   let w = await writeFile("/tmp/velve_demo.txt", "hello from velve")
   w |> match
-    | Ok _    -> print(("write: ok"))
-    | Error e -> print(("write err: {e}"))
-  let r = await readFile(("/tmp/velve_demo.txt"))
+    | Ok _    -> print("write: ok")
+    | Error e -> print("write err: {e}")
+  let r = await readFile("/tmp/velve_demo.txt")
   r |> match
-    | Ok content -> print(("read: {content}"))
-    | Error e    -> print(("read err: {e}"))
-  let present = await exists(("/tmp/velve_demo.txt"))
-  print(("exists: {present}"))
+    | Ok content -> print("read: {content}")
+    | Error e    -> print("read err: {e}")
+  let present = await exists("/tmp/velve_demo.txt")
+  print("exists: {present}")

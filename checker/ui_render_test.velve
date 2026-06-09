@@ -33,4 +33,4 @@ def view(): Element
       { map(row, [{ title: "Alpha", score: 91 }, { title: "Beta", score: 64 }]) }
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

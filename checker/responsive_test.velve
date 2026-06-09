@@ -8,8 +8,8 @@
 def responsiveWidth(): Length
   responsive
     | Mobile  -> Fill
-    | Tablet  -> Pct((80))
-    | Desktop -> Px((320))
+    | Tablet  -> Pct(80)
+    | Desktop -> Px(320)
     | Wide    -> Clamp(320, 480)
 
 -- Strategy for not enumerating every breakpoint: a wildcard `| _ -> …` fallback.
@@ -17,12 +17,12 @@ def responsiveWidth(): Length
 -- breakpoint is named, or a wildcard covers the rest). Here only Mobile differs.
 def responsivePad(): Length
   responsive
-    | Mobile -> Px((8))
-    | _      -> Px((24))
+    | Mobile -> Px(8)
+    | _      -> Px(24)
 
 def view(): Element
   Column gap=16 padding=(responsivePad()) background=#000000
     Box width=(responsiveWidth()) height=40 background=#161b22
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

@@ -10,4 +10,4 @@ def view(): Element
     Button "Go" disabled=false id="go" ariaLabel="go button"
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

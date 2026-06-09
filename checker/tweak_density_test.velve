@@ -14,7 +14,7 @@ type TypeScale = Number where value==12 || value==14 || value==16 || value==20
 def card(pad: Number, accent: String): Element
   Column gap=8 padding=16 background=(accent) width=Fill
     Text "Title" size=16 color=#ffffff
-    Box padding={raw((13))} height={Px(200)}
+    Box padding={raw(13)} height={Px(200)}
 
 def main(): Unit
-  print((html((card(8, "#222")))))
+  print(html(card(8, "#222")))

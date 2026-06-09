@@ -55,7 +55,7 @@ def checkout(cart: Cart): Effect [payment, inventory, orders] Result Receipt Che
 
     :charge clean reservation
       race
-        go processPayment((cart.userId), (clean.total))
+        go processPayment(cart.userId, clean.total)
         after 30s
         until ask CheckoutState currentPhase == :cancelled
       | Ok payment ->
@@ -68,7 +68,7 @@ def checkout(cart: Cart): Effect [payment, inventory, orders] Result Receipt Che
       go ask Shipping (Estimate(reservation))
       | Ok eta ->
         createOrder(reservation, payment, eta) ? rollback :charge
-        :done (Ok((Receipt({ orderId: payment.id, total: payment.amount, eta: eta }))))
+        :done (Ok(Receipt({ orderId: payment.id, total: payment.amount, eta: eta })))
       | Error _ -> :abort (OrderFailed("shipping estimate failed"))
 
     :done result -> result

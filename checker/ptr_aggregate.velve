@@ -8,7 +8,7 @@ def viaElemPtr(): Unit
   mut xs = [1, 2, 3]
   let p = xs[1].&
   p.* = 99
-  println(("elem ptr: {xs}"))        -- [1, 99, 3]
+  println("elem ptr: {xs}")        -- [1, 99, 3]
 
 -- read the current value back through the pointer (aliasing, not a snapshot)
 @low
@@ -25,7 +25,7 @@ def directIndex(): Unit
   xs[0] = 1
   xs[1] = 2
   xs[2] = 3
-  println(("direct: {xs}"))           -- [1, 2, 3]
+  println("direct: {xs}")           -- [1, 2, 3]
 
 -- pointer to a record field, written through
 @low
@@ -33,11 +33,11 @@ def viaFieldPtr(): Unit
   mut rec = { count: 0, name: "a" }
   let p = rec.count.&
   p.* = 5
-  println(("field ptr: {rec.count}")) -- 5
+  println("field ptr: {rec.count}") -- 5
 
 @low
 def main(): Unit
   viaElemPtr()
-  println(("read through: {readThrough()}"))
+  println("read through: {readThrough()}")
   directIndex()
   viaFieldPtr()

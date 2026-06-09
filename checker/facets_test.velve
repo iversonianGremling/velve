@@ -16,7 +16,7 @@ def validityColor(v: Validity): String
 
 def view(): Element
   Column gap=4 padding=8 background=#000000
-    Text (toggleIcon((On))) size=14 color=(validityColor((Valid)))
+    Text (toggleIcon(On)) size=14 color=(validityColor(Valid))
 
 def main(): Unit
-  print((uiJson((view()))))
+  print(uiJson(view()))

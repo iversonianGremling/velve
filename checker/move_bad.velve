@@ -7,7 +7,7 @@
 def useAfterMove(): Number
   mut xs = [1, 2, 3]
   let ys = xs        -- moves xs into ys (List is affine)
-  length((xs))         -- ERROR: use of 'xs' after it was moved
+  length(xs)         -- ERROR: use of 'xs' after it was moved
 
 -- drop-after-move: moved, then dropped
 @low
@@ -22,4 +22,4 @@ def doubleMove(): Number
   mut xs = [1, 2, 3]
   let a = xs         -- moves xs
   let b = xs         -- ERROR: use of 'xs' after it was moved
-  length((a)) + length((b))
+  length(a) + length(b)

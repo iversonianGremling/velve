@@ -9,16 +9,16 @@ def greet(:formal, name: String): String -> "Good day, {name}"
 def greet(:casual, name: String): String -> "Hey {name}!"
 
 def main(): Number
-  let inc = add((1))
-  let r1 = inc((10))         -- 11  (partial of a 2-arg fn)
-  let r2 = add((5), (6))       -- 11  (partial then apply)
-  let plus = add3((100))
-  let r3 = plus((20), (3))     -- 123 (partial + over-application)
+  let inc = add(1)
+  let r1 = inc(10)         -- 11  (partial of a 2-arg fn)
+  let r2 = add(5, 6)       -- 11  (partial then apply)
+  let plus = add3(100)
+  let r3 = plus(20, 3)     -- 123 (partial + over-application)
 
   -- multi-clause: dispatch chosen only once all args are supplied
-  let f = greet((:formal))
-  let g = greet((:casual))
-  let fa = f(("Ada"))
-  let gb = g(("Bob"))
-  println(("r1={r1} r2={r2} r3={r3} | {fa} | {gb}"))
+  let f = greet(:formal)
+  let g = greet(:casual)
+  let fa = f("Ada")
+  let gb = g("Bob")
+  println("r1={r1} r2={r2} r3={r3} | {fa} | {gb}")
   r1

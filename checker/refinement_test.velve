@@ -13,19 +13,19 @@ def inc(id: UserId): Number -> id + 1          -- alias usable as Number
 def birthday(a: Age): Number -> a + 1          -- refinement usable as Number
 
 def main(): Number
-  let u = inc((41))                              -- 42 (plain alias)
+  let u = inc(41)                              -- 42 (plain alias)
 
-  let ok  = NonZero.parse((5))                   -- Ok(5)
-  let bad = NonZero.parse((0))                   -- Error(...)
+  let ok  = NonZero.parse(5)                   -- Ok(5)
+  let bad = NonZero.parse(0)                   -- Error(...)
 
-  let next = Age.parse((30)) |> match
-    | Ok age  -> birthday((age))                 -- 31
+  let next = Age.parse(30) |> match
+    | Ok age  -> birthday(age)                 -- 31
     | Error e -> 0
 
-  let em = Email.parse(("user@example.com"))     -- Ok(...)
-  let no = Email.parse(("nope"))                 -- Error(...)
+  let em = Email.parse("user@example.com")     -- Ok(...)
+  let no = Email.parse("nope")                 -- Error(...)
 
-  println(("u={u} ok={ok} bad={bad} next={next}"))
-  println(("email ok={em}"))
-  println(("email no={no}"))
+  println("u={u} ok={ok} bad={bad} next={next}")
+  println("email ok={em}")
+  println("email no={no}")
   u

@@ -31,19 +31,19 @@ store RecoveryState
 -- Effectful operations a checkout would perform (simulated with a Bool switch).
 def reserve(ok: Bool): Result String String
   if ok
-    Ok(("reservation-42"))
+    Ok("reservation-42")
   else
-    Error(("out of stock"))
+    Error("out of stock")
 
 def charge(ok: Bool): Result String String
   if ok
-    Ok(("payment-99"))
+    Ok("payment-99")
   else
-    Error(("card declined"))
+    Error("card declined")
 
 -- Compensations: undo side effects. They run in REVERSE registration order.
-def releaseStock(res: String): String -> print(("  <- compensate: released {res}"))
-def refund(pay: String): String -> print(("  <- compensate: refunded {pay}"))
+def releaseStock(res: String): String -> print("  <- compensate: released {res}")
+def refund(pay: String): String -> print("  <- compensate: refunded {pay}")
 
 -- A checkout machine backed by the CheckoutState store. On `:abort`, every
 -- `? rollback :step` registered so far runs in reverse (LIFO).
@@ -52,14 +52,14 @@ machine Checkout(stockOk: Bool, payOk: Bool): String persisted over CheckoutStat
     :reserve
 
   :reserve
-    reserve((stockOk))
+    reserve(stockOk)
       | Ok res ->
         res ? rollback :undoStock
         :charge res
       | Error e -> :abort "reserve failed ({e})"
 
   :charge res
-    charge((payOk))
+    charge(payOk)
       | Ok pay ->
         pay ? rollback :undoPay
         :fulfill res pay
@@ -69,8 +69,8 @@ machine Checkout(stockOk: Bool, payOk: Bool): String persisted over CheckoutStat
     :done "order placed (res={res}, pay={pay})"
 
   -- compensation steps (terminal; their side effect is the undo)
-  :undoStock res -> releaseStock((res))
-  :undoPay pay   -> refund((pay))
+  :undoStock res -> releaseStock(res)
+  :undoPay pay   -> refund(pay)
 
   :done result -> result
   :abort e     -> "ABORTED: {e}"
@@ -78,13 +78,13 @@ machine Checkout(stockOk: Bool, payOk: Bool): String persisted over CheckoutStat
 -- `?:` recovery: if the subject is a failure, jump to the recovery step now.
 def tryPrimary(ok: Bool): Result String String
   if ok
-    Ok(("primary-result"))
+    Ok("primary-result")
   else
-    Error(("primary unavailable"))
+    Error("primary unavailable")
 
 machine WithRecovery(primaryOk: Bool): String persisted over RecoveryState
   :attempt
-    tryPrimary((primaryOk)) ?: rollback :fallback
+    tryPrimary(primaryOk) ?: rollback :fallback
     :done "primary succeeded"
   :fallback e -> "recovered via fallback (primary: {e})"
   :done r     -> r
@@ -94,54 +94,54 @@ machine WithRecovery(primaryOk: Bool): String persisted over RecoveryState
 -- are NOT re-run, and the compensation stack is rebuilt from the log.
 def crashIf(b: Bool): Unit
   if b
-    crash(("network partition"))
+    crash("network partition")
   else
     ()
 
 machine Shipping(crashFirst: Bool): String persisted over RecoveryState
   :pack
-    print(("  -> pack (runs once across crash+resume)"))
+    print("  -> pack (runs once across crash+resume)")
     "parcel-7" ? rollback :unpack
     :label
   :label
-    crashIf((crashFirst))
+    crashIf(crashFirst)
     :done "shipped"
-  :unpack r -> print(("  <- compensate: unpacked {r}"))
+  :unpack r -> print("  <- compensate: unpacked {r}")
   :done result -> result
   :abort e -> "ABORTED: {e}"
 
 def main(): Unit
-  print(("== saga: happy path =="))
-  print((Checkout(true, true)))
-  print(("journal: {journalOf(("CheckoutState"))}"))
+  print("== saga: happy path ==")
+  print(Checkout(true, true))
+  print("journal: {journalOf("CheckoutState")}")
 
-  print(("== saga: payment fails -> compensate reservation =="))
-  print((Checkout(true, false)))
-  print(("journal: {journalOf(("CheckoutState"))}"))
+  print("== saga: payment fails -> compensate reservation ==")
+  print(Checkout(true, false))
+  print("journal: {journalOf("CheckoutState")}")
 
-  print(("== saga: stock fails -> nothing to compensate =="))
-  print((Checkout(false, false)))
-  print(("journal: {journalOf(("CheckoutState"))}"))
+  print("== saga: stock fails -> nothing to compensate ==")
+  print(Checkout(false, false))
+  print("journal: {journalOf("CheckoutState")}")
 
-  print(("== saga: ?: recovery =="))
-  print((WithRecovery((true))))
-  print((WithRecovery((false))))
+  print("== saga: ?: recovery ==")
+  print(WithRecovery(true))
+  print(WithRecovery(false))
 
   -- A live instance: `go` spawns it and hands back a per-instance handle.
-  print(("== go: live saga instance =="))
+  print("== go: live saga instance ==")
   let h = go Checkout(true, false)
   let r = await h
-  print(("result:  {r}"))
-  print(("status:  {h.status}"))
-  print(("step:    {h.step}"))
-  print(("journal: {h.journal}"))
+  print("result:  {r}")
+  print("status:  {h.status}")
+  print("step:    {h.step}")
+  print("journal: {h.journal}")
 
   -- Crash mid-flight, then resume from the durable journal.
-  print(("== crash + resume =="))
-  let s = go Shipping((true))
+  print("== crash + resume ==")
+  let s = go Shipping(true)
   let crashed = await s
-  print(("after crash -> status: {s.status}, journal: {s.journal}"))
-  let recovered = resume Shipping((false))
-  print(("resumed result: {recovered}"))
-  print(("final journal:  {journalOf(("RecoveryState"))}"))
-  print(("done."))
+  print("after crash -> status: {s.status}, journal: {s.journal}")
+  let recovered = resume Shipping(false)
+  print("resumed result: {recovered}")
+  print("final journal:  {journalOf("RecoveryState")}")
+  print("done.")

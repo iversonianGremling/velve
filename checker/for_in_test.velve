@@ -1,0 +1,18 @@
+@edition "2026.6"
+
+-- Edition 2026.6 comprehension head: `for (x in iter, …guards) -> body`. Replaces
+-- the legacy `for (x = source)` and removes the inert `%` sigil. Multiple generators
+-- nest (cartesian, later may depend on earlier); bare-Bool clauses are guards. The
+-- arithmetic `%` (modulo) is unaffected — it only ever meant the operator.
+
+def evens(xs: List(Number)): List(Number) ->
+  for (x in xs, x % 2 == 0) -> x
+
+def pairs(xs: List(Number), ys: List(Number)): List(Number) ->
+  for (x in xs, y in ys, x < y) -> x * y
+
+def doubled(xs: List(Number)): List(Number) ->
+  for (x in xs) -> x * 2
+
+def main(): Unit
+  print(evens([1, 2, 3, 4]))

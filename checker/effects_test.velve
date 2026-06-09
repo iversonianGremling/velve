@@ -20,6 +20,7 @@ def fetchAndStore(id: String): Effect [io, db] String
 def badFetch(id: String): Effect [db] String
   netGet(id)
 
--- pure function calling effectful one — unchecked, no error reported
+-- pure function calling effectful one — closed hole (SPEC §12.3 / §17): a warning
+-- in the baseline edition, an error in edition 2026.6+. Declare `Effect [io]` to fix.
 def unchecked(id: String): String
   netGet(id)

@@ -8,6 +8,7 @@ import type {
 } from "./ast.js";
 import type { ResolutionMap, Diagnostic } from "./resolve.js";
 import { resolveNamedCall, needsResolution, type ParamSlot } from "./callresolve.js";
+import { type Edition, atLeast } from "./edition.js";
 
 // ── Type schemes ──────────────────────────────────────────────────────────────
 
@@ -357,24 +358,37 @@ function sigToFnType(sig: FnSig, tp: Map<string, Type>): Type {
   return { tag: "Fn", params: sig.params.map(p => resolveRef(p, tp)), ret: resolveRef(sig.ret, tp), effects: sig.effects };
 }
 
-// ── TxResult(T) — the transaction-outcome ADT ─────────────────────────────────
-// A `transaction` yields a distinctly-typed `TxResult(T)`, NOT a plain Result.
-// Its five constructors SHARE the `Ok`/`Error` names with Result (constructor
-// sharing): which ADT a `| Ok v ->` arm belongs to is decided by the EXPECTED
-// type at the match site, not by the constructor name alone. `Conflict`/`Timeout`
-// carry typed payloads so `c.retries` / `c.after` are real Numbers, and
-// `Cancelled` is nullary. Returns the ctor's type given the result element `t`,
-// or null if `name` is not a TxResult constructor (→ caller falls back to lenient).
-const TX_RESULT_CTORS = new Set(["Ok", "Error", "Conflict", "Timeout", "Cancelled"]);
-function txResultCtorType(name: string, t: Type): Type | null {
+// ── Outcome(T) / TxResult(T) — the transaction-outcome ADT ────────────────────
+// A `transaction` yields a distinctly-typed outcome ADT, NOT a plain Result.
+// **Renamed in edition 2026.6:** the type `TxResult`→`Outcome` and its commit/abort
+// constructors `Ok`/`Error`→`Committed`/`Aborted` (the concurrency ctors
+// `Conflict`/`Timeout`/`Cancelled` are unchanged across editions).
+//   • Under 2026.1 the commit/abort names SHARE with Result (constructor sharing):
+//     which ADT a `| Ok v ->` arm belongs to is decided by the EXPECTED type at the
+//     match site, not the name alone.
+//   • Under 2026.6 `Committed`/`Aborted` are UNIQUE — the same expected-type path
+//     runs but resolves no collision; it only assigns the typed payloads.
+// `Conflict`/`Timeout` carry typed records so `c.retries` / `t.after` are real
+// Numbers; `Cancelled` is nullary.
+interface OutcomeAdt { typeName: string; commit: string; abort: string; ctors: Set<string>; }
+function outcomeAdt(edition: Edition): OutcomeAdt {
+  return atLeast(edition, "2026.6")
+    ? { typeName: "Outcome",  commit: "Committed", abort: "Aborted",
+        ctors: new Set(["Committed", "Aborted", "Conflict", "Timeout", "Cancelled"]) }
+    : { typeName: "TxResult", commit: "Ok",        abort: "Error",
+        ctors: new Set(["Ok", "Error", "Conflict", "Timeout", "Cancelled"]) };
+}
+// The ctor's type given the result element `t`, or null if `name` is not a
+// constructor of this edition's outcome ADT (→ caller falls back to lenient lookup).
+function outcomeCtorType(adt: OutcomeAdt, name: string, t: Type): Type | null {
   const num: Type = { tag: "Prim", kind: "Number" };
-  const tx: Type = { tag: "Named", name: "TxResult", args: [t] };
+  const tx: Type = { tag: "Named", name: adt.typeName, args: [t] };
   const rec = (field: string): Type =>
     ({ tag: "Record", fields: [{ name: field, type: num, optional: false }] });
   const fn = (param: Type): Type => ({ tag: "Fn", params: [param], ret: tx, effects: [] });
+  if (name === adt.commit) return fn(t);
+  if (name === adt.abort)  return fn(freshVar("e"));   // abort payload — polymorphic
   switch (name) {
-    case "Ok":        return fn(t);
-    case "Error":     return fn(freshVar("e"));     // abort payload — polymorphic
     case "Conflict":  return fn(rec("retries"));
     case "Timeout":   return fn(rec("after"));
     case "Cancelled": return tx;                     // nullary
@@ -614,6 +628,8 @@ interface Ctx {
   inSagaStep: boolean;
   diagnostics: Diagnostic[];
   resolutions: ResolutionMap;
+  // The module's resolved edition (SPEC §17) — gates edition-specific semantics.
+  edition: Edition;
 }
 
 // ── Unification ───────────────────────────────────────────────────────────────
@@ -696,6 +712,10 @@ function isUnit(t: Type): boolean {
 
 function err(ctx: Ctx, span: Span, message: string): void {
   ctx.diagnostics.push({ kind: "error", span, message });
+}
+
+function warn(ctx: Ctx, span: Span, message: string): void {
+  ctx.diagnostics.push({ kind: "warning", span, message });
 }
 
 // ── Element prop schemas ────────────────────────────────────────────────────────
@@ -794,7 +814,7 @@ export interface InferResult {
 }
 
 export function infer(mod: Module, resolutions: ResolutionMap): InferResult {
-  const ctx: Ctx = { subst: new Subst(), returnType: null, effects: null, inSagaStep: false, diagnostics: [], resolutions };
+  const ctx: Ctx = { subst: new Subst(), returnType: null, effects: null, inSagaStep: false, diagnostics: [], resolutions, edition: mod.edition };
   const env = buildPrelude();
   const types = new Map<Expr, Type>();
   // Register type aliases / refinements up front so forward references resolve.
@@ -1425,13 +1445,26 @@ class Inferrer {
         // uses of this expression's result don't cascade into follow-on errors.
         if (this.ctx.diagnostics.length > prevErrCount) return { tag: "Unknown" };
 
-        // Effect check — only enforced when the caller has declared its own effects.
-        if (this.ctx.effects !== null && requiredEffects.length > 0) {
-          const missing = requiredEffects.filter(e => !this.ctx.effects!.includes(e));
-          if (missing.length > 0) {
-            const callerEffects = this.ctx.effects.length ? `[${this.ctx.effects.join(", ")}]` : "none";
-            err(this.ctx, expr.span,
-              `effect violation: '${expr.fn.tag === "Var" ? expr.fn.name : "fn"}' requires [${requiredEffects.join(", ")}] but current context declares ${callerEffects}`);
+        // Effect check. Two cases:
+        //  (a) the caller declared effects → the callee's effects must be a subset.
+        //  (b) the caller declared NONE (a pure function) → calling anything effectful
+        //      is a violation. This used to be silently "unchecked" (SPEC §12.3 hole);
+        //      it is now enforced — as an error in edition 2026.6+, and a warning in
+        //      the baseline edition (deprecation lifecycle, SPEC §17) so existing code
+        //      keeps compiling while the hole is closed.
+        if (requiredEffects.length > 0) {
+          const calleeName = expr.fn.tag === "Var" ? expr.fn.name : "fn";
+          if (this.ctx.effects !== null) {
+            const missing = requiredEffects.filter(e => !this.ctx.effects!.includes(e));
+            if (missing.length > 0) {
+              const callerEffects = this.ctx.effects.length ? `[${this.ctx.effects.join(", ")}]` : "none";
+              err(this.ctx, expr.span,
+                `effect violation: '${calleeName}' requires [${requiredEffects.join(", ")}] but current context declares ${callerEffects}`);
+            }
+          } else {
+            const msg = `effect violation: pure function calls '${calleeName}' which requires [${requiredEffects.join(", ")}] — declare 'Effect [${requiredEffects.join(", ")}]' on this function or remove the call`;
+            if (atLeast(this.ctx.edition, "2026.6")) err(this.ctx, expr.span, msg);
+            else warn(this.ctx, expr.span, msg);
           }
         }
 
@@ -1667,13 +1700,14 @@ class Inferrer {
           bodyT = this.inferBlock(expr.body, env);
           this.ctx.returnType = prevRet;
         }
-        // Outcome: the distinctly-typed `TxResult(bodyT)` ADT — `Ok v` on commit,
-        // `Error e` on a bare-transaction abort, or a concurrency outcome
-        // (`Conflict {retries}` / `Timeout {after}` / `Cancelled`). All five
-        // constructors are resolved against TxResult at the match site (see
-        // checkPat / txResultCtorType), so `c.retries` & `c.after` are typed and
-        // the match is exhaustiveness-checked over the closed ctor set.
-        return { tag: "Named", name: "TxResult", args: [this.ctx.subst.apply(bodyT)] };
+        // Outcome: the distinctly-typed outcome ADT `Outcome(bodyT)` (2026.6) /
+        // `TxResult(bodyT)` (2026.1) — commit value, abort payload, or a concurrency
+        // outcome (`Conflict {retries}` / `Timeout {after}` / `Cancelled`). All five
+        // constructors are resolved against it at the match site (see checkPat /
+        // outcomeCtorType), so `c.retries` & `t.after` are typed and the match is
+        // exhaustiveness-checked over the closed ctor set.
+        const adt = outcomeAdt(this.ctx.edition);
+        return { tag: "Named", name: adt.typeName, args: [this.ctx.subst.apply(bodyT)] };
       }
 
       case "Await": {
@@ -2046,13 +2080,15 @@ class Inferrer {
         break;
 
       case "PCtor": {
-        // Expected-type-directed constructor resolution for TxResult: its ctors
-        // (Ok/Error/Conflict/Timeout/Cancelled) share names with Result, so the
-        // EXPECTED type disambiguates them and gives Conflict/Timeout their typed
-        // record payloads. Falls through to the normal env lookup for any other
-        // name matched against a TxResult (so genuinely unknown ctors stay lenient).
-        if (at.tag === "Named" && at.name === "TxResult" && TX_RESULT_CTORS.has(pat.name)) {
-          const ct = txResultCtorType(pat.name, at.args[0] ?? freshVar());
+        // Expected-type-directed constructor resolution for the outcome ADT
+        // (`Outcome` 2026.6 / `TxResult` 2026.1). Under 2026.1 its commit/abort ctors
+        // share names with Result, so the EXPECTED type disambiguates them; under
+        // 2026.6 the names are unique and this just assigns the typed record payloads.
+        // Falls through to normal env lookup for any other name (genuinely unknown
+        // ctors stay lenient).
+        const oadt = outcomeAdt(this.ctx.edition);
+        if (at.tag === "Named" && at.name === oadt.typeName && oadt.ctors.has(pat.name)) {
+          const ct = outcomeCtorType(oadt, pat.name, at.args[0] ?? freshVar());
           if (ct) {
             if (ct.tag === "Fn") {
               unify(at, ct.ret, this.ctx, pat.span);

@@ -7,6 +7,23 @@
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
 
+// Reserved keywords (single source of truth). Used both to seed the global
+// reserved set AND to re-admit those words as member names after `.`/`?.` —
+// otherwise a field whose name collides with a keyword (`x.after`, `x.state`,
+// `x.type`) is unreachable, since the lexer would tokenize it as the keyword.
+const RESERVED_WORDS = [
+  'def', 'type', 'store', 'module', 'match', 'responsive', 'if', 'then', 'else',
+  'send', 'ask', 'transaction', 'within', 'import',
+  'from', 'as', 'pub', 'mut', 'state', 'messages', 'where',
+  'is', 'true', 'false', 'not', 'xor', 'lazy',
+  'capabilities', 'migrate', 'version', 'extern',
+  'break', 'continue', 'fn', 'on',
+  'let', 'const', 'loop', 'for',
+  'machine', 'saga', 'go', 'race', 'rollback', 'after', 'until',
+  'await', 'over', 'resume', 'drop', 'pipe', 'try', 'retry',
+  'persisted',
+];
+
 export default grammar({
   name: 'velve',
 
@@ -26,18 +43,7 @@ export default grammar({
   word: $ => $.lower_id,
 
   reserved: {
-    global: $ => [
-      'def', 'type', 'store', 'module', 'match', 'responsive', 'if', 'else',
-      'send', 'ask', 'transaction', 'within', 'import',
-      'from', 'as', 'pub', 'mut', 'state', 'messages', 'where',
-      'is', 'true', 'false', 'not', 'xor', 'lazy',
-      'capabilities', 'migrate', 'version', 'extern',
-      'break', 'continue', 'fn', 'on',
-      'let', 'const', 'loop', 'for',
-      'machine', 'saga', 'go', 'race', 'rollback', 'after', 'until',
-      'await', 'over', 'resume', 'drop', 'pipe', 'try', 'retry',
-      'persisted',
-    ],
+    global: $ => RESERVED_WORDS,
   },
 
   // tree-sitter reads each inner array HIGHEST → LOWEST (first = binds tightest).
@@ -81,6 +87,9 @@ export default grammar({
     [$.call, $.element_leaf],
     [$.element, $.element_leaf],
     [$.atom, $.prop],
+    // block `if` (newline body) vs inline `if c then a else b` — shared `if <expr>`
+    // prefix, disambiguated by the token after the condition (newline vs `then`).
+    [$.if_expr, $.if_then_expr],
     // lambda_simple conflicts
     [$.lambda_simple, $.binary_expr],
     [$.lambda_simple, $.pipe_expr],
@@ -195,8 +204,19 @@ export default grammar({
     // ----------
 
     program: $ => seq(
+      optional($.edition_pragma),
       repeat($.import_stmt),
       repeat($._declaration),
+    ),
+
+    // Edition pragma — opts a module into a dated language edition (Rust-style
+    // editions, SPEC §17). Must be the first line of the file. Names are dates,
+    // e.g. `@edition "2026.6"`. Read by the checker (lower/infer/eval), which gate
+    // edition-specific semantics; absent → the project's pinned default edition.
+    edition_pragma: $ => seq(
+      token('@edition'),
+      field('name', $.string),
+      $._newline,
     ),
 
     comment: $ => token(seq('--', /.*/)),
@@ -898,6 +918,7 @@ export default grammar({
       $.binary_expr,
       $.pipe_expr,
       $.ternary_expr,
+      $.if_then_expr,
       $.field_access,
       $.optional_chain,
       $.array_index,
@@ -1002,9 +1023,19 @@ export default grammar({
     // `?` (`value?`, token.immediate below), so the two never collide: a space
     // before `?` ⇒ ternary, no space ⇒ propagate. Precedence then resolves
     // `a > b ? c : d` as `(a > b) ? c : d`.
+    // DEPRECATED in edition 2026.6 → use `if c then a else b` (if_then_expr). The
+    // rule stays in the superset grammar so 2026.1 keeps parsing; the lowerer warns
+    // (2026.1) / errors (2026.6). This removes the last whitespace-keyed `?` meaning.
     ternary_expr: $ => prec.right('ternary', choice(
       seq($._expr, '?', $._expr, ':', $._expr),
       seq($._expr, '?', $._expr),
+    )),
+
+    // Inline conditional expression `if c then a else b` — the 2026.6 replacement
+    // for the ternary. Distinct from the indented-block `if_expr` (which takes a
+    // newline after the condition); here `then` follows the condition on one line.
+    if_then_expr: $ => prec.right('ternary', seq(
+      'if', $._expr, 'then', $._expr, 'else', $._expr,
     )),
 
     range_expr: $ => prec.left('range', seq(
@@ -1024,12 +1055,17 @@ export default grammar({
       $._expr,
     )),
 
-    for_generator: $ => seq(
-      $.lower_id,
-      '=',
-      $.for_source,
+    // A comprehension generator. The 2026.6 form is `x in iter` (matching the UI
+    // keyed-list `for r in rows`). The legacy `x = source` form — with its optional,
+    // semantically-inert `%` sigil — stays in the superset grammar but is deprecated
+    // (lowerer warns in 2026.1, errors in 2026.6).
+    for_generator: $ => choice(
+      seq($.lower_id, 'in', $._expr),
+      seq($.lower_id, '=', $.for_source),
     ),
 
+    // Legacy generator source. The `%` "iterate" sigil was always a no-op (the
+    // lowerer drops it); removed in 2026.6 along with the `=` form.
     for_source: $ => choice(
       seq('%', $._expr),
       $._expr,
@@ -1041,7 +1077,8 @@ export default grammar({
     ),
 
     // if fetchUser = Ok x — pattern match in condition
-    if_pattern_expr: $ => seq(
+    // `prec.right` resolves the same dangling-else as `if_expr` (else binds inner).
+    if_pattern_expr: $ => prec.right(seq(
       'if',
       $._expr,
       '=',
@@ -1057,19 +1094,25 @@ export default grammar({
         repeat1($._statement),
         $._dedent,
       )),
-    ),
+    )),
 
     field_access: $ => prec.left('postfix', seq(
       $._expr,
       '.',
-      $.lower_id,
+      $.member_name,
     )),
 
     optional_chain: $ => prec.left('postfix', seq(
       $._expr,
       '?.',
-      $.lower_id,
+      $.member_name,
     )),
+
+    // A member name after `.`/`?.`. Accepts ordinary identifiers AND reserved
+    // words: in member position a keyword can only mean a field name, so
+    // `x.after` / `x.state` / `x.type` are unambiguous. Kept as a named node so
+    // the lowerer reads `.text` uniformly whether the field is a keyword or not.
+    member_name: $ => choice($.lower_id, ...RESERVED_WORDS),
 
     deref_expr: $ => prec.left('postfix', seq(
       $._expr,
@@ -1103,10 +1146,14 @@ export default grammar({
       $.upper_id,
     )),
 
-    record_literal: $ => seq(
-      '{',
-      commaSep1($.record_field),
-      '}',
+    // Record literal. The 2026.6 canonical opener is `#{` — it makes records
+    // unambiguous from `{ … }` blocks (dissolving the comma-`:` vs semicolon-`=`
+    // disambiguation) and visually distinct from named-arg calls (`Row(size=12)` with
+    // `=` vs `#{ size: 12 }` with `:`). The bare `{ … }` form stays in the superset
+    // grammar but is deprecated (lowerer warns 2026.1 / errors 2026.6).
+    record_literal: $ => choice(
+      seq('#{', commaSep1($.record_field), '}'),
+      seq('{',  commaSep1($.record_field), '}'),
     ),
 
     record_field: $ => seq(
@@ -1115,12 +1162,9 @@ export default grammar({
       $._expr,
     ),
 
-    record_spread: $ => seq(
-      '{',
-      '...',
-      $._expr,
-      optional(seq(',', commaSep1($.record_field))),
-      '}',
+    record_spread: $ => choice(
+      seq('#{', '...', $._expr, optional(seq(',', commaSep1($.record_field))), '}'),
+      seq('{',  '...', $._expr, optional(seq(',', commaSep1($.record_field))), '}'),
     ),
 
     list_literal: $ => seq(
@@ -1275,7 +1319,10 @@ export default grammar({
     // If expressions
     // ----------
 
-    if_expr: $ => seq(
+    // `prec.right` resolves the dangling-else: when a block `if` is the `then`
+    // branch of an inline `if c then … else …`, the `else` binds to the nearest
+    // (inner block) `if`, the conventional reading.
+    if_expr: $ => prec.right(seq(
       'if',
       $._expr,
       $._newline,
@@ -1289,7 +1336,7 @@ export default grammar({
         repeat1($._saga_stmt),
         $._dedent,
       )),
-    ),
+    )),
 
     // ----------
     // Function calls

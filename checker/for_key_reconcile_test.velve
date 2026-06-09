@@ -8,7 +8,7 @@ store Rows
   state
     items : List(Row) = [ { id: "a", label: "Alpha" }, { id: "b", label: "Beta" }, { id: "c", label: "Gamma" } ]
   messages
-    Flip -> { items: reverse((items)) }
+    Flip -> { items: reverse(items) }
   pub
     all = items
 
@@ -21,4 +21,4 @@ def view(): Element
         Text (r.label) size=12 color=#ffffff
 
 def main(): Unit
-  print((interactive(view, [ { target: "flip", event: "onClick" } ])))
+  print(interactive(view, [ { target: "flip", event: "onClick" } ]))

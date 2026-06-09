@@ -14,7 +14,7 @@ def buttonBg(s: Interaction): String
 
 -- The component under test: one Button styled for a given interaction state.
 def button(s: Interaction): Element
-  Button "Save" size=14 color=#ffffff background=(buttonBg((s))) padding=8 radius=6
+  Button "Save" size=14 color=#ffffff background=(buttonBg(s)) padding=8 radius=6
 
 def main(): Unit
-  print((sandbox("Button", Interaction.all, button)))
+  print(sandbox("Button", Interaction.all, button))

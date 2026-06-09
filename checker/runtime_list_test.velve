@@ -16,9 +16,9 @@ def row(it: String): Element
 def view(): Element
   Column gap=4 padding=12 background=#000000
     Button "Add" id="add" size=12
-      on onClick -> send Todos (Add(("gamma")))
+      on onClick -> send Todos (Add("gamma"))
     Column gap=2
       { map(row, Todos.all) }
 
 def main(): Unit
-  print((interactive(view, [ { target: "add", event: "onClick" } ])))
+  print(interactive(view, [ { target: "add", event: "onClick" } ]))

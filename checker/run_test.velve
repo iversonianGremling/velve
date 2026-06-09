@@ -15,26 +15,26 @@ def add(a: Number, b: Number): Number
 def factorial(n: Number): Number
   match n
     | 0 -> 1
-    | n -> n * factorial((n - 1))
+    | n -> n * factorial(n - 1)
 
 def main(): Unit
-  println(("=== Colors ==="))
-  println((describeColor((Red))))
-  println((describeColor((Green))))
-  println((describeColor((Blue))))
-  println(("=== Factorial ==="))
-  println((factorial((10))))
-  println(("=== Lists ==="))
+  println("=== Colors ===")
+  println(describeColor(Red))
+  println(describeColor(Green))
+  println(describeColor(Blue))
+  println("=== Factorial ===")
+  println(factorial(10))
+  println("=== Lists ===")
   let nums = [1, 2, 3, 4, 5]
   let double = fn x -> (x * 2)
   let doubled = map(double, nums)
-  println((doubled))
+  println(doubled)
   let isEven = fn x -> ((x % 2) == 0)
   let evens = filter(isEven, nums)
-  println((evens))
+  println(evens)
   let sum = foldl(add, 0, nums)
-  println((sum))
-  println(("=== Strings ==="))
+  println(sum)
+  println("=== Strings ===")
   let greeting = "Hello" ++ ", " ++ "world!"
-  println((greeting))
-  println((toUpperCase((greeting))))
+  println(greeting)
+  println(toUpperCase(greeting))

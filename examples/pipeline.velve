@@ -12,9 +12,9 @@ type PipelineError
 -- ── Parsing ───────────────────────────────────────────────────────────────────
 
 def parseParts(parts: List(String), line: Number): Result Parsed PipelineError
-  id    = parseNumber((listGet(parts, 0))) ?: Error((ParseError({ line: line, msg: "bad id" })))
-  value = parseNumber((listGet(parts, 1))) ?: Error((ParseError({ line: line, msg: "bad value" })))
-  label = listGet(parts, 2)               ?: Error((ParseError({ line: line, msg: "missing label" })))
+  id    = parseNumber(listGet(parts, 0)) ?: Error(ParseError({ line: line, msg: "bad id" }))
+  value = parseNumber(listGet(parts, 1)) ?: Error(ParseError({ line: line, msg: "bad value" }))
+  label = listGet(parts, 2)               ?: Error(ParseError({ line: line, msg: "missing label" }))
   Ok({ id: id, value: value, label: label })
 
 def parseLine(raw: String, line: Number): Result Parsed PipelineError
@@ -24,8 +24,8 @@ def parseLine(raw: String, line: Number): Result Parsed PipelineError
 -- ── Enrichment ────────────────────────────────────────────────────────────────
 
 def scoreItem(p: Parsed): Effect [network] Result Number PipelineError
-  raw = httpGet("/score/{p.id}") ?: Error((ScoreError("network error")))
-  parseNumber(raw) ?: Error((ScoreError("bad score response")))
+  raw = httpGet("/score/{p.id}") ?: Error(ScoreError("network error"))
+  parseNumber(raw) ?: Error(ScoreError("bad score response"))
 
 def categorize(score: Number): Atom
   score > 80 ? :high : score > 50 ? :medium : :low
@@ -37,13 +37,13 @@ def enrich(p: Parsed): Effect [network] Result Enriched PipelineError
 -- ── Pipeline ──────────────────────────────────────────────────────────────────
 
 def runPipeline(csvUrl: String): Effect [network] Result List(Enriched) PipelineError
-  raw    = httpGet(csvUrl) ?: Error((FetchError("download failed")))
+  raw    = httpGet(csvUrl) ?: Error(FetchError("download failed"))
   lines  = splitLines(raw)
   parsed = indexedMap(parseLine, lines)
   errors = for (r = %parsed, r is Error) -> r
   oks    = for (r = %parsed, r is Ok) -> r
   enriched = oks |> pmap(enrich)
-  errors.length > 0 ? errors[0] : Ok((collectOk(enriched)))
+  errors.length > 0 ? errors[0] : Ok(collectOk(enriched))
 
 -- ── Aggregation ───────────────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ def countByCategory(category: Atom, items: List(Enriched)): Number
 
 def topScorers(n: Number, items: List(Enriched)): List(Enriched)
   items |>
-    sortBy((fn i -> i.score)) |>
+    sortBy(fn i -> i.score) |>
     listReverse |>
     listTake(n)
 

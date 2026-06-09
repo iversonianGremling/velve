@@ -5,4 +5,4 @@ def view(): Element
     Box width=true             -- width is Length, got Bool
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

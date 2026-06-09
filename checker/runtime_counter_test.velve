@@ -19,8 +19,8 @@ def view(): Element
       on onClick -> send Counter (Inc())
 
 def main(): Unit
-  print((interactive(view, [
+  print(interactive(view, [
     { target: "inc", event: "onClick" },
     { target: "inc", event: "onClick" },
     { target: "inc", event: "onClick" }
-  ])))
+  ]))

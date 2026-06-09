@@ -10,4 +10,4 @@ def view(): Element
     { map(row, ["alpha", "beta"]) }
 
 def main(): Unit
-  print((interactive(view, [])))
+  print(interactive(view, []))

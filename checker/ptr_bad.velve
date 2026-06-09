@@ -19,4 +19,4 @@ def dropBorrowed(): Unit
   let x = 9
   let p = x.&
   drop x
-  println(("{p.*}"))
+  println("{p.*}")

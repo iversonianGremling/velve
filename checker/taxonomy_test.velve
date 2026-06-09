@@ -25,10 +25,10 @@ def listMessage(s: UIState): String
 def view(): Element
   Column gap=8 padding=16 background=#000000
     -- precedence resolver: hovered AND focused → Focused wins over Hovered
-    Button "Save" background=(buttonBg((interactionOf(({ hovered: true, focused: true })))))
-    Text (listMessage((Partial))) size=12 color=#8b949e
+    Button "Save" background=(buttonBg(interactionOf({ hovered: true, focused: true })))
+    Text (listMessage(Partial)) size=12 color=#8b949e
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))
   -- sandbox enumeration: drive a component across every interaction state
-  print((toString((Interaction.all))))
+  print(toString(Interaction.all))

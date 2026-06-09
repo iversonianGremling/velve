@@ -426,6 +426,20 @@ def sort(items: List(a)): List(a)
   items |> sortBy identity
 ```
 
+> ⚠ **Not yet enforced (as of edition 2026.1).** The `where a: Constraint` clause
+> parses but is currently a no-op — *any* constraint name is accepted, including
+> undeclared ones, and nothing is checked against it. Velve has **no typeclass /
+> trait system** today, so there is no `Comparable`/`Interpolate` set to satisfy.
+> What the built-ins actually require:
+> - **Comparison & equality** (`== != < > <= >=`) type as `(a, a) -> Bool` for any
+>   *matching* `a` — operands must unify, but `a` is otherwise unconstrained (you can
+>   structurally compare records or functions; there is no orderability check).
+> - **`toString` / string interpolation** type as `∀a. a -> String` — fully
+>   polymorphic, no `Show`/`Interpolate` bound.
+>
+> The clause is kept as forward-compatible *documentation of intent*; a real
+> constraint solver is a deferred build. Until then, treat `where a: X` as a comment.
+
 ### 3.5 Pattern matching
 
 ```
@@ -548,25 +562,37 @@ total = price
 
 ### 3.8 For expressions
 
-Range iteration:
+A list comprehension `for (pat in iter, …clauses) -> body`. Each generator binds
+with **`in`** (matching the UI keyed-list `for r in rows`, §9); a bare-`Bool` clause
+is a guard; later generators may depend on earlier ones (cartesian nesting).
+
+Range iteration + guard:
 ```
-evens = for (x = 1..20, x % 2 == 0) -> x
+evens = for (x in 1..20, x % 2 == 0) -> x
 ```
 
-List iteration with `%`:
+List iteration:
 ```
-names = for (user = %users) -> user.name
+names = for (user in users) -> user.name
 ```
 
 Multiple generators with filter:
 ```
-pairs = for (i = 0..n, j = i..n) -> (i, j)
+pairs = for (i in 0..n, j in i..n) -> (i, j)
 ```
 
 Right side of `..` and output of `->` are atoms — wrap complex expressions in `()`:
 ```
-half = for (i = 0..(n/2)) -> (i * 2)
+half = for (i in 0..(n/2)) -> (i * 2)
 ```
+
+> **`for (x = source)` and the `%` sigil — deprecated → removed in edition 2026.6.**
+> Earlier editions wrote generators as `x = source` and marked list (vs range)
+> sources with a `%` prefix (`for (user = %users)`). The `%` was always a no-op (the
+> lowerer dropped it), and `=` collided visually with binding. Both are a **warning**
+> in 2026.1 and an **error** in 2026.6; use `in`. (Arithmetic `%` — modulo — is
+> unaffected; it was only ever the operator.) The codemod rewrites `x = src` / `x =
+> %src` → `x in src`.
 
 ### 3.9 Blocks
 
@@ -584,12 +610,21 @@ def loadProfile(id: Number): Effect [session] AppState
 
 An explicit `{ ... }` block (`;`-separated items, value = last) is available
 anywhere a block can appear — for a multi-statement binding RHS, or to make a
-block boundary explicit. `,` makes `{ … }` a record; `;` makes it a block:
+block boundary explicit. Record literals use the **`#{ … }`** opener, so the two
+never collide:
 
 ```
-area  = { w = 3; h = 4; w * h }    -- block (semicolons)
-point = { x: 3, y: 4 }             -- record (commas)
+area  = { w = 3; h = 4; w * h }    -- block  (semicolons, `=` bindings)
+point = #{ x: 3, y: 4 }            -- record (`#{`, `:` fields)
 ```
+
+> **Bare `{ x: 1 }` record literals — deprecated → removed in edition 2026.6.**
+> Earlier editions distinguished a record from a block by *content* (`,` + `name:`
+> ⇒ record; `;` / `name =` ⇒ block) — the "record-vs-block trap." From 2026.6 a
+> record literal must be written `#{ … }`, and a bare `{ … }` is **always** a block.
+> Bare-brace literals are a **warning** in 2026.1, an **error** in 2026.6; the codemod
+> rewrites `{ k: v }` → `#{ k: v }`. (Record *types* — `{ name: Type }` in type
+> position — are unambiguous and keep bare braces.)
 
 Error propagation with `?` and `?:`:
 
@@ -626,17 +661,28 @@ else
   Button "Home"
 ```
 
-**Ternary:** `cond ? a : b`. The `?` is **spaced** here; the propagate operator
-uses a **glued** `?` (`value?`, no space), so the two never collide — a space
-before `?` means ternary, no space means propagate:
+**Inline conditional:** `if c then a else b` — an expression (distinct from the
+indented-block `if`, §3.10), right-associative so it chains as an else-if ladder:
 ```
-report.status == :resolved ? "Resolved" : "Pending"
+report.status == :resolved ? "Resolved" : "Pending"   -- DEPRECATED (see below)
+if report.status == :resolved then "Resolved" else "Pending"
+
+if score > 90 then "A" else if score > 80 then "B" else "C"
 ```
+
+> **Ternary `cond ? a : b` — deprecated → removed in edition 2026.6.** It existed
+> only because there was no inline conditional, and it forced the language's one
+> whitespace-keyed rule: a **spaced** `?` meant ternary, a **glued** `?` (`value?`)
+> meant error-propagate. With `if…then…else` covering the inline case, the ternary is
+> a **warning** in 2026.1 and an **error** in 2026.6 — at which point `?` has exactly
+> one meaning (propagate), and the whitespace distinction is gone. The codemod
+> rewrites `c ? a : b` → `if c then a else b`.
 
 ### 3.11 Error propagation
 
 `?` — propagate error out of the function. The `?` is **glued** to the value
-(no preceding space), which distinguishes it from the spaced ternary `?`:
+(no preceding space). (Through edition 2026.1 this also distinguished it from the
+spaced ternary `?`; from 2026.6 the ternary is gone and `?` has only this meaning.)
 ```
 x = fetchUser(id)?
 ```
@@ -677,7 +723,7 @@ let r = retry [100ms, 1s, 5s]   -- backoff: 4 attempts with these delays
   fetchFlaky url
 
 -- computed (exponential) backoff via a comprehension — useful for servers:
-let conn = retry for (n = 0..5) -> (2 ^ n) * 100ms   -- 100, 200, 400, 800, 1600ms
+let conn = retry for (n in 0..5) -> (2 ^ n) * 100ms   -- 100, 200, 400, 800, 1600ms
   openSocket host
 ```
 
@@ -790,7 +836,7 @@ text can be written directly). Other escapes: `\n \t \r \" \\`.
 ### 3.17 Spread
 
 ```
-{ ...baseRecord, status: :resolved }
+#{ ...baseRecord, status: :resolved }
 Row ...baseProps background=#fff
   Text "hello"
 ```
@@ -1335,27 +1381,37 @@ transaction within { from: now, to: now + 5000, maxRetry: 3 }
    | Cancelled          -> ()
 ```
 
-**Outcome type (implemented).** A `transaction` evaluates to the distinctly-typed
-ADT `TxResult(T)`, where `T` is the type of the block's final expression — it is
-*not* a plain `Result`. Its five constructors:
+**Outcome type (implemented).** A `transaction` evaluates to a distinctly-typed
+outcome ADT, where `T` is the type of the block's final expression — it is *not* a
+plain `Result`. **Renamed in edition 2026.6** (the type and its commit/abort ctors;
+the concurrency ctors are stable):
 
-| Constructor          | Meaning                                              | Payload            |
-|----------------------|-----------------------------------------------------|--------------------|
-| `Ok v`               | committed; `v : T`                                   | `T`                |
-| `Error e`            | bare (un-`within`) transaction aborted              | the failing error  |
-| `Conflict { retries }` | `within { maxRetry: N }` exhausted all retries    | `{ retries: Number }` |
-| `Timeout { after }`  | `within { to }` deadline passed                     | `{ after: Number }`  |
-| `Cancelled`          | aborted by `crash()` inside the body                | — (nullary)        |
+| Constructor (2026.6) | (2026.1 legacy) | Meaning                                   | Payload            |
+|----------------------|-----------------|-------------------------------------------|--------------------|
+| `Committed v`        | `Ok v`          | committed; `v : T`                        | `T`                |
+| `Aborted e`          | `Error e`       | bare (un-`within`) transaction aborted    | the failing error  |
+| `Conflict { retries }` | *(same)*      | `within { maxRetry: N }` exhausted retries | `{ retries: Number }` |
+| `Timeout { after }`  | *(same)*        | `within { to }` deadline passed           | `{ after: Number }`  |
+| `Cancelled`          | *(same)*        | aborted by `crash()` inside the body      | — (nullary)        |
 
-`TxResult` shares the `Ok`/`Error` *names* with `Result` (**constructor sharing**):
-which ADT a `| Ok v ->` arm belongs to is decided by the **expected type** at the
-match site, never by the name alone. Because `Conflict`/`Timeout` carry typed
-records, `c.retries` and `t.after` are `Number`s (a wrong field is a type error),
-and a match over a `TxResult` is **exhaustiveness-checked** over the closed
-five-constructor set. A function whose body is a transaction is annotated
-`def transfer(amt): TxResult(Number)`. A bare `transaction` (no `within`) can only
-produce `Ok`/`Error`, so `| Ok v -> | Error e ->` is exhaustive for it; a
-`within`-configured one may produce any of the five.
+The type name is `Outcome(T)` in 2026.6, `TxResult(T)` in 2026.1. Opt in with
+`@edition "2026.6"` at the top of a module; absent that, a module is 2026.1 and the
+legacy names apply. Mixing per module is allowed (editions are module-scoped).
+
+**Why the rename:** under 2026.1, `TxResult` shared the `Ok`/`Error` *names* with
+`Result` (**constructor sharing**) — which ADT a `| Ok v ->` arm belonged to was
+decided by the **expected type** at the match site, the one name-overloaded corner
+of the language. In 2026.6 `Committed`/`Aborted` are unique, so that ambiguity is
+gone: a match resolves purely by name. (The checker still uses the expected type to
+assign the typed payloads, but there is no longer a collision to break.)
+
+Because `Conflict`/`Timeout` carry typed records, `c.retries` and `t.after` are
+`Number`s (a wrong field is a type error), and a match over the outcome ADT is
+**exhaustiveness-checked** over the closed five-constructor set. A function whose
+body is a transaction is annotated `def transfer(amt): Outcome(Number)` (2026.6) /
+`TxResult(Number)` (2026.1). A bare `transaction` (no `within`) can only commit or
+abort, so the two commit/abort arms are exhaustive for it; a `within`-configured one
+may produce any of the five.
 
 ---
 
@@ -1438,7 +1494,7 @@ Streams are stores. Producers `send`, consumers `await`:
 ```
 -- Producer
 def streamResponse(prompt: String): Effect [network] ()
-  for (chunk = %openai.stream prompt)
+  for (chunk in openai.stream prompt)
     send ResponseStream (Push chunk)
   send ResponseStream Done
 
@@ -1728,18 +1784,26 @@ mock?); surface as a block keyword vs. a `velve debug` run mode.
 
 ---
 
-## 17. Versioning and editions — PROPOSED
+## 17. Versioning and editions — SCAFFOLDING SHIPPED
 
-Status: **PROPOSED** (design contract to adopt early). Velve is pre-1.0 and the
-surface language will change; editions are the insurance that lets it change
-*without a flag day*. Precedent: **Rust editions** (2015/18/21/24), **Racket
+Status: **SCAFFOLDING SHIPPED (2026-06)** — the per-module pragma, edition resolver,
+and a no-op gate are built (`edition.ts`, `Module.edition`; `edition_test.velve` /
+`edition_bad.velve`). No edition-specific *semantics* are gated yet; the
+surface-consistency breaks (PLAN.md Phase 2) land on edition `2026.6`. Velve is
+pre-1.0 and the surface language will change; editions are the insurance that lets it
+change *without a flag day*. Precedent: **Rust editions** (2015/18/21/24), **Racket
 `#lang`** (per-file language), **Python `from __future__`**.
 
-**Recommended model — Rust-style editions:**
+**As-built — Rust-style editions:**
 
-- **Per-module edition pragma** (e.g. `@edition "0.6"` at module top), read by
-  `lower`/`infer`/`eval`, which **branch behavior on edition**. Absent → latest, or
-  a pinned default.
+- **Edition names are dates** (`year.month`, ordered epochs). Shipped: `2026.1`
+  (**baseline** — the pre-refactor language) and `2026.6` (the surface-consistency
+  refactor). A module opts in with `@edition "2026.6"` on its first line.
+- **Per-module edition pragma** (`@edition "2026.6"` at module top), read by
+  `lower`/`infer`/`eval`, which **branch behavior on edition**. Absent → the pinned
+  default, currently `2026.1` (baseline) so existing code keeps compiling untouched;
+  this flips to *latest* once the corpus is migrated. An unknown edition name is a
+  checker error (not a parse error) and falls back to the default.
 - **A stable core IR is the interop boundary.** Editions differ in the *frontend*
   (surface syntax + lowering); they all lower to the same core AST, so a 0.5 module
   and a 0.7 module link. The existing AST is that chokepoint — the discipline is
@@ -1758,9 +1822,9 @@ while old modules keep compiling. **Explicitly avoid the Elm approach** (break
 between majors with a migration tool) — simplest, but most painful while the
 language is still moving fast.
 
-**Open:** edition cadence/naming (semver-ish `0.x` vs named epochs); whether a
-single project may mix editions per module (recommended yes) or must be uniform;
-automated `velve fix --edition` migration; how `@comptime`/macros (if added) version.
+**Decided:** edition naming = date epochs (`year.month`); a project **may** mix
+editions per module (the pragma is per-file). **Open:** automated `velve fix
+--edition` migration; how `@comptime`/macros (if added) version.
 
 ---
 

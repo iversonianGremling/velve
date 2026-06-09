@@ -52,7 +52,7 @@ def runAgent(task: String): Effect [network] Result () String
 
     :think
       race
-        go askLLM((ask AgentMemory log))
+        go askLLM(ask AgentMemory log)
         after 60s
       | Ok (Chunk c) ->
         send OutputStream (Push(c))
@@ -65,7 +65,7 @@ def runAgent(task: String): Effect [network] Result () String
       | Timeout       -> :failed "LLM timed out"
 
     :use_tool call
-      callTool((call.name), (call.args))
+      callTool(call.name, call.args)
       | Ok result ->
         send AgentMemory (Add({ role: "tool", content: result }))
         :think

@@ -3,7 +3,7 @@
 
 def main(): Unit
   let x = 5
-  println(("plain \{ brace \}"))            -- plain { brace }
-  println(("json \{\"k\": {x}\}"))          -- json {"k": 5}   (escape + interpolation)
-  println(("tab\there\nnewline"))           -- tab + newline
-  println(("quote \" backslash \\ end"))    -- quote " backslash \ end
+  println("plain \{ brace \}")            -- plain { brace }
+  println("json \{\"k\": {x}\}")          -- json {"k": 5}   (escape + interpolation)
+  println("tab\there\nnewline")           -- tab + newline
+  println("quote \" backslash \\ end")    -- quote " backslash \ end

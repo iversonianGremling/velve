@@ -33,11 +33,11 @@ def main(): Number
   let p   = nums.&
   let fh  = firstHalf(p)             -- pointer slice → aliases nums[0..3]
   let got = fh.*                    -- read sub-region → [10, 20, 30]
-  print(("mid={mid} hd={hd} s={s} got={got}"))
+  print("mid={mid} hd={hd} s={s} got={got}")
   -- write-through: a pointer slice is a VIEW, so writing it splices the parent buffer
   fh.* = [99, 98, 97]
-  print(("nums after write={nums}"))  -- [99, 98, 97, 40, 50, 60]
+  print("nums after write={nums}")  -- [99, 98, 97, 40, 50, 60]
   -- 3 + 3 + 5 + 3 = 14
   let total = (length(mid)) + (length(hd)) + (length(s)) + (length(got))
-  print(("total={total}"))
+  print("total={total}")
   total

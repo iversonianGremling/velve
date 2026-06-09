@@ -8,4 +8,4 @@ def view(): Element
     Box height=10 width=(prev.width) background=#161b22
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

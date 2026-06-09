@@ -13,12 +13,12 @@ def firstOf(xs: NonEmpty(Number)): Number -> xs[0]
 def main(): Number
   let a = at([10, 20, 30], 0)   -- 0 in [0,3) ✓ (dependent bound folded + checked)
   let b = at([10, 20, 30], 2)   -- 2 in [0,3) ✓ (boundary)
-  let c = firstOf(([1, 2, 3]))    -- non-empty ✓
+  let c = firstOf([1, 2, 3])    -- non-empty ✓
 
   -- Index from a variable: predicate can't be folded → no compile-time check,
   -- still type-checks as Number (transparent to base).
   let idx = 1
   let d = at([4, 5, 6], idx)
 
-  println(("a={a} b={b} c={c} d={d}"))
+  println("a={a} b={b} c={c} d={d}")
   a

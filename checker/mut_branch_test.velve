@@ -4,15 +4,15 @@
 -- A `let`/`mut` declared inside a branch must still shadow (stay local).
 
 def wire(push, done): Unit
-  push((10))
-  push((20))
-  push((30))
+  push(10)
+  push(20)
+  push(30)
   done()
 
 -- reassign inside an `await` branch body: accumulate stream values into a sum
 -- and into a list (proves the outer mut sees every push).
 def streamSum(): Number
-  let s = externSource((wire))
+  let s = externSource(wire)
   mut total = 0
   loop
     await s
@@ -23,7 +23,7 @@ def streamSum(): Number
   total
 
 def streamList(): List(Number)
-  let s = externSource((wire))
+  let s = externSource(wire)
   mut acc = []
   loop
     await s
@@ -51,6 +51,6 @@ def matchSum(): Number
   n
 
 def main(): Unit
-  print(("total {streamSum()}"))
-  print(("list {streamList()}"))
-  print(("n {matchSum()}"))
+  print("total {streamSum()}")
+  print("list {streamList()}")
+  print("n {matchSum()}")

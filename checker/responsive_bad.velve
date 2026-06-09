@@ -5,5 +5,5 @@
 def responsiveWidth(): Length
   responsive
     | Mobile  -> Fill
-    | Tablet  -> Pct((80))
-    | Desktop -> Px((320))
+    | Tablet  -> Pct(80)
+    | Desktop -> Px(320)

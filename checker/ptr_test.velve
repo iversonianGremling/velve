@@ -10,9 +10,9 @@ def main(): Unit
   let x = 41
   let p = x.&
   -- read through the pointer
-  println(("x.&.* = {p.*}"))
+  println("x.&.* = {p.*}")
   -- pass a pointer to a function and deref it there
-  println(("deref(p) = {deref((p))}"))
+  println("deref(p) = {deref(p)}")
   -- pointer round-trips back to the original value
   let y = p.*
-  println(("y = {y}"))
+  println("y = {y}")

@@ -6,4 +6,4 @@ def view(): Element
     Text "x" grow=1         -- parent-context: grow needs a flex parent, Box is block
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

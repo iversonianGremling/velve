@@ -12,8 +12,8 @@ store Form
 def view(): Element
   Column gap=8 padding=12
     Input id="field" value=(Form.current) placeholder="your name"
-      on onInput e -> send Form (SetName((e.value)))
+      on onInput e -> send Form (SetName(e.value))
     Text "hello {Form.current}" id="greet" size=14 color=#ffffff
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

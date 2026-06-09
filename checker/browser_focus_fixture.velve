@@ -9,7 +9,7 @@ store Rows
   state
     items : List(Row) = [ { id: "alpha" }, { id: "beta" }, { id: "gamma" } ]
   messages
-    Flip -> { items: reverse((items)) }
+    Flip -> { items: reverse(items) }
   pub
     all = items
 
@@ -22,4 +22,4 @@ def view(): Element
         Input id=(r.id) value=(r.id)
 
 def main(): Unit
-  print(("fixture"))
+  print("fixture")

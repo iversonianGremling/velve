@@ -12,8 +12,8 @@ def card(): Element
 def widthFor(bp: Breakpoint): Length
   match bp
     | Mobile  -> Fill
-    | Tablet  -> Pct((80))
-    | Desktop -> Px((320))
+    | Tablet  -> Pct(80)
+    | Desktop -> Px(320)
     | Wide    -> Clamp(320, 480)
 
 -- Responsive value via the read-only `viewport` root (§9.1): a `match` over
@@ -21,15 +21,15 @@ def widthFor(bp: Breakpoint): Length
 def responsiveWidth(): Length
   match viewport.breakpoint
     | Mobile  -> Fill
-    | Tablet  -> Pct((80))
-    | Desktop -> Px((320))
+    | Tablet  -> Pct(80)
+    | Desktop -> Px(320)
     | Wide    -> Clamp(320, 480)
 
 def view(): Element
   Column gap=16 padding=24 background=#000000
     { card() }
-    Box width=(widthFor((Desktop))) height=40 background=#1e2130
+    Box width=(widthFor(Desktop)) height=40 background=#1e2130
     Box width=(responsiveWidth()) height=40 background=#161b22
 
 def main(): Unit
-  print((html((view()))))
+  print(html(view()))

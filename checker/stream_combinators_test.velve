@@ -19,9 +19,9 @@ def prodMB(): Unit
 -- throttle 10ms (leading edge): 1 @0 emit; 2 @5 dropped (within window); 3 @55 emit → 1+3 = 4
 def prodTH(): Unit
   send TH (Push(1))
-  sleep((5))
+  sleep(5)
   send TH (Push(2))
-  sleep((50))
+  sleep(50)
   send TH (Push(3))
   send TH Done
 
@@ -29,24 +29,24 @@ def prodTH(): Unit
 def prodDB(): Unit
   send DB (Push(1))
   send DB (Push(2))
-  sleep((50))
+  sleep(50)
   send DB (Push(3))
-  sleep((50))
+  sleep(50)
   send DB Done
 
 def sumOf(s: Stream(Number)): Number
-  s |> streamFold(0, (fn (acc x) -> acc + x))
+  s |> streamFold(0, fn (acc x) -> acc + x)
 
 def main(): Number
   go prodMA()
   go prodMB()
-  let merged = sumOf((streamMerge(MA, MB)))
+  let merged = sumOf(streamMerge(MA, MB))
 
   go prodTH()
-  let throttled = sumOf((streamThrottle(TH, 10)))
+  let throttled = sumOf(streamThrottle(TH, 10))
 
   go prodDB()
-  let debounced = sumOf((streamDebounce(DB, 10)))
+  let debounced = sumOf(streamDebounce(DB, 10))
 
-  println(("merged={merged} throttled={throttled} debounced={debounced}"))
+  println("merged={merged} throttled={throttled} debounced={debounced}")
   merged

@@ -15,9 +15,17 @@ type TypeDefMap = Map<string, CtorInfo[]>;
 function buildTypeDefs(mod: Module): TypeDefMap {
   const map: TypeDefMap = new Map();
   map.set("Result", [{ name: "Ok", hasPayload: true }, { name: "Error", hasPayload: true }]);
-  // TxResult(T) — the closed transaction-outcome ADT (commit/abort + concurrency).
+  // The closed transaction-outcome ADT (commit/abort + concurrency). Renamed in
+  // edition 2026.6: `TxResult`/`Ok`/`Error` → `Outcome`/`Committed`/`Aborted`. Both
+  // type names are registered so a match is exhaustiveness-checked under whichever
+  // edition produced the scrutinee type (transaction inference picks the name).
   map.set("TxResult", [
     { name: "Ok", hasPayload: true }, { name: "Error", hasPayload: true },
+    { name: "Conflict", hasPayload: true }, { name: "Timeout", hasPayload: true },
+    { name: "Cancelled", hasPayload: false },
+  ]);
+  map.set("Outcome", [
+    { name: "Committed", hasPayload: true }, { name: "Aborted", hasPayload: true },
     { name: "Conflict", hasPayload: true }, { name: "Timeout", hasPayload: true },
     { name: "Cancelled", hasPayload: false },
   ]);
