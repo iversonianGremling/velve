@@ -17,7 +17,7 @@ Legend: 🔴 load-bearing (fix before the surface freezes) · 🟡 important · 
 | Type system core (HM + refinements + dependent) | **A−** | TS, Elm, F#, Liquid Haskell | Refinements-as-transparent-base with free constant-folding is genuinely better ergonomics than all four; conservative skip keeps it honest. |
 | UI / styling | **B+** | React+CSS, Elm, SwiftUI | Typed props, context-validity (`gap` on non-flex = error), real units, and APCA contrast beat CSS's silent no-ops. Held back by the element/call syntax duality (§2.1) and by theme/responsive/inputmap being design-only. |
 | Event handling / state | **A−** | Elm, Redux, Rx, XState, Erlang/OTP | The four-primitive taxonomy (store/machine/stream/transaction + `persisted`) with a "what do I reach for" table is the best-explained state story in any draft language I know. `machine … persisted` + journal + `resume` is XState+Temporal in one construct. Gaps: backpressure unspecified, `await`-to-step-goto doesn't parse. |
-| Error handling | **B** | Rust `?`, Zig, Go | `?`/`?:`/`try`/`retry` cover the space well, but the meaning of `?` depends on *whitespace* (§2.2) — the single worst readability decision in the draft. |
+| Error handling | **B+** *(2026.6)* | Rust `?`, Zig, Go | `?`/`?:`/`try`/`retry` cover the space well; the whitespace-keyed `?` (spaced = ternary vs glued = propagate, §2.2) — the draft's worst readability decision — is **gone from edition 2026.6**: the ternary was deleted in favour of `if c then a else b`, so `?` now carries one glued meaning. |
 | Low-level | **B−** | Rust, Zig | Ptr/regions/outlives/move tracking are real and end-to-end. But unified `Number` vs. planned sized types vs. `Duration` dimensions vs. `Px` units = four numeric stories that haven't met each other (§3.4). `std/low`/gpu/audio are sketches. |
 | Games / intensive interactive | **C+** (today) / **A−** (as designed) | Unity C#, Bevy ECS, Pony | `docs/interaction-model-design.md` (footprint = `mut` params, capability-keyed dispatch, `@interaction`/`@confined`) is a credible, novel answer to ECS — but nothing of it is implemented, there is no frame clock, and a tree-walking interpreter can't hold 60fps. The claim depends on the compiled target. |
 | Animation | **C** (today) / **A** (as designed) | CSS, Framer Motion, SwiftUI | The `animated` modifier + mandatory motion-policy chokepoint ("motion you can't write inaccessibly") is a real differentiator no shipping system has. Entirely unimplemented; depends on `frames` + reconciler work. |
@@ -25,10 +25,21 @@ Legend: 🔴 load-bearing (fix before the surface freezes) · 🟡 important · 
 
 **Overall:** the semantic layer is unusually coherent — the state primitives, the
 refusal discipline (§4.0 of the SPEC), and the design-note honesty ("evidence
-basis" sections) are top-decile. The *surface syntax* is where consistency
-breaks: there are currently **three application syntaxes**, **three meanings of
-`?` keyed on whitespace**, and **two iteration forms**, and those are exactly the
-things that destroy "easy mental models." Fix the surface before 0.6.
+basis" sections) are top-decile. The *surface syntax* was where consistency broke:
+**three application syntaxes**, **three meanings of `?` keyed on whitespace**, and
+**two iteration forms**. The editions refactor (2026.6) has since retired two of the
+three: the **two iteration forms → one** (`for…in`, `%` removed, §2.5) and the
+**whitespace-keyed `?` is gone** (ternary deleted, §2.2) — both edition-gated (warning
+in 2026.1, error in 2026.6) so the existing corpus stays green. Also shipped: `#{}`
+records (kills the record-vs-block trap, §2.3), the `Outcome` rename (kills
+constructor-sharing), `pipe`/`saga` deletions, and compile-time multi-clause head
+exhaustiveness. **What remains** is the **three application syntaxes** (§2.1,
+call-syntax phase 2) — now the top surface item before 0.6.
+
+> Grades tagged *(2026.6)* reflect shipped, edition-gated changes; untagged grades are
+> unchanged because their named gaps are still open (UI: call-syntax duality + design-only
+> theme/responsive; state: backpressure + `await`-to-step-goto; low-level/games/animation
+> as noted). Re-grade a row only when a green fixture proves its gap closed.
 
 ---
 
