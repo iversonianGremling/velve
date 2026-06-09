@@ -1,0 +1,28 @@
+@edition "2026.6"
+
+-- Multi-clause head exhaustiveness (1c). A function that dispatches on a parameter
+-- by constructor must cover every constructor of that ADT — unless a clause supplies
+-- a catch-all binder at that position. This file is exhaustive and checks clean.
+
+type Light
+  = Red
+  | Yellow
+  | Green
+
+-- All three constructors covered: exhaustive by enumeration.
+def proceed(Red): Bool    -> false
+def proceed(Yellow): Bool -> false
+def proceed(Green): Bool  -> true
+
+type Coin
+  = Heads
+  | Tails
+
+-- A catch-all binder (`c: Coin`) covers the rest, so naming only `Heads` is fine.
+def flip(Heads): Number   -> 1
+def flip(c: Coin): Number -> 0
+
+def main(): Bool
+  print(flip(Heads))
+  print(flip(Tails))
+  proceed(Green)

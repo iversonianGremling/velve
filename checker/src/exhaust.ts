@@ -2,6 +2,7 @@ import type { Span } from "./span.js";
 import type { Module, Expr, Stmt, Pat, Branch } from "./ast.js";
 import type { Type } from "./types.js";
 import type { Diagnostic } from "./resolve.js";
+import { type Edition, atLeast } from "./edition.js";
 
 // ── Type definition map ───────────────────────────────────────────────────────
 
@@ -82,7 +83,84 @@ export function checkExhaustiveness(
   const diags: Diagnostic[] = [];
 
   walkDecls(mod.decls, types, typedefs, diags);
+  checkClauseHeads(mod.decls, typedefs, diags, mod.edition);
   return diags;
+}
+
+// ── 1c. Multi-clause head exhaustiveness (edition-gated) ──────────────────────
+//
+// A multi-clause function `def f(High) … / def f(Medium) …` dispatches on a
+// parameter by constructor. If the clause heads at a constructor-dispatch position
+// don't cover every constructor of that position's ADT — and no clause has a
+// catch-all (binder/wildcard) there — then calling `f` with the missing
+// constructor has no matching clause: a runtime "no clause" failure the type
+// system should catch. Warning in baseline 2026.1, error in 2026.6 (SPEC §17).
+//
+// SAFE SUBSET (zero corpus false positives by construction):
+//   • only positions where every head is a `PCtor` or a catch-all are considered —
+//     atom / literal / record / tuple dispatch is skipped (no atom-union modelling);
+//   • the dispatch ADT is recovered from the head constructor names, and only when
+//     they belong to *exactly one* known ADT (shared ctors like `Ok`/`Error`, which
+//     sit in both `Result` and `TxResult`, are ambiguous → skipped);
+//   • a missing constructor at any position with no catch-all there is *always* a
+//     genuine gap (independent of the other positions), so per-position checking
+//     never over-reports — it can only under-report correlated multi-axis dispatch.
+function checkClauseHeads(
+  decls: import("./ast.js").Decl[],
+  td: TypeDefMap,
+  diags: Diagnostic[],
+  edition: Edition,
+): void {
+  for (const decl of decls) {
+    if (decl.tag === "DModule") { checkClauseHeads(decl.decls, td, diags, edition); continue; }
+    if (decl.tag !== "DFn" || decl.clauses.length < 2) continue;
+
+    const arity = decl.clauses[0]!.params.length;
+    if (arity === 0) continue;
+    // All clauses must share arity to line params up positionally.
+    if (!decl.clauses.every(c => c.params.length === arity)) continue;
+
+    for (let i = 0; i < arity; i++) {
+      const pats = decl.clauses.map(c => c.params[i]!.pat);
+      const ctorNames = pats.flatMap(p => (p.tag === "PCtor" ? [p.name] : []));
+      if (ctorNames.length === 0) continue;                       // not a ctor dispatch
+      // Every head here must be a PCtor or a catch-all; anything else (atom/literal/
+      // record/tuple) is outside the safe subset.
+      if (pats.some(p => p.tag !== "PCtor" && !isWildcard(p))) continue;
+      // A catch-all binder/wildcard at this position covers every constructor.
+      if (pats.some(isWildcard)) continue;
+
+      const adt = adtForCtors(ctorNames, td);
+      if (!adt) continue;                                          // unknown / ambiguous
+      const covered = new Set(pats.flatMap(topLevelCtors));
+      const missing = td.get(adt)!.filter(c => !covered.has(c.name)).map(c => c.name);
+      if (missing.length === 0) continue;
+
+      const deprecated = atLeast(edition, "2026.6");
+      const where = arity > 1 ? `parameter ${i + 1} (${adt})` : `the ${adt} argument`;
+      const base = `non-exhaustive clause heads for '${decl.name}' — ${where} missing: ${missing.join(", ")}`;
+      diags.push({
+        kind: deprecated ? "error" : "warning",
+        span: decl.span,
+        message: deprecated ? base : `${base} (rejected from edition 2026.6)`,
+      });
+    }
+  }
+}
+
+// The single ADT whose constructor set contains every given head name. Returns null
+// when no ADT fits, or when the names fit more than one (ambiguous) — either way we
+// stay silent so the check never produces a false positive.
+function adtForCtors(names: string[], td: TypeDefMap): string | null {
+  let found: string | null = null;
+  for (const [adt, ctors] of td) {
+    const set = new Set(ctors.map(c => c.name));
+    if (names.every(n => set.has(n))) {
+      if (found) return null;     // names fit >1 ADT — ambiguous
+      found = adt;
+    }
+  }
+  return found;
 }
 
 function walkDecls(decls: import("./ast.js").Decl[], types: Map<Expr, Type>, td: TypeDefMap, diags: Diagnostic[]): void {

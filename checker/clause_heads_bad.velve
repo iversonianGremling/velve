@@ -1,0 +1,15 @@
+@edition "2026.6"
+
+-- Non-exhaustive clause heads (1c). `rank` dispatches on `Priority` by constructor
+-- but never handles `Low`, and there is no catch-all clause — so `rank(Low)` has no
+-- matching clause. From edition 2026.6 this is a compile error (a warning in 2026.1).
+
+type Priority
+  = High
+  | Medium
+  | Low
+
+def rank(High): Number   -> 3
+def rank(Medium): Number -> 2
+
+def main(): Number -> rank(High)

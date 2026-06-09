@@ -28,6 +28,7 @@ means there is a green fixture exercising it under `checker/`.
 | Grammar (tree-sitter) | ✅ Built | Full surface; native binding builds. |
 | Type inference / resolution | ✅ Built | `infer.ts` / `resolve.ts`; HM-style with annotations. |
 | Pattern match + exhaustiveness | ✅ Built | `exhaust.ts`; closed ADTs, `Outcome`, literals. |
+| Multi-clause head exhaustiveness | ✅ Built | `clause_heads_test`; constructor dispatch on a closed ADT (warn 2026.1 / error 2026.6). |
 | Refinement types | ✅ Built | `dependent_test`, `refinement_test`; transparent, checked. |
 | Effects (declared + unchecked-hole closed) | ✅ Built | `effects_test`; pure-calls-effectful is a gate (warn 2026.1 / error 2026.6). |
 | Transactions + `Outcome` ADT | ✅ Built (check-only) | `transaction_test`, `outcome_test`; no runtime transaction yet. |
@@ -498,6 +499,24 @@ def fib(n: Number): Number -> fib(n - 1) + fib(n - 2)
 
 Pattern params: atom literals (`:name`), type patterns (`Rect`), wildcard (`_`),
 typed (`r: Number`), and constant literals (`0`, `true`) for dispatch on a value.
+
+**Clause-head exhaustiveness.** When the clauses of a function dispatch on a
+parameter *by constructor* and that parameter's type is a closed ADT, the clause set
+must cover every constructor — otherwise a call with the missing constructor has no
+matching clause. A catch-all binder at that position (`def rank(p: Priority)`) covers
+the rest. This is checked at compile time — a **warning in edition 2026.1, an error in
+2026.6** (SPEC §17):
+```
+type Priority = High | Medium | Low
+
+def rank(High): Number   -> 3
+def rank(Medium): Number -> 2
+-- ⚠ non-exhaustive: the `Low` constructor is unhandled and there is no catch-all
+```
+The check is deliberately conservative: it fires only for pure constructor dispatch on
+a single closed ADT (constructor names that resolve unambiguously to one type). Atom /
+literal / record dispatch, and correlated multi-parameter dispatch, are not flagged —
+so it never reports a false gap, only genuine ones.
 
 **Generic constraints** in body via `where`:
 

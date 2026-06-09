@@ -62,12 +62,23 @@ Enforcement value delivered (1b shipped, 1d/1e resolved). 1c + 1a deferred as
       orderability check); `toString`/interpolation are `∀a. a -> String`. Velve has no
       typeclass system. SPEC §3.4 now carries a ⚠ "not yet enforced" block stating the
       real built-in signatures; a constraint solver is a deferred build.
-- [ ] **1c. Multi-clause head exhaustiveness** (§5). ⚠ Needs a focused pass. Reusing
-      `checkBranchSet` is easy, but it needs the dispatch parameter's **resolved
-      `Type`** — and clause-head params carry only syntactic `TypeRef` ascriptions (or
-      none, for literal heads like `def fib(0)`). Requires `TypeRef→Type` resolution +
-      atom-union modeling in `exhaust.ts` to avoid false positives. Edition-gate
-      (warn `2026.1` / error `2026.6`) like 1b once built.
+- [x] **1c. Multi-clause head exhaustiveness** (§5). ✅ DONE, edition-gated.
+      **Key simplification vs the original plan:** no `TypeRef→Type` resolution needed —
+      for the safe subset the dispatch ADT is recovered *from the head constructor names*
+      (`adtForCtors`), and only when they belong to **exactly one** known ADT (shared
+      ctors like `Ok`/`Error`, in both `Result` and `TxResult`, are ambiguous → skipped).
+      `checkClauseHeads` in `exhaust.ts` walks each multi-clause `DFn`, and per parameter
+      position made entirely of `PCtor`s + optional catch-all binders, checks the closed
+      ADT is fully covered. **Soundness:** a missing ctor at any position (no catch-all
+      there) is *always* a genuine gap independent of other positions, so per-position
+      checking yields **zero false positives** — it only under-reports correlated
+      multi-axis dispatch (safe). Atom/literal/record dispatch is out of subset (skipped),
+      sidestepping the atom-union modeling the plan feared. Warning 2026.1 / error 2026.6.
+      New fixtures: `clause_heads_test.velve` (exhaustive + catch-all, green) and
+      `clause_heads_bad.velve` (missing `Low`, 1 intended error). **Verified:** zero
+      corpus false positives (no green fixture trips it; `fib`/`yesno`/`describe` are
+      literal/atom dispatch → skipped); corpus 32→33 (the +1 is the new intended-error
+      fixture only). SPEC §3.4 documents the rule; §0.5 table updated.
 - [ ] **1a. Static convergence cycle pre-flag** (§3.1). ⚠ Lowest ROI / own pass. The
       runtime `converge.ts` check already catches literal cycles (just later, as a
       `RuntimeError` — verified `styles-design.md §6.6`). A static AST pass would only
