@@ -1,3 +1,5 @@
+-- ⚠ Aspirational sketch — exercises the language surface but calls into the
+-- not-yet-built stdlib/UI, so it does not fully type-check yet (see SPEC §0.5).
 -- TaskFlow — a task management application
 -- Demonstrates the full Velve language surface
 
@@ -39,6 +41,15 @@ type StoreFx = Effect [network, storage] String
 
 type Vec4 = extern { x: Number align=16, y: Number, z: Number, w: Number }
 
+-- `ValidAge` (above) in use. A refinement param is folded at the *call site* when
+-- the argument is a constant: `ageNextYear(30)` passes (30 ≥ 0), while
+-- `ageNextYear(0 - 1)` would be a compile error. Non-constant arguments are skipped
+-- at compile time and guarded at runtime by `ValidAge.parse`. The body returns a
+-- plain `Number` (a refinement is transparent to its base).
+def ageNextYear(a: ValidAge): Number -> a + 1
+
+def demoAge(): Number -> ageNextYear(30)
+
 -- ──────────────────────────────────────────────────────────────────────────
 -- Session store — tracks login state, with v1 migration
 -- ──────────────────────────────────────────────────────────────────────────
@@ -46,15 +57,15 @@ type Vec4 = extern { x: Number align=16, y: Number, z: Number, w: Number }
 store Session
   version: 2
   migrate
-    | v1 { token } -> { token: token, role: "user" }
+    | v1 { token } -> #{ token: token, role: "user" }
   state
     token : String = "none"
     role : String = "user"
   messages
     Login (token: String) ->
-      { token: token, role: role }
+      #{ token: token, role: role }
     Logout ->
-      { token: "none", role: "user" }
+      #{ token: "none", role: "user" }
   pub
     isLoggedIn = token != "none"
     currentRole = role
@@ -69,13 +80,13 @@ store Tasks
     nextId : Number = 1
   messages
     Add (title: String, priority: Priority) ->
-      { items: items, nextId: nextId + 1 }
+      #{ items: items, nextId: nextId + 1 }
     Complete (id: TaskId) ->
       updated = items
-      { items: updated, nextId: nextId }
+      #{ items: updated, nextId: nextId }
     Remove (id: TaskId) ->
       remaining = items
-      { items: remaining, nextId: nextId }
+      #{ items: remaining, nextId: nextId }
   pub
     all = items
     count = nextId - 1
@@ -266,7 +277,7 @@ def login(token: String): StoreFx
     token
 
 def loginWithTimeout(token: String): StoreFx
-  transaction within { timeout: 5000 }
+  transaction within #{ timeout: 5000 }
     send Session (Login(token))
     token
 
@@ -357,7 +368,7 @@ def emptyState(): Element
 
 -- Spread props and hex color literal
 def sidePanel(): Element
-  baseProps = { gap: 8 }
+  baseProps = #{ gap: 8 }
   Row ...baseProps background=#f5f5f5
   Text("TaskFlow")
 

@@ -1,3 +1,5 @@
+-- ⚠ Aspirational sketch — exercises the language surface but calls into the
+-- not-yet-built stdlib/UI, so it does not fully type-check yet (see SPEC §0.5).
 import low   from "std/low"
 import gpu   from "std/gpu"
 import audio from "std/audio"
@@ -41,7 +43,7 @@ module particleSystem
       angle = seeds[idx] * e.spread
       speed = seeds[idx] * e.speed
       life  = seeds[idx] * e.life
-      newParticle = Particle({ position: e.position, velocity: { x: 0.0, y: 0.0 }, color: e.color, life: life, size: e.sizeStart, rotation: seeds([idx]), mass: 0.1 })
+      newParticle = Particle(#{ position: e.position, velocity: #{ x: 0.0, y: 0.0 }, color: e.color, life: life, size: e.sizeStart, rotation: seeds([idx]), mass: 0.1 })
 
     def simulateParticles(particles: Array(n, Particle), forces: Array(m, ForceField), numForces: Number, config: Array(1, SimConfig), output: Array(n, Particle)): Number
       idx = gpu.threadId
@@ -55,7 +57,7 @@ module particleSystem
       px = p.position.x + vx * cfg.deltaTime
       py = p.position.y + vy * cfg.deltaTime
       lifeRatio = p.life / 2.0
-      newOutput = Particle({ position: { x: px, y: py }, velocity: { x: vx, y: vy }, color: { x: p.color.x * lifeRatio, y: p.color.y * lifeRatio, z: p.color.z * lifeRatio, w: p.color.w * lifeRatio }, life: p.life - cfg.deltaTime, size: p.size * lifeRatio, rotation: p.rotation + vx * 0.1, mass: p.mass })
+      newOutput = Particle(#{ position: #{ x: px, y: py }, velocity: #{ x: vx, y: vy }, color: #{ x: p.color.x * lifeRatio, y: p.color.y * lifeRatio, z: p.color.z * lifeRatio, w: p.color.w * lifeRatio }, life: p.life - cfg.deltaTime, size: p.size * lifeRatio, rotation: p.rotation + vx * 0.1, mass: p.mass })
 
     def renderParticles(particles: Array(n, Particle), framebuf: Array(m, Vec4), width: Number, height: Number): Number
       idx    = gpu.threadId
@@ -75,36 +77,36 @@ module particleSystem
     state
       emitters   : List     = []
       forces     : List     = []
-      config     : SimConfig = { maxParticles: 500000, deltaTime: 0.016, bounds: { min: { x: 0.0, y: 0.0 }, max: { x: 1920.0, y: 1080.0 } }, drag: 0.98 }
+      config     : SimConfig = #{ maxParticles: 500000, deltaTime: 0.016, bounds: #{ min: #{ x: 0.0, y: 0.0 }, max: #{ x: 1920.0, y: 1080.0 } }, drag: 0.98 }
       running    : Bool     = false
       frameCount : Number   = 0
       bandEnergy : List     = [0, 0, 0, 0, 0, 0, 0, 0]
 
     messages
       AddEmitter (e: Emitter) ->
-        { emitters: emitters }
+        #{ emitters: emitters }
 
       RemoveEmitter (id: Number) ->
-        { emitters: emitters |> filter e -> e.id != id }
+        #{ emitters: emitters |> filter e -> e.id != id }
 
       UpdateEmitter (id: Number, updated: Emitter) ->
-        { emitters: emitters |> map em -> em.id == id ? updated : em }
+        #{ emitters: emitters |> map em -> if em.id == id then updated else em }
 
       AddForce (f: ForceField) ->
-        { forces: forces }
+        #{ forces: forces }
 
       RemoveForce (idx: Number) ->
-        { forces: forces }
+        #{ forces: forces }
 
       UpdateConfig (cfg: SimConfig) ->
-        { config: cfg }
+        #{ config: cfg }
 
       UpdateBandEnergy (bands: List) ->
-        { bandEnergy: bands }
+        #{ bandEnergy: bands }
 
-      Start -> { running: true }
-      Stop  -> { running: false }
-      Tick  -> { frameCount: frameCount + 1 }
+      Start -> #{ running: true }
+      Stop  -> #{ running: false }
+      Tick  -> #{ frameCount: frameCount + 1 }
 
     pub
       emitters
@@ -119,17 +121,17 @@ module particleSystem
       selectedEmitter : Number = 0
       showSettings    : Bool   = false
       showStats       : Bool   = true
-      mousePos        : Vec2   = { x: 0.0, y: 0.0 }
+      mousePos        : Vec2   = #{ x: 0.0, y: 0.0 }
       fps             : Number = 0.0
       particleCount   : Number = 0
 
     messages
-      SelectEmitter (id: Number)      -> { selectedEmitter: id }
-      ToggleSettings                  -> { showSettings: !showSettings }
-      ToggleStats                     -> { showStats: !showStats }
-      UpdateMouse (pos: Vec2)         -> { mousePos: pos }
-      UpdateFPS (f: Number)           -> { fps: f }
-      UpdateParticleCount (n: Number) -> { particleCount: n }
+      SelectEmitter (id: Number)      -> #{ selectedEmitter: id }
+      ToggleSettings                  -> #{ showSettings: !showSettings }
+      ToggleStats                     -> #{ showStats: !showStats }
+      UpdateMouse (pos: Vec2)         -> #{ mousePos: pos }
+      UpdateFPS (f: Number)           -> #{ fps: f }
+      UpdateParticleCount (n: Number) -> #{ particleCount: n }
 
     pub
       selectedEmitter

@@ -186,17 +186,36 @@ codemod + full fixture/corpus run before moving on.
       *declare* a new block-scoped, shadow-capable binding; bare `x =` *reassigns* the
       binding in scope. Documented exactly that (not "redundant sugar").
 
-### Phase 4 — SPEC / example hygiene (§6, §2.3) 🔴 highest leverage
+### Phase 4 — SPEC / example hygiene (§6, §2.3) 🔴 highest leverage  ✅ MOSTLY DONE (2026-06)
 This is the root cause of the "I thought we already did X" surprises — decisions
 locked in `docs/` never propagated to `SPEC.md`.
-- [ ] **4a. "What's built ✅/❌" table** at the top of `SPEC.md` and each design doc;
-      sweep stale status lines; reconcile SPEC against the locked docs.
-- [ ] **4b. SPEC §3.2 `:`/`=` honesty rewrite** — list the exceptions (atoms, record
-      fields, step labels) instead of overstating the invariant.
-- [ ] **4c.** Make `examples/` type-check or move to `docs/sketches/`; add a
-      refinement-in-use demo (`taskflow.velve`'s `ValidAge` is defined, never used);
-      document Capitalized message constructors + the implicit-step-match rule; fix the
-      README WCAG→APCA slip.
+- [x] **4a. "What's built ✅/❌" table.** ✅ DONE for `SPEC.md` — new §0.5 build-status
+      table (grounded in which fixtures are green), and removed the stale §0 line
+      "Type checker implementation (… checker pending)" (the checker exists). Examples
+      now carry an "⚠ Aspirational sketch" header (the table points at them).
+      **Deferred:** per-design-doc status headers (lower leverage; SPEC is the
+      authority and is now reconciled — APCA, message/step rules below).
+- [x] **4b. SPEC §3.2 `:`/`=` honesty rewrite.** ✅ DONE. §3.2 retitled "Core symbols";
+      `:` documented with its three non-type meanings (record-literal field, atom/step
+      label, keyed-list entry) and `=` added with its honest scope (binding + named arg,
+      never a type/record field; the `{}=` vs `{}:` trap noted as dissolved by `#{}`).
+- [x] **4c.** ✅ DONE (kept examples in place, clearly marked, instead of moving):
+      • **Example surface migration** via new `scripts/edition_migrate_codemod.mjs`
+        (examples-only): `{ }`→`#{ }` (65), ternary→`if/then/else` (8), `for =/%`→`in` (9).
+        **81 deprecation warnings → 0** across all 8 examples; every error count
+        byte-identical (type-checker-inert); `?:` Elvis correctly left untouched.
+      • **Refinement-in-use:** `taskflow.velve`'s dead `ValidAge` is now used
+        (`ageNextYear(a: ValidAge)` + `demoAge`), with an accurate comment (call-site
+        literal fold; `.parse` runtime guard; transparent-to-base). Error count unchanged.
+      • **Message constructors + implicit-step-match** documented in SPEC §7.2 / §4.1;
+        stale `{…}` message/next-state records in SPEC fixed to `#{…}`.
+      • **README WCAG→APCA:** the `uiModel` inspector honestly reports the *WCAG ratio*
+        today (that's what `render.ts` computes), with APCA Lc named as the color
+        system's target; `docs/styles-design.md` `OnSurface` threshold corrected from
+        `>= 4.5 -- WCAG AA` to an APCA Lc value.
+      **Open structural choice (not done):** physically moving `examples/` →
+      `docs/sketches/`. Left in place + marked aspirational; user's call whether to move.
+      Corpus stays at 32 error-fixtures; examples now warning-free.
 
 ---
 

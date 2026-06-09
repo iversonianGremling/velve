@@ -1,3 +1,5 @@
+-- ⚠ Aspirational sketch — exercises the language surface but calls into the
+-- not-yet-built stdlib/UI, so it does not fully type-check yet (see SPEC §0.5).
 -- ── Real-time dashboard UI
 -- Shows: stores, Async state, elements, events, for expressions, pattern styling
 -- Note: uses inline props + `on` handlers as children (the forms the grammar supports)
@@ -13,15 +15,15 @@ store Reports
     filter  : Atom               = :all
   messages
     Load ->
-      { items: During, sortKey: sortKey, filter: filter }
+      #{ items: During, sortKey: sortKey, filter: filter }
     Loaded (data: List(Report)) ->
-      { items: After(data), sortKey: sortKey, filter: filter }
+      #{ items: After(data), sortKey: sortKey, filter: filter }
     Failed (msg: String) ->
-      { items: Error(msg), sortKey: sortKey, filter: filter }
+      #{ items: Error(msg), sortKey: sortKey, filter: filter }
     SetSort (key: Atom) ->
-      { items: items, sortKey: key, filter: filter }
+      #{ items: items, sortKey: key, filter: filter }
     SetFilter (f: Atom) ->
-      { items: items, sortKey: sortKey, filter: f }
+      #{ items: items, sortKey: sortKey, filter: f }
   pub
     isLoading    = items is During
     currentItems = items
@@ -56,12 +58,12 @@ def statusLabel(:ignored):  String -> "Ignored"
 def statusLabel(_):         String -> "Unknown"
 
 def scoreColor(score: Number): String
-  score > 80 ? "#22c55e" : score > 50 ? "#f59e0b" : "#ef4444"
+  if score > 80 then "#22c55e" else if score > 50 then "#f59e0b" else "#ef4444"
 
 -- ── List helpers ──────────────────────────────────────────────────────────────
 
 def filtered(rs: List(Report), f: Atom): List(Report)
-  f == :all ? rs : for (r = %rs, r.status == f) -> r
+  if f == :all then rs else for (r in rs, r.status == f) -> r
 
 def sorted(rs: List(Report), by: Atom): List(Report)
   match by

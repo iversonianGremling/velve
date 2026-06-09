@@ -1,3 +1,5 @@
+-- ⚠ Aspirational sketch — exercises the language surface but calls into the
+-- not-yet-built stdlib/UI, so it does not fully type-check yet (see SPEC §0.5).
 -- ── LLM agent with tool use and streaming
 -- Shows: machine, go/race/after, streaming via send/await, multi-clause tool dispatch
 
@@ -15,8 +17,8 @@ store AgentMemory
   state
     history : List(Message) = []
   messages
-    Add (m: Message) -> { history: history ++ [m] }
-    Reset            -> { history: [] }
+    Add (m: Message) -> #{ history: history ++ [m] }
+    Reset            -> #{ history: [] }
   pub
     log = history
 
@@ -25,8 +27,8 @@ store OutputStream
     buffer : List(String) = []
     done   : Bool         = false
   messages
-    Push (chunk: String) -> { buffer: buffer ++ [chunk], done: done }
-    Finish               -> { buffer: buffer, done: true }
+    Push (chunk: String) -> #{ buffer: buffer ++ [chunk], done: done }
+    Finish               -> #{ buffer: buffer, done: true }
   pub
     isDone = done
 
@@ -47,7 +49,7 @@ def callTool(_, args: String): Effect [pure] Result String String
 -- ── Agent machine ─────────────────────────────────────────────────────────────
 
 def runAgent(task: String): Effect [network] Result () String
-  send AgentMemory (Add({ role: "user", content: task }))
+  send AgentMemory (Add(#{ role: "user", content: task }))
   machine
 
     :think
@@ -67,7 +69,7 @@ def runAgent(task: String): Effect [network] Result () String
     :use_tool call
       callTool(call.name, call.args)
       | Ok result ->
-        send AgentMemory (Add({ role: "tool", content: result }))
+        send AgentMemory (Add(#{ role: "tool", content: result }))
         :think
       | Error e -> :failed e
 

@@ -1,3 +1,5 @@
+-- ⚠ Aspirational sketch — exercises the language surface but calls into the
+-- not-yet-built stdlib/UI, so it does not fully type-check yet (see SPEC §0.5).
 -- ── Checkout machine (persisted saga)
 -- Shows: persisted machine with rollback, parallel go, race with timeout, step transitions
 
@@ -17,7 +19,7 @@ store CheckoutState
   state
     phase : Atom = :idle
   messages
-    SetPhase (p: Atom) -> { phase: p }
+    SetPhase (p: Atom) -> #{ phase: p }
   pub
     currentPhase = phase
 
@@ -70,7 +72,7 @@ machine Checkout(cart: Cart): Effect [payment, inventory, orders] Result Receipt
     go ask Shipping (Estimate(reservation))
     | Ok eta ->
       createOrder(reservation, payment, eta) ? rollback :charge
-      :done (Ok(Receipt({ orderId: payment.id, total: payment.amount, eta: eta })))
+      :done (Ok(Receipt(#{ orderId: payment.id, total: payment.amount, eta: eta })))
     | Error _ -> :abort (OrderFailed("shipping estimate failed"))
 
   :done result -> result

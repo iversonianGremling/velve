@@ -280,13 +280,17 @@ This is the one no mainstream framework enforces and it falls out of refinements
 for free. A foreground colour prop is typed against its background:
 
 ```
-type OnSurface = Color where contrast(self, surface) >= 4.5   -- WCAG AA
+type OnSurface = Color where contrast(self, surface) >= 60   -- APCA Lc (body text)
 ```
 
-A `Text color=…` whose contrast against the resolved background is < 4.5 is a
-**type error**, using the same fold path as numeric refinements (add a `contrast`
-builtin to `constEval`). Requires the background to be known at check time — which
-is exactly what the convergence layer (§6) resolves, so this lands *after* it.
+The `contrast` builtin is **APCA Lc** (perceptual, WCAG-3 / `multitarget-design.md`),
+not the flat WCAG ratio — so the threshold is an Lc value (≈ 60 for body text, ≈ 45 for
+large text), not the WCAG `4.5`. A `Text color=…` whose Lc against the resolved
+background is below target is a **type error**, using the same fold path as numeric
+refinements (add the `contrast` builtin to `constEval`). Requires the background to be
+known at check time — which is exactly what the convergence layer (§6) resolves, so this
+lands *after* it. (Note: the `uiModel` inspector in `render.ts` currently reports the
+flat WCAG ratio for quick a11y linting — see README — and predates this APCA decision.)
 
 ---
 

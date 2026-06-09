@@ -1,3 +1,5 @@
+-- ⚠ Aspirational sketch — exercises the language surface but calls into the
+-- not-yet-built stdlib/UI, so it does not fully type-check yet (see SPEC §0.5).
 -- ── Authentication
 -- Shows: stores, do blocks, error propagation, atom literals, multi-clause dispatch
 
@@ -16,9 +18,9 @@ store Session
     token : Result String String = Error("no token")
   messages
     SetUser (u: User, tok: String) ->
-      { user: Ok(u), token: Ok(tok) }
+      #{ user: Ok(u), token: Ok(tok) }
     Logout ->
-      { user: Error("not logged in"), token: Error("no token") }
+      #{ user: Error("not logged in"), token: Error("no token") }
   pub
     isLoggedIn   = user is Ok
     currentUser  = user

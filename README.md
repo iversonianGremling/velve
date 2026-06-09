@@ -67,8 +67,10 @@ become compile errors:
   it and nothing is enforced.
 
 There's also `uiModel(view())`, which renders the element tree to an annotated text
-outline — layout modes, resolved props, WCAG contrast ratios, and accessibility
-flags — so a UI can be inspected and linted as plain text:
+outline — layout modes, resolved props, contrast (the inspector reports the flat WCAG
+AA ratio today; the color system's `contrast` builtin and `OnSurface` refinements use
+perceptual **APCA Lc** — see `docs/styles-design.md`), and accessibility flags — so a
+UI can be inspected and linted as plain text:
 
 ```
 Column  [flex]  gap=16 padding=24 background=#000000

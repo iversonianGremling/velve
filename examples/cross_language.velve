@@ -1,3 +1,5 @@
+-- ⚠ Aspirational sketch — exercises the language surface but calls into the
+-- not-yet-built stdlib/UI, so it does not fully type-check yet (see SPEC §0.5).
 -- ────────────────────────────────────────────────────────────────────────────
 -- Cross-language showcase
 -- Each section shows equivalent code in another language, then Velve.
@@ -14,7 +16,7 @@ type SortError = String
 
 def sortTasks(tasks: List(a)): Result List(a) SortError
   where a: Comparable
-  tasks.length == 0 ? Error("empty list") : Ok(tasks |> sortBy(identity))
+  if tasks.length == 0 then Error("empty list") else Ok(tasks |> sortBy(identity))
 
 -- ── RUST: Lifetime-bounded buffer slice ───────────────────────────────────
 --
@@ -41,10 +43,10 @@ store Counter
     count : Number = 0
     step  : Number = 1
   messages
-    Increment              -> { count: count + step, step: step }
-    IncrementBy (n: Number)-> { count: count + n, step: step }
-    Reset                  -> { count: 0, step: step }
-    SetStep (n: Number)    -> { count: count, step: n }
+    Increment              -> #{ count: count + step, step: step }
+    IncrementBy (n: Number)-> #{ count: count + n, step: step }
+    Reset                  -> #{ count: 0, step: step }
+    SetStep (n: Number)    -> #{ count: count, step: n }
   pub
     count
     step
@@ -105,7 +107,7 @@ type Parsed = { value: String, rest: String }
 
 def parseDigit(input: String): Result Parsed String
   match input[0]
-    | d if d >= "0" -> Ok({ value: d, rest: input([1..input.length]) })
+    | d if d >= "0" -> Ok(#{ value: d, rest: input([1..input.length]) })
     | -> Error("expected digit")
 
 def parseSeq(first: Result Parsed String, second: Result Parsed String): Result Parsed String
@@ -114,7 +116,7 @@ def parseSeq(first: Result Parsed String, second: Result Parsed String): Result 
     | Ok r1 ->
       match second
         | Error msg -> Error msg
-        | Ok r2     -> Ok({ value: "{r1.value}{r2.value}", rest: r2.rest })
+        | Ok r2     -> Ok(#{ value: "{r1.value}{r2.value}", rest: r2.rest })
 
 -- ── HASKELL: Effect stack ─────────────────────────────────────────────────
 --
@@ -127,7 +129,7 @@ type AppState  = { requestCount: Number, cache: List(String) }
 
 def runApp(config: AppConfig): Effect [network, storage] AppState
   appSt   <- ask Session GetCurrentState
-  updated  = { requestCount: appSt.requestCount + 1, cache: appSt.cache }
+  updated  = #{ requestCount: appSt.requestCount + 1, cache: appSt.cache }
   send Session (UpdateState(updated))
   updated
 
@@ -149,13 +151,13 @@ def fmapResult(result: Result a String): Result a String
 -- matrix   = [grid !! i !! j | i <- [0..rows], j <- [0..cols], grid!!i!!j == '#']
 
 def evens(): List
-  for (x = 1..20, x % 2 == 0) -> x
+  for (x in 1..20, x % 2 == 0) -> x
 
 def upperTriangle(n: Number): List
-  for (i = 0..n, j = i..n) -> { a: i, b: j }
+  for (i in 0..n, j in i..n) -> #{ a: i, b: j }
 
 def activeGridCells(grid: List(List(String)), rows: Number, cols: Number): List
-  for (i = 0..rows, j = 0..cols, grid[i][j] == "#") -> { row: i, col: j }
+  for (i in 0..rows, j in 0..cols, grid[i][j] == "#") -> #{ row: i, col: j }
 
 -- ── Multi-pattern + as-binding ────────────────────────────────────────────
 
@@ -214,7 +216,7 @@ def validate(input: String): Bool
 
 def loadProfile(id: Number): Result AppState AppError
   appSt <- ask Session GetState
-  Ok({ requestCount: appSt.requestCount + 1, cache: appSt.cache })
+  Ok(#{ requestCount: appSt.requestCount + 1, cache: appSt.cache })
 
 -- ── where: lifetime constraints ───────────────────────────────────────────
 

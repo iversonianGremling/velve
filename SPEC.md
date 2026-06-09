@@ -13,7 +13,45 @@
 - Runtime memory implementation details
 - LSP and dev tooling internals
 - Module versioning
-- Type checker implementation (grammar complete, checker pending)
+
+---
+
+## 0.5 Build status — what's actually implemented
+
+This spec describes the *intended* language; the implementation is a tree-sitter
+grammar + a TypeScript checker (`check`/`run`/`ast`/`tweaks`) with an interpreter. The
+table below is the honest state so a reader can tell aspiration from reality. "Built"
+means there is a green fixture exercising it under `checker/`.
+
+| Area | Status | Notes |
+|---|---|---|
+| Grammar (tree-sitter) | ✅ Built | Full surface; native binding builds. |
+| Type inference / resolution | ✅ Built | `infer.ts` / `resolve.ts`; HM-style with annotations. |
+| Pattern match + exhaustiveness | ✅ Built | `exhaust.ts`; closed ADTs, `Outcome`, literals. |
+| Refinement types | ✅ Built | `dependent_test`, `refinement_test`; transparent, checked. |
+| Effects (declared + unchecked-hole closed) | ✅ Built | `effects_test`; pure-calls-effectful is a gate (warn 2026.1 / error 2026.6). |
+| Transactions + `Outcome` ADT | ✅ Built (check-only) | `transaction_test`, `outcome_test`; no runtime transaction yet. |
+| Persisted machines / saga | ✅ Built | `saga_demo`, `saga_firstclass_test`; `machine … persisted`. |
+| Stores + messages | ✅ Built | `stores_machines`, `model_test`. |
+| Borrow / ownership (`mut`, `drop`) | ✅ Built | `ptr_test`, `move_ok`; affine single-owner. |
+| Streams + combinators / parallel | ✅ Built | `stream_test`, `parallel_test`. |
+| Interpreter (`run`) | ✅ Built | `runtime_*_test`, `run_test`; a working subset. |
+| Editions | ✅ Built | §17; `2026.1` baseline / `2026.6`, gated semantics. |
+| UI element tree + prop typing | ⚠ Partial | `ui_render_test`, `prop_unknown_test` pass, but the component/stdlib surface used by `examples/` (e.g. `Text`, `onClick`) is incomplete. |
+| Color / APCA legibility | ✅ Built | `color_test`, `color_ext_test`; `std/color` has no theme consumer yet. |
+| Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `parseNumber`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. |
+| Module-qualified resolution (`Math.sqrt`) | ❌ Not built | Track B; stdlib docs are written qualified but qualified names don't resolve. |
+| Named error ADTs / structured `parse` errors | ❌ Not built | Track B; errors are `String` today. |
+| Effect polymorphism (HOFs) | ❌ Not built | Track B; effect of `map(f, xs)` when `f` is effectful is unspecified. |
+| Backpressure per-stream policy | ❌ Not built | Track B (§10.1). |
+| Theme system (`using` / `OnSurface`) | ❌ Not built | Track C; `OnSurface` is APCA-based (§styles). |
+| `animated` modifier / `frames` clock | ❌ Not built | Track C. |
+| Games / `@interaction` model | ❌ Not built | Track C. |
+| `inputmap` multitarget | ❌ Not built | Track C (locked design, unbuilt). |
+
+The `examples/` programs are **aspirational sketches**: they exercise the surface and
+read as real apps, but call into the not-yet-built stdlib/UI surface, so they do not
+fully type-check. See each file's header.
 
 ---
 
@@ -215,8 +253,8 @@ store Stream(a)
     buffer : List(a) = []
     done   : Bool    = false
   messages
-    Push (value: a) -> { buffer: buffer ++ [value], done }
-    Done            -> { buffer, done: true }
+    Push (value: a) -> #{ buffer: buffer ++ [value], done }
+    Done            -> #{ buffer, done: true }
   pub
     isDone = done
 ```
@@ -330,21 +368,48 @@ Fields             -- lowercase:    name, age, status
 Atom literals      -- colon-lower:  :ok, :error, :pending
 ```
 
-### 3.2 Three core symbols
+### 3.2 Core symbols
 
-**`:`** — here comes a type:
+The mental model is "`:` introduces a type, `=` introduces a value, `->` introduces
+code, `|` introduces a branch." That model is **mostly** true — these are the rules
+plus their real exceptions, so the few places `:` and `=` mean something else don't
+read as surprises.
+
+**`:`** — *primarily* "here comes a type", but the colon carries three other,
+syntactically unambiguous meanings:
 ```
-items : List(Report)
-def foo(): Number
-{ name: String }
+items : List(Report)      -- (1) type ascription on a binding
+def foo(): Number         --     return type
+{ name: String }          --     field type, inside a record *type*
+
+#{ name: "Ada" }          -- (2) record *literal* field — `:` pairs a key with a VALUE,
+                          --     not a type (the `#{ … }` opener, §3.9, is what tells
+                          --     them apart; a `{ … }` block never uses `key:`)
+:idle   :validate         -- (3) atom literal / saga step label — `:` is the leading
+                          --     sigil, e.g. `phase = :idle`, or a machine step head
+key: value                -- (4) the named-list / map entry separator in a `for r in …`
+                          --     keyed body (UI), same key-with-value shape as (2)
 ```
+So `:` means *type* everywhere except: a record **literal** field, an **atom**/step
+label, and a keyed-list entry — all three pair a name with a **value**, and each is
+marked by its own surrounding context (`#{`, a leading `:`, a keyed `for`).
+
+**`=`** — "here comes a value" (a binding):
+```
+x = 5                     -- bind a value (default immutable, §3.3)
+let mut total = 0         -- declared, mutable
+f(width = 320)            -- named call argument (§3.21) — also a name-to-value `=`
+```
+`=` is **never** a type and **never** a record field (those use `:`). The one-time trap
+— `{ x = 1 }` (block, `=`) vs `{ x: 1 }` (record, `:`) — is dissolved from edition
+2026.6: record literals take the `#{ … }` opener (§3.9), so `{ … }` is *always* a block.
 
 **`->`** — here comes code:
 ```
 | Ok x   -> process x     -- match branch body
 fn x     -> x * 2         -- lambda body
 def foo(): Number -> 42   -- single-line function
-:idle    -> ()             -- saga terminal step
+:idle    -> ()            -- saga terminal step
 ```
 
 **`|`** — here comes a branch:
@@ -963,6 +1028,23 @@ def tcpHandshake(): ()
     :established -> ()
 ```
 
+**Step shape + the implicit-step-match rule.** A step is `:name [args]` followed by a
+body. The body's last expression is the **transition** — going to another step is just
+naming it (`:reserve clean`), and a terminal step yields with `-> value`. Crucially,
+when a step body is a plain expression *immediately followed by `|` branches* — with
+**no `match` keyword** — those branches implicitly match that expression:
+```
+:validate
+  validateCart(cart)               -- subject expression (a plain call)
+    | Ok clean -> :reserve clean    -- implicitly matched against the call's result
+    | Error e  -> :abort (InvalidCart(e))
+```
+It reads as "run this, then dispatch on the result," and lowers to the same node as an
+explicit `match`. (`race`/`until`/`await` blocks also take trailing `|` branches, but
+those attach to the *block*, not via this rule.) Each branch body is itself a step
+transition (go-to-step or `-> value`). Outside a machine step, bare trailing branches
+are not valid — you write `match expr` explicitly.
+
 ### 4.2 Persisted machine — machine with persistence and compensation
 
 A **persisted machine** is a `machine` plus two capabilities: a durable journal
@@ -1352,22 +1434,35 @@ store Session
   messages
     Login (raw: Tainted String) ->
       match Token.validate(raw)
-        | t     -> { token: Ok(t) }
-        | Error -> { token: Error("invalid token") }
+        | t     -> #{ token: Ok(t) }
+        | Error -> #{ token: Error("invalid token") }
 
-    Logout -> { token: Error("not logged in") }
+    Logout -> #{ token: Error("not logged in") }
 
   pub
     isLoggedIn = token is Ok
     activeToken = token
 ```
 
+**Message constructors.** Each `messages` entry declares a **Capitalized** name
+(`Login`, `Logout`, `Push`, `SetPhase`) — that capitalization marks it as a
+*constructor*, exactly like an ADT variant. You dispatch one by constructing it and
+handing it to `send`:
+```
+send Session (Login(rawToken))   -- payload constructor
+send Session (Logout)            -- nullary: just the name
+```
+The handler body returns the **next state** as a record literal (`#{ … }`, §3.9),
+listing the state fields — field shorthand (`#{ buffer, done: true }`) carries an
+unchanged field through by name. There is no in-place mutation in the body; the handler
+is a pure `current state → next state` function over the declared `state` fields.
+
 **Migration on hot reload:**
 ```
 store Session
   version: 2
   migrate
-    | v1 { token: String } -> { token: Ok(token), expiresAt: Error("unknown") }
+    | v1 { token: String } -> #{ token: Ok(token), expiresAt: Error("unknown") }
 ```
 
 **Store rules:**

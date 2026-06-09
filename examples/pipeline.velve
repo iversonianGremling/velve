@@ -1,3 +1,5 @@
+-- ⚠ Aspirational sketch — exercises the language surface but calls into the
+-- not-yet-built stdlib/UI, so it does not fully type-check yet (see SPEC §0.5).
 -- ── Data pipeline
 -- Shows: do blocks, for expressions, pipes, error propagation, parallel, ADTs
 
@@ -12,10 +14,10 @@ type PipelineError
 -- ── Parsing ───────────────────────────────────────────────────────────────────
 
 def parseParts(parts: List(String), line: Number): Result Parsed PipelineError
-  id    = parseNumber(listGet(parts, 0)) ?: Error(ParseError({ line: line, msg: "bad id" }))
-  value = parseNumber(listGet(parts, 1)) ?: Error(ParseError({ line: line, msg: "bad value" }))
-  label = listGet(parts, 2)               ?: Error(ParseError({ line: line, msg: "missing label" }))
-  Ok({ id: id, value: value, label: label })
+  id    = parseNumber(listGet(parts, 0)) ?: Error(ParseError(#{ line: line, msg: "bad id" }))
+  value = parseNumber(listGet(parts, 1)) ?: Error(ParseError(#{ line: line, msg: "bad value" }))
+  label = listGet(parts, 2)               ?: Error(ParseError(#{ line: line, msg: "missing label" }))
+  Ok(#{ id: id, value: value, label: label })
 
 def parseLine(raw: String, line: Number): Result Parsed PipelineError
   parts = splitCsv(raw)
@@ -28,11 +30,11 @@ def scoreItem(p: Parsed): Effect [network] Result Number PipelineError
   parseNumber(raw) ?: Error(ScoreError("bad score response"))
 
 def categorize(score: Number): Atom
-  score > 80 ? :high : score > 50 ? :medium : :low
+  if score > 80 then :high else if score > 50 then :medium else :low
 
 def enrich(p: Parsed): Effect [network] Result Enriched PipelineError
   s = scoreItem(p)?
-  Ok({ id: p.id, value: p.value, label: p.label, score: s, category: categorize(s) })
+  Ok(#{ id: p.id, value: p.value, label: p.label, score: s, category: categorize(s) })
 
 -- ── Pipeline ──────────────────────────────────────────────────────────────────
 
@@ -40,15 +42,15 @@ def runPipeline(csvUrl: String): Effect [network] Result List(Enriched) Pipeline
   raw    = httpGet(csvUrl) ?: Error(FetchError("download failed"))
   lines  = splitLines(raw)
   parsed = indexedMap(parseLine, lines)
-  errors = for (r = %parsed, r is Error) -> r
-  oks    = for (r = %parsed, r is Ok) -> r
+  errors = for (r in parsed, r is Error) -> r
+  oks    = for (r in parsed, r is Ok) -> r
   enriched = oks |> pmap(enrich)
-  errors.length > 0 ? errors[0] : Ok(collectOk(enriched))
+  if errors.length > 0 then errors[0] else Ok(collectOk(enriched))
 
 -- ── Aggregation ───────────────────────────────────────────────────────────────
 
 def countByCategory(category: Atom, items: List(Enriched)): Number
-  matched = for (i = %items, i.category == category) -> i
+  matched = for (i in items, i.category == category) -> i
   listLength(matched)
 
 def topScorers(n: Number, items: List(Enriched)): List(Enriched)
