@@ -101,6 +101,9 @@ class Resolver {
           scope.define("Push", { name: "Push", kind: "ctor", span: decl.span });
           scope.define("Done", { name: "Done", kind: "ctor", span: decl.span });
           break;
+        case "DLet":
+          scope.define(decl.name, { name: decl.name, kind: "var", span: decl.span });
+          break;
         // DImport: names brought in — treat as vars for now
         case "DImport":
           for (const { name, alias } of decl.names) {
@@ -134,6 +137,12 @@ class Resolver {
         else if (b.kind !== "store") this.error(decl.span, `saga store '${decl.store}' is not a store (it is a ${b.kind})`);
       }
       this.resolveSteps(decl.steps, sagaScope);
+      return;
+    }
+    if (decl.tag === "DLet") {
+      // A module-level constant: resolve its RHS against the global scope (the name
+      // itself is already registered by collectDecls, so siblings can forward-ref it).
+      this.resolveExpr(decl.value, scope);
       return;
     }
     if (decl.tag !== "DFn") return;
@@ -208,6 +217,17 @@ class Resolver {
     for (const { pat, value } of clause.where_) {
       this.resolveExpr(value, scope);
       this.bindPat(pat, scope);
+    }
+    // `using S` (named) references an outer role — must resolve, else a typo
+    // silently no-ops the ambient surface. `using surface = <expr>` (inline)
+    // declares the name into the body scope after resolving its value.
+    if (clause.surface) {
+      if (clause.surface.value) {
+        this.resolveExpr(clause.surface.value, scope);
+        scope.define(clause.surface.name, { name: clause.surface.name, kind: "var", span: clause.span });
+      } else if (!scope.lookup(clause.surface.name)) {
+        this.error(clause.span, `unresolved surface role: ${clause.surface.name}`);
+      }
     }
     this.snapshots.push({ span: clause.body.span, scope });
     this.resolveExpr(clause.body, scope);
@@ -445,8 +465,8 @@ const BUILTINS = new Set([
   "Conflict", "Timeout", "Cancelled", "Committed", "Aborted",
   // Layout `Length` constructors + off-scale escape + fluid band
   "Px", "Fr", "Pct", "Fit", "Fill", "raw", "Clamp",
-  // Layout `Breakpoint` (closed responsive variant) + read-only viewport root
-  "Mobile", "Tablet", "Desktop", "Wide", "viewport",
+  // Layout `Breakpoint` (closed responsive variant) + read-only viewport/theme roots
+  "Mobile", "Tablet", "Desktop", "Wide", "viewport", "setViewport", "theme", "setTheme",
   // Convergence vocabulary (§6): cross-element prop references + aggregates
   "self", "parent", "prev", "next", "children", "sum", "avg",
   // State taxonomy (§12): Interaction + UIState constructors, resolver, enums

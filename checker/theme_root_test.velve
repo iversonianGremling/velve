@@ -1,0 +1,55 @@
+@edition "2026.6"
+
+-- Theme system, Slice 4 (theme-design §3): `theme` is a read-only REACTIVE ROOT
+-- (styles-design §9.1) — the sibling of `viewport`. Anything may read `theme.*`;
+-- nothing writes back from a view, so a theme-driven layout is acyclic by
+-- construction (no inbound edges in the convergence graph). Two guarantees:
+--   1) the ACTIVE theme's roles fold at check time, so `using surface = theme.panel`
+--      + `color = theme.text` is APCA-proven (§4.3) against the ambient theme itself
+--      — not an inline literal, not a hand-named token, but the live root; and
+--   2) the root is SWAPPABLE at runtime via `setTheme` (the one host write channel):
+--      the SAME `view()` re-renders against the new roles — runtime theming, with the
+--      compile-time guarantee intact for the statically-known default.
+
+import { oklch, legibleOn, toHex } from "Color"
+
+type Color     = String
+type Surface   = Color
+type OnSurface = Color where contrast(value, surface) >= 60
+
+-- The built-in `theme` root defaults to a dark theme. An alternate LIGHT theme is
+-- authored the same way — base surfaces, foregrounds DERIVED via std/color — so the
+-- swap is correct-by-construction on the §4.3 axis (it can't introduce a faint pair).
+let lightBg  = oklch(0.97, 0.01, 264)
+let lightAcc = oklch(0.62, 0.17, 262)
+let light = #{
+  panel:    toHex(lightBg),
+  text:     toHex(legibleOn(lightBg)),
+  accent:   toHex(lightAcc),
+  onAccent: toHex(legibleOn(lightAcc))
+}
+
+-- The card renders onto the ambient theme PANEL; `theme.text` is proven against it
+-- at check time (the root's roles fold via moduleConsts, exactly like a §4.2 token).
+def card(): Element using surface = theme.panel
+  Column(gap=8, padding=16)
+    Text("Heading", size=16, color=theme.text)        -- legibleOn(panel) vs panel ✓
+    Text("Body", size=12, color=theme.text)
+
+-- A standalone button renders onto the ambient theme ACCENT; `onAccent` proven vs it.
+def action(): Element using surface = theme.accent
+  Text("Go", size=12, color=theme.onAccent)           -- legibleOn(accent) vs accent ✓
+
+def view(): Element
+  Column(gap=12, background=theme.panel)
+    card()
+    action()
+    Text("status", size=12, color=theme.text)         -- vs ambient theme.panel ✓
+
+def main(): Unit
+  println("dark  panel={theme.panel} text={theme.text} accent={theme.accent} onAccent={theme.onAccent}")
+  println(uiModel(view()))
+  -- Swap the read-only root mid-session; the SAME view re-renders against new roles.
+  setTheme(light)
+  println("light panel={theme.panel} text={theme.text} accent={theme.accent} onAccent={theme.onAccent}")
+  println(uiModel(view()))

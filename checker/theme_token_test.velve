@@ -1,0 +1,31 @@
+@edition "2026.6"
+
+-- Theme system, Slice 1 (theme-design §3): a *semantic colour token* — a module-level
+-- binding typed `Surface`/`Color` — resolves in prop position AND folds into the §4.3
+-- accessibility proof, exactly as an inline hex literal does. Before this slice a token
+-- reference (`background=panel`) was an `unresolved name`, and even resolved it folded
+-- against an empty env so the contrast check was silently skipped. Here every colour is
+-- a *named role*, not a raw hex, and the readable pairings still check clean — proving
+-- the colour science finally has a consumer.
+
+-- The token tier: a colour is a hex String; `Surface`/`Color` are the role names.
+type Color     = String
+type Surface   = Color
+type OnSurface = Color where contrast(value, surface) >= 60
+
+-- Semantic tokens (styles-design §4.2). Components reference THESE, never raw hex.
+let panel:  Surface = #ffffff      -- light surface
+let sunk:   Surface = #101418      -- dark nested surface
+let ink:    Color   = #1b1f24      -- near-black foreground
+let inverse:Color   = #f5f7fa      -- near-white foreground
+
+def view(): Element
+  Column(background=panel)
+    Text("heading", color=ink)            -- ink on panel  → Lc well over 60
+    Text("body",    color=#444444)        -- literal still works alongside tokens
+    Column(background=sunk)
+      Text("inverse on dark", color=inverse)   -- inverse on sunk → readable
+
+-- Tokens also resolve at runtime (the binding is a real value, not just a checker fact).
+def main(): Unit
+  print("panel={panel} sunk={sunk} ink={ink}")

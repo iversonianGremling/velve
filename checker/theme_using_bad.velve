@@ -1,0 +1,24 @@
+@edition "2026.6"
+
+-- Theme system, Slice 2 — the rejection proof for the `using` clause. The ambient
+-- surface comes ONLY from `using`, not from any `background=` prop on the body. If the
+-- clause's surface still drives the §4.3 contrast check, an unreadable foreground is a
+-- compile error. Both forms must reject: a dark role under `using night`, and a dark
+-- literal under the inline `using surface = #000000`.
+
+type Color     = String
+type Surface   = Color
+type OnSurface = Color where contrast(value, surface) >= 60
+
+let night: Surface = #101418       -- a dark surface role
+let dim:   Color   = #222831       -- too dark to read on `night`
+
+-- Named form: `dim` on the dark `night` surface — near-zero Lc → error.
+def panelView(): Element using night
+  Column(padding=8)
+    Text("dark on dark", color=dim)            -- fails OnSurface vs night
+
+-- Inline form: a dark literal on a black inline surface → error, proving the inline
+-- `using` surface reaches the proof exactly like the named form.
+def splashView(): Element using surface = #000000
+  Text("invisible", color=#111316)             -- near-zero Lc on #000000 → error

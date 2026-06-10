@@ -155,6 +155,10 @@ export interface FnClause {
   body: Expr;
   where_: { pat: Pat; value: Expr }[];  // where bindings
   lifetimeConstraints: LifetimeConstraint[];  // `where (~a >= ~b)` region bounds
+  // `using S` / `using surface = <expr>` clause (theme-design §2b): the ambient
+  // Surface this element-returning function renders onto. `value` is null for the
+  // named form (`using panel`), set for the inline declare-and-apply sugar.
+  surface: { name: string; value: Expr | null } | null;
   span: Span;
 }
 
@@ -201,6 +205,17 @@ export type Decl =
   | ({ tag: "DStream";
        name: string;
        inner: TypeRef }                                                      & Node)
+
+  // A module-level binding: `let name [: Type] = expr` at the top level. The
+  // semantic-token tier of styles-design §4.2 (`let surface = #0d1117`) and the
+  // substrate the theme system folds into the contrast proof (theme-design §3,
+  // Slice 1). A constant RHS is foldable by `constEval`, so a colour token
+  // referenced in a prop participates in the §4.3 accessibility refinement.
+  | ({ tag: "DLet";
+       name: string;
+       ascription: TypeRef | null;
+       value: Expr;
+       mutable: boolean }                                                    & Node)
 
   | ({ tag: "DImport";
        path: string;

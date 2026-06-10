@@ -7,6 +7,7 @@ import type {
   Param, Branch, Prop, NamedArg, Lit, TypeBody, AdtVariant,
 } from "./ast.js";
 import { type Edition, DEFAULT_EDITION, EDITIONS, parseEdition, atLeast } from "./edition.js";
+import { PRIMITIVE_ELEMENTS } from "./elements.js";
 
 type N = SyntaxNode;
 
@@ -197,6 +198,24 @@ export class Lowerer {
         return { tag: "DStream", name, inner, span: this.sp(n) };
       }
       case "module_def":    return this.lowerModuleDef(n);
+      case "binding": {
+        // A top-level `let name [: Type] = expr` — a module-level constant/token
+        // (styles-design §4.2). Mirrors the `binding` case in lowerStmt, but lands
+        // as a DLet decl rather than an SBind statement.
+        const named = n.namedChildren;
+        const nameId  = named.find(c => c.type === "lower_id");
+        const typeNode = named.find(isTypeKind);
+        const valNode  = named.find(c => c !== nameId && !isTypeKind(c) && isExprKind(c.type));
+        const mutable = n.children.some(c => c.type === "mut");
+        return {
+          tag: "DLet",
+          name: nameId?.text ?? "?",
+          ascription: typeNode ? this.lowerTypeRef(typeNode) : null,
+          value: valNode ? this.lowerExpr(valNode) : this.err(this.sp(n)),
+          mutable,
+          span: this.sp(n),
+        };
+      }
       case "decorator_def": {
         const inner = n.namedChildren.find(c => c.type !== "decorator");
         return inner ? this.lowerTopDecl(inner) : null;
@@ -277,13 +296,26 @@ export class Lowerer {
     const bodyNodes = typeIdx >= 0 ? rest.slice(typeIdx + 1) : rest;
 
     const whereNodes = bodyNodes.filter(c => c.type === "where_stmt");
-    const bodyContent = bodyNodes.filter(c => c.type !== "where_stmt");
+    const usingNode = bodyNodes.find(c => c.type === "using_clause");
+    const bodyContent = bodyNodes.filter(c => c.type !== "where_stmt" && c.type !== "using_clause");
     const where_ = whereNodes.flatMap(w => this.lowerWhereBindings(w));
     const lifetimeConstraints = whereNodes.flatMap(w => this.lowerLifetimeConstraints(w));
+    const surface = usingNode ? this.lowerUsingClause(usingNode) : null;
     const rawRetNode = typeIdx >= 0 ? rest[typeIdx] : undefined;
     const { effects, retRef: ret } = this.unpackEffectType(rawRetNode ?? null);
 
-    return { params, ret, effects, body: this.lowerBody(bodyContent), where_, lifetimeConstraints, span: this.sp(n) };
+    return { params, ret, effects, body: this.lowerBody(bodyContent), where_, lifetimeConstraints, surface, span: this.sp(n) };
+  }
+
+  // `using S` / `using surface = <expr>`: extract the role name and (for the inline
+  // sugar) the bound expression. The named form leaves `value` null.
+  private lowerUsingClause(n: N): { name: string; value: Expr | null } {
+    const nameId = n.namedChildren.find(c => c.type === "lower_id");
+    const valNode = n.namedChildren.find(c => c !== nameId && isExprKind(c.type));
+    return {
+      name: nameId?.text ?? "?",
+      value: valNode ? this.lowerExpr(valNode) : null,
+    };
   }
 
   // where_stmt in the grammar is lifetime constraints, not value bindings.
@@ -988,6 +1020,14 @@ export class Lowerer {
         const calleeNode = n.namedChildren[0]!;
         const fn = this.lowerExpr(calleeNode);
         const { args, named } = this.lowerArgs(n.namedChildren.slice(1));
+        // Paren-form element: an Uppercase head naming a built-in primitive lowers
+        // to an `Element`, not a `Call` (call-syntax §2.1). `Text("hi", size=12)` ≡
+        // the legacy `Text "hi" size=12`. ADT constructors (`Ok(x)`) keep their head
+        // out of PRIMITIVE_ELEMENTS, so they stay calls. Childless only — a
+        // children-bearing element carries an indented block and parses via the
+        // `element` grammar rule (lowerElement).
+        if (fn.tag === "Var" && PRIMITIVE_ELEMENTS.has(fn.name))
+          return this.elementFromCall(fn.name, args, named, span);
         return { tag: "Call", fn, args, named, span };
       }
 
@@ -1331,15 +1371,56 @@ export class Lowerer {
 
   private lowerElement(n: N, span: Span): Expr {
     const name = n.namedChildren.find(c => c.type === "upper_id")?.text ?? "?";
-    const content = n.namedChildren.find(c => c.type === "element_content");
-    const props = n.namedChildren.filter(c => c.type === "prop").map(p => this.lowerProp(p));
     const childBlock = n.namedChildren.find(c => c.type === "children_block");
     const children = (childBlock?.namedChildren.filter(c => c.type === "child") ?? []).flatMap(c => {
       const inner = c.namedChildren[0];
       return inner ? [this.lowerExpr(inner)] : [];
     });
+
+    // Paren-form (`Column(gap=8)` + children): content = first positional, props =
+    // `name=value`. Childless paren elements never reach here (they parse as `call`).
+    const argsNode = n.namedChildren.find(c => c.type === "element_args");
+    if (argsNode) {
+      const props: Prop[] = [];
+      let contentExpr: Expr | null = null;
+      for (const a of argsNode.namedChildren) {
+        if (a.type === "named_arg") props.push(this.lowerProp(a));
+        else if (contentExpr === null) contentExpr = this.lowerExpr(a);   // first positional = content
+      }
+      return { tag: "Element", name, content: contentExpr, props, children, span };
+    }
+
+    // Legacy space-form (`Text "hi" size=12`) — the last space-form holdout from the
+    // call-syntax unification (§2.1). Deprecated in 2026.1, an error in 2026.6.
+    this.checkElementForm(n, name);
+    const content = n.namedChildren.find(c => c.type === "element_content");
+    const props = n.namedChildren.filter(c => c.type === "prop").map(p => this.lowerProp(p));
     const contentExpr = content?.namedChildren[0] ? this.lowerExpr(content.namedChildren[0]) : null;
     return { tag: "Element", name, content: contentExpr, props, children, span };
+  }
+
+  // Deprecate the space-form element surface: `Text "hi" size=12` reads as a third
+  // application syntax (vs `f(x)` and `Ok(x)`); the paren-form `Text("hi", size=12)`
+  // unifies it. Warning in 2026.1, error in 2026.6 (SPEC §17 lifecycle).
+  private checkElementForm(n: N, name: string): void {
+    const deprecated = atLeast(this.edition, "2026.6");
+    this.diagnostics.push({
+      kind: deprecated ? "error" : "warning",
+      message: deprecated
+        ? `space-form element \`${name} …\` is removed in edition 2026.6 — use paren-form \`${name}(…)\``
+        : `space-form element \`${name} …\` is deprecated — use paren-form \`${name}(…)\` (rejected from edition 2026.6)`,
+      span: this.sp(n.namedChildren.find(c => c.type === "upper_id") ?? n),
+    });
+  }
+
+  // Build an `Element` from a lowered paren-form call whose head is a primitive
+  // (`Text("hi", size=12)`). The first positional becomes the node's content; named
+  // args become props (bare flags already carry value=true). Childless — children
+  // ride the `element` grammar rule's indented block (lowerElement).
+  private elementFromCall(name: string, args: Expr[], named: NamedArg[], span: Span): Expr {
+    const content = args.length > 0 ? args[0]! : null;
+    const props: Prop[] = named.map(a => ({ name: a.name, value: a.value }));
+    return { tag: "Element", name, content, props, children: [], span };
   }
 
   private lowerProp(n: N): Prop {
@@ -1493,6 +1574,28 @@ export class Lowerer {
     }
   }
 
+  // A constructor pattern destructures its payload with construction syntax:
+  // `Ok(v)`, mirroring how the value is built (`Ok(v)`). The legacy *bare* form
+  // `Ok v` (space-separated, undelimited payload) is the last space-form holdout
+  // from the call-syntax unification (§2.1) — deprecated in 2026.1, removed in
+  // 2026.6. Delimited payloads (`Ok(v)`, `Ok (Chunk c)`, `Ok {body}`) already read
+  // as construction and are left untouched.
+  private checkCtorPatternForm(upper: N, inner: N, childCount: number): void {
+    // Only the simple single-payload form is migrated; the rare `Ok response {body}`
+    // (binding + record) shape (childCount > 2) is left alone.
+    if (childCount > 2) return;
+    const t = inner.text;
+    if (t.startsWith("(") || t.startsWith("{")) return;   // already delimited
+    const deprecated = atLeast(this.edition, "2026.6");
+    this.diagnostics.push({
+      kind: deprecated ? "error" : "warning",
+      message: deprecated
+        ? `bare constructor pattern \`${upper.text} ${t}\` is removed in edition 2026.6 — use \`${upper.text}(${t})\``
+        : `bare constructor pattern \`${upper.text} ${t}\` is deprecated — use \`${upper.text}(${t})\` (rejected from edition 2026.6)`,
+      span: this.sp(inner),
+    });
+  }
+
   private lowerSimplePat(n: N, span: Span): Pat {
     const named = n.namedChildren;
 
@@ -1500,6 +1603,7 @@ export class Lowerer {
     const upper = named.find(c => c.type === "upper_id");
     if (upper) {
       const inner = named.find(c => c !== upper);
+      if (inner) this.checkCtorPatternForm(upper, inner, named.length);
       return { tag: "PCtor", name: upper.text, inner: inner ? this.lowerPat(inner) : null, span };
     }
 

@@ -1,0 +1,24 @@
+-- Call-syntax §2.1, final item: value-level juxtaposition is gone, so every value
+-- application is parenthesized. Currying still composes through parens, and the
+-- *type* level keeps juxtaposition for the built-in parametric types — the
+-- documented asymmetry (SPEC "Calling functions and constructors"). This is the
+-- green proof; juxtaposition_bad is the rejection proof. Edition-agnostic: the
+-- value form was removed at the grammar level (phase 1), not behind an edition gate.
+
+def add(a: Number, b: Number): Number
+  a + b
+
+-- Type-level juxtaposition is kept for the built-in parametric types (`Result a e`);
+-- generic types use the paren form (`List(Number)`).
+def first(r: Result Number String): Number
+  match r
+    | Ok(n) -> n
+    | Error(_) -> 0
+
+def main(): Unit
+  -- Currying / partial application through parens (the juxtaposition replacement):
+  let inc = add(1)
+  print("{inc(10)}")             -- 11
+  print("{add(3)(4)}")           -- 7  (full saturation, was `add 3 4`)
+  print("{(fn x -> x * 2)(3)}")  -- 6  (IIFE — parens required)
+  print("{first(Ok(6))}")        -- 6

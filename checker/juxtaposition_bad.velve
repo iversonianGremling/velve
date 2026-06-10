@@ -1,0 +1,10 @@
+-- Negative fixture: value-level juxtaposition (call-syntax §2.1) is a syntax error
+-- in every edition — the grammar has no spaced-application rule. Each line below is
+-- the removed "second application syntax"; the paren form is the only spelling.
+
+def add(a: Number, b: Number): Number
+  a + b
+
+def main(): Unit
+  print("{add 1 2}")          -- removed: write add(1)(2) or add(1, 2)
+  print("{(fn x -> x + 1) 9}") -- removed: write (fn x -> x + 1)(9)

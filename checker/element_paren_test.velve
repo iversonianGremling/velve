@@ -1,0 +1,21 @@
+@edition "2026.6"
+
+-- Edition 2026.6 unifies the element surface onto the application form
+-- (call-syntax §2.1): `Text("hi", size=12)`, not the space-form `Text "hi" size=12`.
+-- Content is the first positional; props are `name=value`; children ride the
+-- indented block. A childless element parses as a call and lowers to an element by
+-- its primitive name (`Text(...)`); a children-bearing one (`Column(...)` + block)
+-- attaches the block. The legacy space-form is removed (see element_paren_bad).
+
+def badge(label: String, color: String): Element
+  Text(label, size=12, color=color, padding=4, background=#1e2130)
+
+def view(): Element
+  Column(gap=16, padding=24, background=#000000)
+    Text("Reports", size=24, color=#ffffff)
+    Row(gap=8)
+      Text("a", color=#ffffff)
+      Text("b", color=#ffffff)
+
+def main(): Unit
+  print(html(view()))

@@ -1,0 +1,23 @@
+@edition "2026.6"
+
+-- The auto-collapse is TYPE-GATED, not a blanket "functions allowed in props" hole.
+-- A Length prop accepts ONLY a `Breakpoint -> Length` (a `Responsive(Length)`); any
+-- other function is the usual prop type error. Two ways to get it wrong, both rejected:
+
+-- (1) right shape, wrong RETURN — a `Breakpoint -> String` is not a Responsive(Length).
+def badReturn(bp: Breakpoint): String
+  match bp
+    | Mobile -> "small"
+    | _      -> "big"
+
+-- (2) right return, wrong PARAM — a `Number -> Length` is not keyed on the breakpoint.
+def byNumber(n: Number): Length
+  Px(n)
+
+def view(): Element
+  Column(gap=8)
+    Box(width=badReturn)    -- error: responsive prop 'width' return String, expected Length
+    Box(height=byNumber)    -- error: 'height' got a Number -> Length, not a Length
+
+def main(): Unit
+  println(uiModel(view()))

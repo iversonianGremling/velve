@@ -1,0 +1,62 @@
+@edition "2026.6"
+
+-- Theme system, Slice 3 (theme-design §2a): a `Theme` RECORD groups roles, and the
+-- foreground roles are COMPUTED from the surfaces via std/color — not hand-picked.
+-- `text = legibleOn(panel)` is, by construction, the readable foreground for `panel`,
+-- so when a component renders `using surface = theme.panel` the §4.3 APCA proof against
+-- that panel passes for free. The whole point: `std/color` (built, previously unused)
+-- now folds at CHECK time — `toHex(legibleOn(...))` resolves to the exact hex the
+-- runtime renders, so the proof checks the colour the program actually shows.
+
+import { oklch, legibleOn, toHex } from "Color"
+
+type Color     = String
+type Surface   = Color
+type OnSurface = Color where contrast(value, surface) >= 60
+
+type Theme = {
+  panel:    Surface,
+  text:     Color,
+  accent:   Color,
+  onAccent: Color
+}
+
+-- A theme is authored from base surfaces; the readable roles are derived.
+let darkBg  = oklch(0.21, 0.02, 264)        -- a near-black panel
+let darkAcc = oklch(0.62, 0.17, 262)        -- brand blue, the accent surface
+let dark: Theme = #{
+  panel:    toHex(darkBg),
+  text:     toHex(legibleOn(darkBg)),       -- the readable fg for the panel
+  accent:   toHex(darkAcc),
+  onAccent: toHex(legibleOn(darkAcc))       -- the readable fg for the accent
+}
+
+-- Dark→light is one swap of base surfaces; the SAME derivation keeps every role
+-- correct-by-construction — the property no CSS framework offers.
+let lightBg  = oklch(0.97, 0.01, 264)       -- a near-white panel
+let lightAcc = oklch(0.62, 0.17, 262)
+let light: Theme = #{
+  panel:    toHex(lightBg),
+  text:     toHex(legibleOn(lightBg)),
+  accent:   toHex(lightAcc),
+  onAccent: toHex(legibleOn(lightAcc))
+}
+
+-- A button renders onto the ACCENT surface; `onAccent` is proven against it.
+def darkAction(): Element using surface = dark.accent
+  Text("Go", color=dark.onAccent)           -- legibleOn(accent) vs accent ✓
+
+-- The card renders onto the PANEL surface; `text` is proven against it.
+def darkCard(): Element using surface = dark.panel
+  Column(padding=12)
+    Text("Heading", color=dark.text)        -- legibleOn(panel) vs panel ✓
+    darkAction()
+
+-- Same component shape under the light theme — also proven, nothing hand-picked.
+def lightCard(): Element using surface = light.panel
+  Column(padding=12)
+    Text("Heading", color=light.text)
+
+def main(): Unit
+  print("dark  panel={dark.panel} text={dark.text} accent={dark.accent} onAccent={dark.onAccent}")
+  print("light panel={light.panel} text={light.text}")

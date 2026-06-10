@@ -1,0 +1,21 @@
+@edition "2026.6"
+
+-- Edition 2026.6 unifies destructuring with construction (call-syntax §2.1): a
+-- constructor pattern uses the paren-form `Ok(v)`, mirroring how the value is
+-- built (`Ok(v)`). The bare space-form `Ok v` is removed (see ctor_pattern_bad).
+-- Nullary constructors take no parens. Paren-form lowers to the identical PCtor,
+-- so this is a pure surface change.
+
+def unwrap(r: Result Number String): Number
+  match r
+    | Ok(v) -> v
+    | Error(e) -> 0
+
+def describe(r: Result Number String): String
+  match r
+    | Ok(n) -> "ok {n}"
+    | Error(msg) -> "err {msg}"
+
+def main(): Unit
+  print("unwrap {unwrap(Ok(5))}")
+  print(describe(Error("bad")))

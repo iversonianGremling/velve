@@ -1,0 +1,29 @@
+@edition "2026.6"
+
+-- Theme system, Slice 2 (theme-design §2b): EXPLICIT ambient-surface application
+-- via a `using` clause on an element-returning function. The surface is declared at
+-- the signature — `def card(): Element using panel` — not inferred from a walked-down
+-- `background=` literal. That `using` surface feeds the exact §4.3 APCA threading, so
+-- the foreground roles inside the body are proven readable against it at check time.
+-- Both forms appear: the named role (`using panel`) and the inline declare-and-apply
+-- sugar (`using surface = #000000`).
+
+type Color     = String
+type Surface   = Color
+type OnSurface = Color where contrast(value, surface) >= 60
+
+let panel: Surface = #ffffff       -- a shared light surface role
+let ink:   Color   = #1b1f24       -- near-black foreground, readable on panel
+
+-- Named form: `panel` is the ambient surface; `ink` is proven against it.
+def card(): Element using panel
+  Column(padding=8)
+    Text("Title", color=ink)         -- ink on panel → Lc well over 60
+    Text("Body",  color=#444444)     -- a literal still proven against the using surface
+
+-- Inline declare-and-apply: a one-off black surface, applied in one breath.
+def splash(): Element using surface = #000000
+  Text("Hello", color=#ffffff)       -- white on black → maximal contrast
+
+def main(): Unit
+  print("panel={panel} ink={ink}")

@@ -1,6 +1,7 @@
 import type { Span } from "./span.js";
 import { freshVar, typeToString } from "./types.js";
 import { stdlibLookup, stdlibModule } from "./stdlib.js";
+import { PRIMITIVE_MODE } from "./elements.js";
 import type { Type, Field } from "./types.js";
 import type {
   Module, Decl, Expr, Stmt, Pat, FnClause, FnSig, SagaStmt,
@@ -9,6 +10,10 @@ import type {
 import type { ResolutionMap, Diagnostic } from "./resolve.js";
 import { resolveNamedCall, needsResolution, type ParamSlot } from "./callresolve.js";
 import { type Edition, atLeast } from "./edition.js";
+import {
+  type LCH, lch, hexToOklch3, oklchToHex, apcaTriple, DEFAULT_THEME,
+  cGray, cLighten, cDarken, cSaturate, cDesaturate, cRotate, cComplement, cCusp, cMix, cLegibleOn, cShades, cTints, cRamp,
+} from "./color.js";
 
 // ── Type schemes ──────────────────────────────────────────────────────────────
 
@@ -268,9 +273,19 @@ function paramName(p: Param): string {
   return "";
 }
 
-// A compile-time constant value: a JS primitive or a (possibly nested) list of them.
-export type ConstVal = number | string | boolean | ConstVal[];
+// A compile-time constant value: a JS primitive, a (possibly nested) list, or a
+// record (a theme groups roles into one — theme-design §2a/Slice 3). A folded
+// `Color` is carried as its OKLCH triple `[L,C,H]` (a 3-number list); `toHex`
+// bridges it back to the hex string that props and the §4.3 contrast proof consume.
+export type ConstRec = { [k: string]: ConstVal };
+export type ConstVal = number | string | boolean | ConstVal[] | ConstRec;
 export const EMPTY_ENV: Map<string, ConstVal> = new Map();
+
+// A folded value is a Color iff it's a 3-number list (the OKLCH triple form).
+function asLCH(v: ConstVal | undefined): LCH | undefined {
+  return Array.isArray(v) && v.length === 3 && v.every(x => typeof x === "number")
+    ? (v as LCH) : undefined;
+}
 
 // Constant-fold an expression against a binding environment (`value` for the
 // refinement subject, plus any in-scope names — fn params at a call site, dependent
@@ -389,9 +404,72 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
           const lc = apcaLc(fg, bg);
           return lc === null ? undefined : lc;
         }
+        const ft = asLCH(fg), bt = asLCH(bg);   // themed colours fold as OKLCH triples
+        if (ft && bt) return apcaTriple(ft, bt);
+      }
+      // std/color builtins fold over constant colours — the theme is computed, not
+      // hand-picked (theme-design §2a/Slice 3): a derived role like
+      // `toHex(legibleOn(accent))` resolves to the exact hex the runtime renders, so
+      // the §4.3 proof checks the colour the program actually shows. A Color folds to
+      // its OKLCH triple `[L,C,H]`; only `toHex` re-stringifies for props.
+      if (e.fn.tag === "Var") {
+        const c = foldColorCall(e.fn.name, e.args, env);
+        if (c !== undefined) return c;
       }
       return undefined;
     }
+    case "Record": {
+      // A constant record (a grouped theme of roles) folds field-by-field; spread
+      // first, then explicit fields override. Any non-constant field sinks the fold.
+      const out: ConstRec = {};
+      if (e.spread) {
+        const base = constEval(e.spread, env);
+        if (!base || typeof base !== "object" || Array.isArray(base)) return undefined;
+        for (const k in base) out[k] = base[k]!;
+      }
+      for (const f of e.fields) {
+        const v = constEval(f.value, env);
+        if (v === undefined) return undefined;
+        out[f.name] = v;
+      }
+      return out;
+    }
+    case "Field": {
+      // `theme.panel` over a constant record; `color.l` over a folded OKLCH triple.
+      const obj = constEval(e.obj, env);
+      if (obj && typeof obj === "object" && !Array.isArray(obj)) return obj[e.field];
+      const t = asLCH(obj);
+      if (t) { const i = { l: 0, c: 1, h: 2 }[e.field]; if (i !== undefined) return t[i]; }
+      return undefined;
+    }
+    default: return undefined;
+  }
+}
+
+// Fold a `std/color` builtin call over constant args, or `undefined` if it isn't
+// one / an arg isn't constant. A Color is an OKLCH triple `[L,C,H]`; `toHex` maps a
+// triple → hex string. Shares ./color.ts with the runtime so the fold can't diverge.
+function foldColorCall(name: string, args: Expr[], env: Map<string, ConstVal>): ConstVal | undefined {
+  const v = (i: number) => constEval(args[i]!, env);
+  const col = (i: number) => asLCH(v(i));
+  const n   = (i: number) => { const x = v(i); return typeof x === "number" ? x : undefined; };
+  switch (name) {
+    case "oklch": { const a = n(0), b = n(1), c = n(2); return a !== undefined && b !== undefined && c !== undefined ? lch(a, b, c) : undefined; }
+    case "hex":   { const s = v(0); return typeof s === "string" ? hexToOklch3(s) : undefined; }
+    case "gray":  { const l = n(0); return l !== undefined ? cGray(l) : undefined; }
+    case "toHex": { const c = col(0); return c ? oklchToHex(c[0], c[1], c[2]) : undefined; }
+    case "lighten":    { const c = col(0), m = n(1); return c && m !== undefined ? cLighten(c, m) : undefined; }
+    case "darken":     { const c = col(0), m = n(1); return c && m !== undefined ? cDarken(c, m) : undefined; }
+    case "saturate":   { const c = col(0), m = n(1); return c && m !== undefined ? cSaturate(c, m) : undefined; }
+    case "desaturate": { const c = col(0), m = n(1); return c && m !== undefined ? cDesaturate(c, m) : undefined; }
+    case "rotate":     { const c = col(0), m = n(1); return c && m !== undefined ? cRotate(c, m) : undefined; }
+    case "complement": { const c = col(0); return c ? cComplement(c) : undefined; }
+    case "cusp":       { const c = col(0); return c ? cCusp(c) : undefined; }
+    case "legibleOn":  { const c = col(0); return c ? cLegibleOn(c) : undefined; }
+    case "mix":        { const a = col(0), b = col(1), t = n(2); return a && b && t !== undefined ? cMix(a, b, t) : undefined; }
+    case "shades":     { const c = col(0), m = n(1); return c && m !== undefined ? cShades(c, m) : undefined; }
+    case "tints":      { const c = col(0), m = n(1); return c && m !== undefined ? cTints(c, m) : undefined; }
+    case "ramp":       { const c = col(0), m = n(1); return c && m !== undefined ? cRamp(c, m) : undefined; }
     default: return undefined;
   }
 }
@@ -511,11 +589,28 @@ function buildPrelude(): TypeEnv {
   // Source-only (nothing writes back), so a viewport-driven layout is acyclic by
   // construction. (The `responsive` keyword sugar + prop-site auto-collapse await
   // the convergence pass, build-order #6.)
-  env.define("viewport", { forall: [], type: { tag: "Record", fields: [
+  const viewportT: Type = { tag: "Record", fields: [
     { name: "width",      type: num,        optional: false },
     { name: "height",     type: num,        optional: false },
     { name: "breakpoint", type: breakpoint, optional: false },
-  ] } });
+  ] };
+  env.define("viewport", { forall: [], type: viewportT });
+  // `setViewport` — the host swap channel for the read-only viewport root, the exact
+  // parallel of `setTheme`. A resize / orientation change overwrites this global slot
+  // and the next `view()` re-collapses every `Responsive(Length)` prop (§9.3) against
+  // the new `viewport.breakpoint`. Source-only otherwise (no view writes back).
+  env.define("setViewport", { forall: [], type: fn([viewportT], { tag: "Prim", kind: "Unit" }) });
+  // `theme` — the second read-only reactive root (§9.1, theme-design Slice 4).
+  // Like `viewport`, anything may read `theme.*`; nothing writes back from a view,
+  // so a theme-driven layout is acyclic by construction. Roles are hex `String`s in
+  // prop form (the §4.2 `Color` form). The default roles are seeded into
+  // `moduleConsts` (Inferrer ctor) so `theme.panel`/`theme.text` FOLD at check time
+  // and the §4.3 APCA proof fires against the active theme's surfaces. `setTheme`
+  // is the single host write channel (a store-action-style swap, not a field write).
+  const themeT: Type = { tag: "Record", fields:
+    Object.keys(DEFAULT_THEME).map(name => ({ name, type: str, optional: false })) };
+  env.define("theme", { forall: [], type: themeT });
+  env.define("setTheme", { forall: [], type: fn([themeT], { tag: "Prim", kind: "Unit" }) });
   // Convergence vocabulary (§6): cross-element prop references. Typed loosely
   // (Unknown) — `scope.prop` resolves to a fresh var via the Field rule, so it
   // unifies with whatever the prop expects; the real (element,prop) graph is
@@ -791,14 +886,8 @@ const ELEMENT_PROP_TYPES: Record<string, Type> = (() => {
 //   • FLEX-ITEM props (grow/shrink/basis/alignSelf) need the *parent* to be flex.
 // Checks fire only when the relevant mode is KNOWN and non-flex, so custom
 // components (which are calls, not Element nodes) never trigger a false positive.
-type LayoutMode = "flex" | "block" | "leaf";
-const PRIMITIVE_MODE: Record<string, LayoutMode> = {
-  Row: "flex", Column: "flex", Stack: "flex", Grid: "flex",
-  Box: "block", Card: "block", Scroll: "block", List: "block", Item: "block",
-  Text: "leaf", Heading: "leaf", Label: "leaf", Button: "leaf", Link: "leaf",
-  Image: "leaf", Canvas: "leaf", Input: "leaf", Slider: "leaf",
-  Spacer: "leaf", Divider: "leaf",
-};
+// PRIMITIVE_MODE / LayoutMode now live in elements.ts (single source of truth,
+// shared with the lowerer's paren-form element recognition). Imported above.
 const CONTAINER_PROPS = new Set(["gap", "align", "justify"]);
 const FLEX_ITEM_PROPS = new Set(["grow", "shrink", "basis", "alignSelf"]);
 
@@ -923,6 +1012,16 @@ class Inferrer {
   // non-literal/convergence-resolved background) → the check stays silent.
   private surfaceBg: string | null = null;
 
+  // Module-level constant bindings (`let panel: Surface = #0d1117`), folded once in
+  // declaration order. Threaded into the element-prop `constEval` calls so a semantic
+  // colour token referenced in a prop (`background=panel`) resolves to its hex and
+  // participates in the §4.3 contrast proof — the theme-system substrate (theme-design
+  // Slice 1). Only immutable, constant RHSs land here; anything dynamic stays absent.
+  // Pre-seeded with the read-only `theme` root (Slice 4): its default roles fold so
+  // `theme.panel`/`theme.text` resolve at check time and the §4.3 proof runs against
+  // the active theme — the statically-known case the design proves at compile time.
+  private moduleConsts = new Map<string, ConstVal>([["theme", { ...DEFAULT_THEME }]]);
+
   // Result type of each first-class saga, so `go Checkout(..)` can be typed as a
   // saga handle (`Saga T`) rather than a plain future.
   private sagaRets = new Map<string, Type>();
@@ -989,6 +1088,13 @@ class Inferrer {
           const tp = new Map<string, Type>();
           const inner = resolveRef(decl.inner, tp, this.sagaRets);
           env.defineMono(decl.name, { tag: "Stream", inner });
+          break;
+        }
+        case "DLet": {
+          // Register the binding's type so siblings/functions can reference it. An
+          // ascription pins it; otherwise a fresh var reconciled when the body is
+          // inferred (inferDecls). Mono — module constants are not generalized.
+          env.defineMono(decl.name, decl.ascription ? resolveRef(decl.ascription, new Map(), this.sagaRets) : freshVar(decl.name));
           break;
         }
         case "DImport": {
@@ -1092,11 +1198,26 @@ class Inferrer {
       if (decl.tag === "DStore")  { this.inferStore(decl, env); continue; }
       if (decl.tag === "DSaga")   { this.inferSaga(decl, env); continue; }
       if (decl.tag === "DStream") continue; // fully typed by collectDecls; nothing to infer
+      if (decl.tag === "DLet")    { this.inferLet(decl, env); continue; }
       if (decl.tag !== "DFn") continue;
       const multiClause = decl.clauses.length > 1;
       for (const clause of decl.clauses) {
         this.inferClause(decl.name, clause, decl.sig, env, multiClause);
       }
+    }
+  }
+
+  // A module-level `let`. Infer the RHS, reconcile it with the type registered in
+  // pass 1 (an ascription is checked; a bare binding's fresh var is resolved), then —
+  // if the RHS folds to a constant and the binding is immutable — record it so a
+  // later prop reference (`background=panel`) can resolve and prove contrast.
+  private inferLet(decl: Extract<Decl, { tag: "DLet" }>, env: TypeEnv): void {
+    const vt = this.inferExpr(decl.value, env);
+    const declared = env.lookup(decl.name);
+    if (declared) unify(declared.type, vt, this.ctx, decl.span, `let ${decl.name}`);
+    if (!decl.mutable) {
+      const cv = constEval(decl.value, this.moduleConsts);
+      if (cv !== undefined) this.moduleConsts.set(decl.name, cv);
     }
   }
 
@@ -1127,8 +1248,35 @@ class Inferrer {
     const prevEffects = this.ctx.effects;
     this.ctx.effects = declaredEffects;
 
+    // `using S` / `using surface = <expr>` (theme-design §2b): establish the ambient
+    // surface for this body explicitly, instead of inferring it from a `background=`
+    // prop-walk. This feeds the SAME `surfaceBg` threading the §4.3 APCA proof reads,
+    // so the contrast guarantee fires against the declared surface with no new logic.
+    const prevSurface = this.surfaceBg;
+    let inlineSurfaceKey: string | null = null;
+    if (clause.surface) {
+      if (clause.surface.value) {
+        // inline declare-and-apply: bind the name in this body's env + fold its const
+        const vt = this.inferExpr(clause.surface.value, env);
+        env.defineMono(clause.surface.name, vt);
+        const cv = constEval(clause.surface.value, this.moduleConsts);
+        if (cv !== undefined) {
+          this.moduleConsts.set(clause.surface.name, cv);
+          inlineSurfaceKey = clause.surface.name;
+        }
+        if (typeof cv === "string") this.surfaceBg = cv;
+      } else {
+        // named role: resolve its already-folded hex from the module constants
+        const cv = this.moduleConsts.get(clause.surface.name);
+        if (typeof cv === "string") this.surfaceBg = cv;
+      }
+    }
+
     const bodyType = this.inferExpr(clause.body, env);
     unify(bodyType, retType, this.ctx, clause.body.span, `'${name}' return type`);
+
+    this.surfaceBg = prevSurface;
+    if (inlineSurfaceKey) this.moduleConsts.delete(inlineSurfaceKey);
 
     this.ctx.returnType = prevRet;
     this.ctx.effects = prevEffects;
@@ -1878,7 +2026,7 @@ class Inferrer {
         // Resolve THIS element's background: its own constant `background` prop wins,
         // else it inherits the ambient one from its ancestors (the §14.1 surface).
         const ownBg = expr.props.find(p => p.name === "background");
-        const ownBgLit = ownBg ? constEval(ownBg.value, EMPTY_ENV) : undefined;
+        const ownBgLit = ownBg ? constEval(ownBg.value, this.moduleConsts) : undefined;
         const myBg = typeof ownBgLit === "string" ? ownBgLit : this.surfaceBg;
         for (const p of expr.props) {
           const vt = this.inferExpr(p.value, env);
@@ -1887,7 +2035,18 @@ class Inferrer {
             // Bare-number → Px coercion: a `Length` prop accepts a plain Number.
             const isLen = expected.tag === "Named" && expected.name === "Length";
             const got = this.ctx.subst.apply(vt);
-            if (!(isLen && got.tag === "Prim" && got.kind === "Number"))
+            const isPxCoerce = isLen && got.tag === "Prim" && got.kind === "Number";
+            // Responsive(Length) auto-collapse (§9.3): a Length prop also accepts a
+            // `Breakpoint -> Length` value (a `Responsive(Length)`). The prop site
+            // collapses it against the live `viewport.breakpoint` before emit (eval);
+            // here we only gate WHICH functions are accepted — its RETURN must be a
+            // Length (a Number return Px-coerces, exactly like the bare case above).
+            if (isLen && got.tag === "Fn" && got.params.length === 1
+                && got.params[0]!.tag === "Named" && got.params[0]!.name === "Breakpoint") {
+              const ret = this.ctx.subst.apply(got.ret);
+              if (!(ret.tag === "Prim" && ret.kind === "Number"))
+                unify(expected, ret, this.ctx, p.value.span, `responsive prop '${p.name}'`);
+            } else if (!isPxCoerce)
               unify(expected, vt, this.ctx, p.value.span, `prop '${p.name}'`);
           }
           // Unknown-prop: on a known primitive, a prop outside its closed vocabulary
@@ -1904,7 +2063,7 @@ class Inferrer {
           const scaleName = PROP_SCALE[p.name];
           const refinement = scaleName ? REFINEMENTS.get(scaleName) : undefined;
           if (refinement) {
-            const cv = constEval(p.value, EMPTY_ENV);
+            const cv = constEval(p.value, this.moduleConsts);
             if (typeof cv === "number" &&
                 constEval(refinement.pred, new Map([["value", cv]])) === false)
               err(this.ctx, p.value.span,
@@ -1916,7 +2075,7 @@ class Inferrer {
           const surfName = PROP_SURFACE[p.name];
           const surfRef = surfName ? REFINEMENTS.get(surfName) : undefined;
           if (surfRef && typeof myBg === "string") {
-            const cc = constEval(p.value, EMPTY_ENV);
+            const cc = constEval(p.value, this.moduleConsts);
             if (typeof cc === "string") {
               // `value` = this colour (the refinement subject, as everywhere);
               // `surface` = the resolved ambient background.

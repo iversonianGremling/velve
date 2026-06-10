@@ -1,0 +1,21 @@
+@edition "2026.6"
+
+-- Theme system, Slice 1 — the rejection proof. A semantic token resolves into the
+-- §4.3 contrast refinement, so an *unreadable* role pairing is a compile error, not a
+-- silent pass. `#9aa0a6` on the white `panel` is APCA Lc ~51 (below 60); the dark `ink`
+-- on the dark `sunk` surface is near-zero. Both fire because the token-resolved
+-- background now reaches `constEval` (theme-design §1). The fix is a readable role.
+
+type Color     = String
+type Surface   = Color
+type OnSurface = Color where contrast(value, surface) >= 60
+
+let panel: Surface = #ffffff
+let sunk:  Surface = #101418
+let ink:   Color   = #222831       -- too dark to read on `sunk`
+
+def view(): Element
+  Column(background=panel)
+    Text("too light to read", color=#9aa0a6)   -- Lc ~51 on panel → error
+    Column(background=sunk)
+      Text("dark on dark", color=ink)           -- near-zero Lc on sunk → error

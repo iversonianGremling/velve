@@ -1,0 +1,31 @@
+@edition "2026.6"
+
+-- Responsive prop-site auto-collapse (styles-design §9.3 / §9.4 deferred half).
+-- A `Responsive(Length)` is just a `Breakpoint -> Length` value. It can be handed
+-- DIRECTLY to a `Length` prop: the prop site accepts it (the type checker gates the
+-- function — its param must be `Breakpoint`, its return a `Length`) and COLLAPSES it
+-- against the live `viewport.breakpoint` before emit. The author never threads the
+-- viewport; binding a prop to screen size stays acyclic-by-construction (§9.1, the
+-- viewport is a read-only root — a collapse adds no convergence edge, exactly like a
+-- theme read). And because the collapse reads the LIVE root, a `setViewport` swap
+-- re-collapses the SAME view on the next render — the viewport parallel of `setTheme`.
+
+def sidebarWidth(bp: Breakpoint): Length
+  match bp
+    | Mobile  -> Fill
+    | Tablet  -> Px(240)
+    | Desktop -> Px(320)
+    | Wide    -> Px(400)
+
+def view(): Element
+  Column(gap=8, width=sidebarWidth, padding=16)   -- a Responsive(Length), collapsed here
+    Text("sidebar", size=12)
+
+def main(): Unit
+  -- default viewport is Desktop → sidebarWidth collapses to Px 320 (width:320px)
+  println("desktop:")
+  println(uiModel(view()))
+  -- swap the read-only root; the SAME view re-collapses to Fill (width:100%)
+  setViewport(#{ width: 375, height: 667, breakpoint: Mobile })
+  println("mobile:")
+  println(uiModel(view()))

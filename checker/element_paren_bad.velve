@@ -1,0 +1,8 @@
+@edition "2026.6"
+
+-- The space-form element surface is removed in edition 2026.6. Both elements below
+-- are intended errors — use the paren-form `Column(gap=8)` / `Text("hi", ...)`.
+
+def view(): Element
+  Column gap=8
+    Text "hi" color=#ffffff

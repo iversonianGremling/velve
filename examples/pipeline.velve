@@ -69,5 +69,5 @@ def summarize(items: List(Enriched)): String
 
 def processUrl(csvUrl: String): Effect [network] String
   match runPipeline(csvUrl)
-    | Ok items -> summarize(items)
-    | Error _  -> "pipeline failed"
+    | Ok(items) -> summarize(items)
+    | Error(_)  -> "pipeline failed"

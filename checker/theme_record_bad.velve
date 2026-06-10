@@ -1,0 +1,37 @@
+@edition "2026.6"
+
+-- Theme system, Slice 3 — the rejection proof. A theme's foregrounds are meant to be
+-- DERIVED (`legibleOn(panel)`); hand-picking one defeats the guarantee. Here a grey is
+-- pasted in as `text` on a near-white panel, and an over-dark accent foreground is
+-- pasted on the accent surface. Both fold through std/color and fail §4.3 — exactly the
+-- breakage the `legibleOn`-derived version (theme_record_test.velve) makes impossible.
+
+import { oklch, toHex } from "Color"
+
+type Color     = String
+type Surface   = Color
+type OnSurface = Color where contrast(value, surface) >= 60
+
+type Theme = {
+  panel:  Surface,
+  text:   Color,
+  accent: Color
+}
+
+let bg = oklch(0.97, 0.01, 264)             -- a near-white panel
+let bad: Theme = #{
+  panel:  toHex(bg),
+  text:   #8a8a8a,                          -- HAND-PICKED grey, not legibleOn → too faint
+  accent: toHex(oklch(0.62, 0.17, 262))
+}
+
+-- `text` is a mid-grey on a near-white panel → APCA well under 60 → compile error.
+def badCard(): Element using surface = bad.panel
+  Text("barely visible", color=bad.text)
+
+-- A dark literal foreground on the bright accent surface → also fails.
+def badAction(): Element using surface = bad.accent
+  Text("low", color=#3a3f55)
+
+def main(): Unit
+  print("bad panel={bad.panel} text={bad.text}")

@@ -15,7 +15,7 @@ Legend: 🔴 load-bearing (fix before the surface freezes) · 🟡 important · 
 | Domain | Grade | Compared against | One-line verdict |
 |---|---|---|---|
 | Type system core (HM + refinements + dependent) | **A−** | TS, Elm, F#, Liquid Haskell | Refinements-as-transparent-base with free constant-folding is genuinely better ergonomics than all four; conservative skip keeps it honest. |
-| UI / styling | **B+** | React+CSS, Elm, SwiftUI | Typed props, context-validity (`gap` on non-flex = error), real units, and **accessibility-as-proof** — an unreadable `color` on its resolved background now *fails to compile* (APCA Lc, opt-in `OnSurface`), not just a linter note — beat CSS's silent no-ops. Still held back by the element/call syntax duality (§2.1) and by theme/responsive/inputmap being design-only, so it stays B+ until §2.1 closes. |
+| UI / styling | **A** *(2026.6)* | React+CSS, Elm, SwiftUI | Typed props, context-validity (`gap` on non-flex = error), real units, and **accessibility-as-proof** — an unreadable `color` on its resolved background now *fails to compile* (APCA Lc, opt-in `OnSurface`), not just a linter note — beat CSS's silent no-ops. The **element/call syntax duality is now closed** (§2.1, PLAN §5b): elements use the unified paren-form `Text("hi", size=12)` (space-form deprecated→error in 2026.6), proven by green `element_paren_test`. (Responsive shipped end-to-end 2026-06; the only design-only UI-adjacent item left is `inputmap`, an event/input concern — see the event/state row §3.2. Residual §2.1 tail: inline-handler/spread props in paren-form; value juxtaposition is now fully removed.) The **theme system is now COMPLETE (4/4)**: typed `Surface` tokens, the `using` clause, a `Theme` record whose roles are *derived* via `std/color` and folded into the contrast proof at check time (`std/color`'s first consumer), and — as of Slice 4 — `theme` as a built-in **read-only reactive root** that is APCA-proven against at check time *and* swappable at runtime (`setTheme`), acyclic by construction (a `theme.*` read adds no convergence edge; container-query feedback is rejected by the existing §6.2 cycle-checker). Accessibility-as-proof now fires on token, `using`-surface, computed, **and live-root** colours, not just inline hex. And as of 2026-06 **responsive is built end-to-end** (§9.2–9.4): closed `Breakpoint` variant, `Clamp` band, the read-only `viewport` root, the `responsive | …` keyword, and now **prop-site auto-collapse** — a `Responsive(Length)` (`Breakpoint -> Length`) handed directly to a `Length` prop and collapsed against the live `viewport.breakpoint`, with `setViewport` re-collapsing on swap (the viewport sibling of `setTheme`). **Now A** (the row's prior A− hold was "responsive/inputmap design-only"; responsive is now shipped, and `inputmap` is an input/event-handling item tracked in the event/state row §3.2, not UI styling). Residual UI-styling polish, not pillars: compile-time (vs runtime) convergence-cycle detection (§3.1) and the §2.1 inline-handler/spread-prop tail. |
 | Event handling / state | **A−** | Elm, Redux, Rx, XState, Erlang/OTP | The four-primitive taxonomy (store/machine/stream/transaction + `persisted`) with a "what do I reach for" table is the best-explained state story in any draft language I know. `machine … persisted` + journal + `resume` is XState+Temporal in one construct. Gaps: backpressure unspecified, `await`-to-step-goto doesn't parse. |
 | Error handling | **B+** *(2026.6)* | Rust `?`, Zig, Go | `?`/`?:`/`try`/`retry` cover the space well; the whitespace-keyed `?` (spaced = ternary vs glued = propagate, §2.2) — the draft's worst readability decision — is **gone from edition 2026.6**: the ternary was deleted in favour of `if c then a else b`, so `?` now carries one glued meaning. |
 | Low-level | **B−** | Rust, Zig | Ptr/regions/outlives/move tracking are real and end-to-end. But unified `Number` vs. planned sized types vs. `Duration` dimensions vs. `Px` units = four numeric stories that haven't met each other (§3.4). `std/low`/gpu/audio are sketches. |
@@ -37,9 +37,21 @@ exhaustiveness. **What remains** is the **three application syntaxes** (§2.1,
 call-syntax phase 2) — now the top surface item before 0.6.
 
 > Grades tagged *(2026.6)* reflect shipped, edition-gated changes; untagged grades are
-> unchanged because their named gaps are still open (UI: call-syntax duality + design-only
-> theme/responsive; state: backpressure + `await`-to-step-goto; low-level/games/animation
-> as noted). Re-grade a row only when a green fixture proves its gap closed.
+> unchanged because their named gaps are still open (state: backpressure +
+> `await`-to-step-goto; low-level/games/animation as noted). The UI row's gaps have since
+> closed — call-syntax duality (paren-form elements), the theme system (4/4), and now
+> responsive end-to-end (prop-site auto-collapse) are all proven by green fixtures, so it
+> is re-graded to A. Re-grade a row only when a green fixture proves its gap closed.
+
+> **A+ targets & routes:** the *ceiling* companion to this scorecard lives in
+> `docs/north-star-grades.md` — per-field A+ exemplars, what closes each gap, and a
+> design-vs-build cut. Key results folded back: ceilings sit at **A not A+** by
+> table-stakes breadth, not differentiators (§2); the type-core A+ is the **opt-in proof
+> gradient** (`@total` + correct-by-construction types + Z3 `std/proof`, surfaced as a
+> proposed **`Proof [...]`** obligation set — proofs declared like effects) — *coherence, not a
+> solver* (§3); **error-A+, effect-A+,
+> and effect-polymorphism converge on one unbuilt mechanism — error/effect *row
+> inference*** (relevant to §3.5 + §3.6 below).
 
 ---
 
@@ -58,12 +70,28 @@ can predict when one layer is enough. `docs/call-syntax-design.md` already locks
 the right answer (everything is `Name(pos…, name=val…)`, elements lower to
 `Call` with a `children` arg); it's just unfinished.
 
-- [ ] 🔴 Ship call-syntax **phase 2**: lower elements to `Call`, run the pattern
-  codemod (`| Ok v ->` → `| Ok(v) ->`), delete the element-specific grammar.
-- [ ] 🔴 **Delete curried juxtaposition** (`add 1 2`). Partial application via
-  `add(1)` already covers the use case; juxtaposition buys nothing except a
-  second thing to teach and a parser ambiguity with elements. (Keep type-level
-  juxtaposition `List Number` or kill it too — but pick one and say so.)
+- [x] 🔴 Ship call-syntax **phase 2** — the surface unification. **DONE** (PLAN §5a+§5b):
+  patterns `| Ok v ->` → `| Ok(v) ->` and elements `Text "hi" size=12` → `Text("hi", size=12)`
+  are both edition-gated (warn 2026.1 / error 2026.6) with codemods + new fixtures. The
+  `Element` AST node is kept internally (childless paren elements lower by primitive-name;
+  children-bearing via a dedicated grammar rule) — *not* fully folded into `Call`, which is
+  deferred compiler hygiene, not a reader-facing gap. Curried juxtaposition is also **DONE**
+  (next bullet — it was already grammar-removed by phase 1; this turn closed the doc/reality
+  gap and added fixtures). **Remaining for full §2.1 close:** applying the element codemod to
+  the examples once they parse cleanly + inline-handler/spread props in paren-form (need
+  call-arg-spread grammar) — both surface-inert sugar, not new reader-facing forms.
+- [x] 🔴 **Delete curried juxtaposition** (`add 1 2`). **DONE** — value-level
+  juxtaposition was already removed at the grammar level by phase 1's unified
+  postfix `call` (`token.immediate('(')`); `add 1 2` and the juxtaposed IIFE
+  `(fn x -> x + 1) 9` are now hard syntax errors in every edition. Partial
+  application via `add(1)` and saturation via `add(1)(2)` are the only spellings.
+  This turn reconciled the lingering doc/reality gap: SPEC "Calling functions"
+  and "Currying & over-application" no longer claim `add 1 2` is legal, and new
+  fixtures `juxtaposition_test` (green) / `juxtaposition_bad` (2 syntax errors)
+  lock it. **Type-level juxtaposition kept** (the chosen asymmetry): the built-in
+  parametric types still write `Result a e` / `Async a` / `Tainted a`, generic
+  types use parens `List(Number)` (there is no generic `Name T` juxtaposition —
+  `List Number` is a syntax error, a pre-existing doc error now corrected).
 - [ ] 🔴 Make `velve fmt` collapse redundant parens so the
   `print((x))` idiom dies in formatted code.
 - [ ] 🟡 Decide what `self`/`parent`/`prev`/`children` convergence references
@@ -154,12 +182,80 @@ context — precisely the "no magic" principle the SPEC leads with.
   while the design promises compile-time DAG checking. A cycle behind an empty
   dynamic list passes checking and detonates later. Either pre-flag static AST
   cycles at check time or re-document the guarantee honestly.
-- [ ] 🟡 Responsive prop-site auto-collapse is deferred — `Responsive(Length)`
-  can't be used directly in a prop. Land it or remove `responsive` from the
-  showcase examples.
+- [x] 🟡 Responsive prop-site auto-collapse — **DONE (2026-06)**. A
+  `Responsive(Length)` (a `Breakpoint -> Length` value) is now accepted **directly in a
+  `Length` prop** and collapsed against the live `viewport.breakpoint` before emit — the
+  author never threads the viewport. Type-gated (a second coercion beside bare-`Number`→
+  `Px`: a one-param `Breakpoint -> T` whose return unifies with `Length`; a
+  `Breakpoint -> String` / `Number -> Length` stays a prop type error). Collapsed at
+  **eval**, *not* in the convergence pass: the viewport is a §9.1 read-only root, so the
+  read adds no (element,prop) edge — the exact parallel of a `theme.*` fold (and a
+  container query is still the only cycle re-entry, caught by §6.2). Added `setViewport`
+  (the viewport sibling of `setTheme`): a resize swaps the root and the next `view()`
+  re-collapses every responsive prop. Fixtures `responsive_prop_test` (`width=sidebarWidth`
+  → `width:320px` at Desktop, then `setViewport(…Mobile)` re-renders the same view as
+  `width:100%`; 0 err, runs) + `responsive_prop_bad` (2 errors — wrong return, wrong
+  param). Corpus unchanged (0 CRASH); colour/theme/convergence fixtures clean. Responsive
+  is now built end-to-end (§9.2–9.4 all shipped).
 - [ ] 🟡 The theme system (roles, `using`, `OnSurface` contrast refinement) is
   design-only while `std/color` is fully built — the color science has no
   consumer. Theme is the highest-leverage unbuilt UI piece.
+  **Scoped 2026-06 → `docs/theme-design.md`.** Grounded the two concrete blockers
+  by probing the live checker: (1) a module-level semantic token (`let surface =
+  #0d1117`) referenced as `background=surface` reports `unresolved name` in prop
+  position; (2) even resolved, the contrast proof folds with `EMPTY_ENV`
+  (infer.ts:1914), so `constEval`'s `Var` case can't reach the token → the APCA
+  proof is **silently skipped**. Net: the §4.3 contrast guarantee only fires on
+  inline hex literals today; themeable code defeats it.
+  **Model (user steer):** declaration is type-gated — a token is a `Color` *typed*
+  `Surface` (`let panel: Surface = #0d1117`), no new keyword; application is
+  *explicit* via a `using` clause on element-returning functions — `using panel`
+  (named) or `using surface = #000000` (inline declare+apply sugar) — which sets the
+  ambient surface (`surfaceBg`) the §4.3 proof already consumes. Staged into 4
+  slices, value front-loaded. **Slice 1 ✅ DONE (2026-06):** module-level constant
+  bindings now exist — added a `DLet` decl (there was *no* top-level `let`; the
+  lowerer silently dropped it), wired through lower/resolve/infer/eval, and threaded a
+  `moduleConsts` fold-env into the three element-prop `constEval` sites so a `Surface`
+  token (`background=panel`) resolves to its hex and feeds the §4.3 proof. Fixtures
+  `theme_token_test` (0 err, runs) + `theme_token_bad` (2 contrast errors via the
+  token-resolved bg); corpus baseline unchanged (294 err / 0 CRASH — inert on any file
+  without a top-level `let`). Grammar-free, no edition. **Slice 2 ✅ DONE (2026-06):**
+  the `using` clause — explicit ambient-surface application. Added an optional
+  `using_clause` (`using panel` / `using surface = #000000`) to both forms of
+  `function_def` (regenerated parser + rebuilt native binding), a `surface` field on
+  `FnClause`, lowering that extracts it from the body, resolve (named role must resolve;
+  inline name defined into body scope), and `inferClause` setting/restoring `surfaceBg`
+  from the clause surface — reusing the existing §4.3 threading verbatim, **zero new
+  proof logic**. Fixtures `theme_using_test` (named + inline, 0 err, runs) +
+  `theme_using_bad` (both forms fail, errors reporting `background #101418`/`#000000` —
+  proving the surface comes purely from `using`); corpus unchanged (294 / 0 CRASH).
+  **Slice 3 ✅ DONE (2026-06):** a `Theme` record + roles *derived* via `std/color`,
+  folded at check time — `std/color`'s first real consumer. Extracted the OKLCH/APCA
+  maths into a shared `src/color.ts` imported by both the runtime (`eval.ts`) and the
+  compile-time fold (so a derived role folds to the *exact* runtime hex — no divergence);
+  `ConstVal` gained a record form; `constEval` gained `Record`/`Field` cases and folds the
+  pure colour builtins (`oklch`/`hex`/`lighten`/`mix`/`legibleOn`/`shades`/`toHex`/…), a
+  `Color` carried as its OKLCH triple. Application reuses Slice 2's inline form
+  (`using surface = dark.panel`) — grammar-free. Fixtures `theme_record_test` (dark+light
+  themes, `text=legibleOn(panel)` derived, proven against panel **and** accent; 0 err,
+  runs — printing the same hexes the proof checked) + `theme_record_bad` (a hand-picked
+  grey `Lc 56 against #f2f5fc` and a dark literal `Lc 28 against #4a81eb`, both backgrounds
+  std/color-*computed*); corpus unchanged (294 / 0 CRASH).
+  **Slice 4 ✅ DONE (2026-06) — theme system COMPLETE.** `theme` is now a built-in
+  read-only reactive root (the sibling of `viewport`): a `VRecord` in eval, a `Record`
+  type in infer, a reserved name in resolve, default roles *derived* via the shared
+  `color.ts DEFAULT_THEME`. `moduleConsts` is pre-seeded with it, so `theme.panel`/
+  `theme.text` fold through the Slice 3 `Field` path — `using surface = theme.panel` +
+  `color = theme.text` is APCA-proven (§4.3) against the **live root** (compile-time
+  contrast for the statically-known theme; a dynamic swap is the §14.1 runtime escape).
+  Runtime swap via `setTheme(theme)` (overwrites the global slot → next `view()` render
+  picks up new roles; reads stay read-only). **No convergence-pass code change** — a
+  `theme.*` read adds no graph edge, so theme is acyclic by construction (§9.1); the only
+  re-entry is a container query, which the existing §6.2 cycle-checker already rejects.
+  Fixtures `theme_root_test` (components proven against the root; `setTheme(light)`
+  re-renders the same view, surviving leaf swaps `#f8f8f8 → #0b0b0b`; 0 err, runs) +
+  `theme_cycle_bad` (a self-measuring container query rejected: *"convergence cycle …
+  involving 'padding' on Box"*); corpus unchanged (294 / 0 CRASH), colour tests byte-identical.
 - [ ] 🟡 Define when `OnSurface` contrast checking fires (inside vs after
   convergence) — currently "inside or after" hedging across two docs.
 - [ ] 🟢 Bare-number → `Px` coercion is prop-position-only; `let x: Length = 8`
@@ -204,7 +300,11 @@ dimension machinery generalize?
   algebra (`100ms * 3` ok, `100ms * 50ms` error, `400ms/100ms : Number`) is
   the best piece — consider making *dimensioned numbers* the general mechanism
   and deriving Duration, Length, angle, etc. from it (F#-style units of
-  measure). That would turn three ad-hoc systems into one concept.
+  measure). That would turn three ad-hoc systems into one concept. **See
+  `docs/north-star-grades.md §5`** for the worked argument: under a two-axis rubric
+  (sized types + first-class dimensions) this is already ≈B+/A−, and `100ms * 50ms`
+  *should* be legal as `Duration²` (physics) — the current rejection is the tell that
+  Duration is a one-off, not a general unit system.
 - [ ] 🟡 Resolve `Number` internal repr before the compiled target (overflow
   semantics, bit ops on floats — `mask & flag` in the fixtures is already
   doing implementation-defined work).
@@ -219,6 +319,10 @@ dimension machinery generalize?
   an unresolved type variable later resolved to `Result` is unwrapped by eval
   but not by infer. Either monomorphize-before-try, reject polymorphic try
   lines, or warn.
+- [ ] 🟡 Error-type A+ path: **infer error rows internally, pin an explicit ascription at
+  module boundaries** (Zig `!T` ergonomics + a reviewed contract at the edge). This is the
+  *same row-polymorphic inference* as effects (§3.6) — build it once. See
+  `docs/north-star-grades.md §4` for the trade table and decision.
 
 ### 3.6 Effects
 - [ ] 🔴 Capability *enforcement* must match the spec's promise ("compiler
@@ -240,8 +344,8 @@ dimension machinery generalize?
 SPEC §4.0's "ship exactly one primitive per genuinely-distinct concept" is the
 best thing in the document. The same razor, applied to the surface:
 
-- [ ] 🔴 **Curried juxtaposition** `add 1 2` — covered above (§2.1). One
-  application form.
+- [x] 🔴 **Curried juxtaposition** `add 1 2` — **DONE**, covered above (§2.1). One
+  application form (value-level), grammar-removed in phase 1, docs reconciled this turn.
 - [ ] 🔴 **C-style ternary** `c ? a : b` — covered above (§2.2). Its removal is
   what makes `?` unambiguous.
 - [ ] 🟡 **`pipe` block** — it is literally documented as "the point-free `|>`

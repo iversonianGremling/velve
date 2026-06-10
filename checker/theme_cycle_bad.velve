@@ -1,0 +1,19 @@
+@edition "2026.6"
+
+-- Theme system, Slice 4 — the cycle proof (theme-design §3, styles-design §9.1).
+-- A read-only theme root is acyclic BY CONSTRUCTION: a `theme.*` read adds no inbound
+-- edge to the convergence graph, so a theme can never sit in a cycle on its own. The
+-- only way back into a cycle is a CONTAINER QUERY — an element that picks its surface
+-- by measuring the very box that surface then sizes (measure→theme→measure). Here the
+-- box's `padding` is measured off its own resolved `width`, and its `width` is derived
+-- back from that `padding` — the §9.1 container loop. The (element, prop) cycle-checker
+-- (§6.2) rejects it with an edge pointer. Note `background=theme.panel` is a constant
+-- read that adds NO edge: the cycle is purely the self-measuring width↔padding feedback,
+-- proving theme's read-only-root status is what keeps the common case acyclic.
+
+def view(): Element
+  Row(gap=8)
+    Box(padding=(self.width / 20), width=(self.padding * 20), background=theme.panel)
+
+def main(): Unit
+  println(html(view()))

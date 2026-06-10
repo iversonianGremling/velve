@@ -112,11 +112,11 @@ def parseDigit(input: String): Result Parsed String
 
 def parseSeq(first: Result Parsed String, second: Result Parsed String): Result Parsed String
   match first
-    | Error msg -> Error msg
-    | Ok r1 ->
+    | Error(msg) -> Error msg
+    | Ok(r1) ->
       match second
-        | Error msg -> Error msg
-        | Ok r2     -> Ok(#{ value: "{r1.value}{r2.value}", rest: r2.rest })
+        | Error(msg) -> Error msg
+        | Ok(r2)     -> Ok(#{ value: "{r1.value}{r2.value}", rest: r2.rest })
 
 -- ── HASKELL: Effect stack ─────────────────────────────────────────────────
 --
@@ -141,8 +141,8 @@ def runApp(config: AppConfig): Effect [network, storage] AppState
 def fmapResult(result: Result a String): Result a String
   where a: Any
   match result
-    | Ok x    -> Ok x
-    | Error e -> Error e
+    | Ok(x)    -> Ok x
+    | Error(e) -> Error e
 
 -- ── HASKELL: List comprehensions → for expressions ────────────────────────
 --
@@ -178,13 +178,13 @@ def handleEvent(e: Event): String
 
 def isInteractive(e: Event): Bool
   match e
-    | Click _ | KeyDown _ | KeyUp _ -> true
-    | Scroll _ | Resize _           -> false
+    | Click(_) | KeyDown(_) | KeyUp(_) -> true
+    | Scroll(_) | Resize(_)           -> false
 
 def describeResponse(r: Result Parsed String): String
   match r
     | Ok response { value, rest } -> "parsed: {value} rest: {rest}"
-    | Error msg                   -> "failed: {msg}"
+    | Error(msg)                   -> "failed: {msg}"
 
 -- ── Numeric literals ──────────────────────────────────────────────────────
 

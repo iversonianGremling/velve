@@ -10,8 +10,8 @@ type Color = String
 type OnSurface = Color where contrast(value, surface) >= 60
 
 def view(): Element
-  Column background=#ffffff
-    Text "heading" color=#000000
-    Text "body"    color=#444444
-    Column background=#101418
-      Text "inverse on dark" color=#ffffff
+  Column(background=#ffffff)
+    Text("heading", color=#000000)
+    Text("body", color=#444444)
+    Column(background=#101418)
+      Text("inverse on dark", color=#ffffff)

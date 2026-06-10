@@ -433,11 +433,12 @@ dependency first), `sum(children.height)` → `height:120px`.
 `checker/converge_bad.velve` raises the cycle error. 177 corpus green.
 
 **Deferred:** `name.p` sibling refs (the §7 constraint-island `let name = …`
-form); `min`/`max` aggregates over `children` (the 2-arg numeric builtins would
-clash — `sum`/`avg` are the 1-arg aggregate forms for v1); and the responsive
-prop-site **auto-collapse** of a `Responsive(Length)` (the §9.4 deferred half) —
-now unblocked, since convergence is the place to fold a breakpoint match against
-`viewport.breakpoint` before emit.
+form); and `min`/`max` aggregates over `children` (the 2-arg numeric builtins would
+clash — `sum`/`avg` are the 1-arg aggregate forms for v1). The responsive prop-site
+**auto-collapse** of a `Responsive(Length)` (the §9.4 deferred half) has since
+**shipped** (§9.3 *As-built*) — and notably *without* convergence-pass code: the
+viewport is a §9.1 read-only root, so the collapse is an eager `viewport.breakpoint`
+read (no (element,prop) edge), the exact parallel of a `theme.*` fold.
 
 ---
 
@@ -763,9 +764,41 @@ the wildcard); `responsive_bad.velve` → "non-exhaustive match — missing: Wid
 branch, no wildcard). Like any multi-
 branch block it spans lines, so it doesn't inline into a `(…)`/`{…}` prop value
 (the same continuation-gap limit as `match`); authored as a named fn / let-binding.
-**Still deferred (§6 convergence):** prop-site auto-collapse of a `Responsive(Length)`
-*value* against the current breakpoint — today the `match` is authored explicitly in
-a fn; the keyword is the surface sugar for it.
+#### As-built (prop-site auto-collapse, 2026-06) — the §9.4 deferred half, shipped
+
+A `Responsive(Length)` is now a **first-class value usable directly in a prop**: a
+prop typed `Length` accepts a `Breakpoint -> Length` and **collapses it against the
+live `viewport.breakpoint` before emit** — the author never threads the viewport.
+
+- **Type side** (`infer.ts`, the prop-check site that already does bare-`Number`→`Px`):
+  a second coercion — a `Length` prop also accepts a one-param `Breakpoint -> T`
+  function, gated by unifying its *return* `T` with `Length` (a `Number` return
+  `Px`-coerces, exactly like the bare case). So the accept is **type-gated, not a
+  "functions allowed in props" hole**: a `Breakpoint -> String` or a `Number -> Length`
+  is the usual prop type error.
+- **Collapse site** (`eval.ts case "Element"`): a prop value that evaluates to a
+  one-param `VFn` is applied to the current `viewport.breakpoint` *here*, before the
+  `VElement` is built. **No convergence-pass code** — the viewport is a §9.1 read-only
+  root, so reading its breakpoint adds no (element,prop) edge; the collapse is eager
+  and re-runs each render, the exact parallel of how a `theme.*` read folds. (A
+  *container query* — measuring the box the breakpoint then sizes — is still the only
+  way into a cycle, and the existing §6.2 cycle-checker still rejects it.)
+- **Reactive swap:** `setViewport(viewport)` is the host write channel for the
+  viewport root (the parallel of `setTheme`). A resize/orientation change overwrites
+  the global slot, so the next `view()` **re-collapses every responsive prop** against
+  the new breakpoint — responsive-as-reactive-root, with zero author bookkeeping.
+
+The `responsive` keyword (eager `match viewport.breakpoint`) is unchanged — it remains
+the inline form for a value collapsed *now*; a named `def w(bp: Breakpoint): Length`
+is the reusable `Responsive(Length)` the prop site collapses *for* you.
+
+Verified: `responsive_prop_test.velve` — `Column(width=sidebarWidth)` renders
+`width:320px` at the default Desktop viewport, then `setViewport(… breakpoint: Mobile)`
+re-renders the **same** view as `width:100%` (`Fill`) — the collapse reads the live,
+swappable root; 0 err, runs. `responsive_prop_bad.velve` → exactly 2 errors: a
+`Breakpoint -> String` (*"responsive prop 'width' — expected Length, got String"*) and
+a `Number -> Length` (*"prop 'height' — expected Length, got (Number) -> Length"*),
+proving the gate. Corpus unchanged (0 CRASH); colour/theme/convergence fixtures clean.
 
 ### 9.4 Clamp bands replace awkward `min`/`max`
 
@@ -802,13 +835,15 @@ Shipped — the no-grammar-change half of #5. End-to-end, no new evaluation mode
   like any Breakpoint match. Source-only, so viewport-driven layout is acyclic by
   construction.
 
-**Deferred to the convergence pass (#6):** the `responsive` *keyword* sugar (auto
-`match viewport.breakpoint`) and **prop-site auto-collapse** — a prop typed
-`Length` accepting a `Responsive(Length)` and collapsing it against the current
-breakpoint before emit. Until then, responsive values are explicit `match`es that
-return a `Length`, which is fully usable. Verified end-to-end in
-`checker/clamp_breakpoint_test.velve` (renders `clamp(280px, 100%, 720px)`;
-`responsiveWidth()` collapses to `Px 320` at the default Desktop viewport).
+**Both halves now shipped:** the `responsive` *keyword* sugar (auto
+`match viewport.breakpoint`) and the **prop-site auto-collapse** of a
+`Responsive(Length)` value — see §9.3 *As-built (responsive keyword sugar)* and
+*As-built (prop-site auto-collapse)*. A `Length` prop now accepts either a plain
+`Length`, a bare `Number` (→`Px`), or a `Breakpoint -> Length` value collapsed against
+the live `viewport.breakpoint` before emit; `setViewport` re-collapses it on the next
+render. Verified end-to-end in `checker/clamp_breakpoint_test.velve` (renders
+`clamp(280px, 100%, 720px)`) and `checker/responsive_prop_test.velve` (the prop-site
+collapse + reactive swap).
 
 ### 9.5 Context-dependent prop validity — the anti-soup feature
 
@@ -964,13 +999,17 @@ clean + renders; `scale_ok.velve` → 2/6 (only `raw(13)`/`Px 13`); `ui_render_t
 5. **Breakpoints + responsive + clamp band** (§9.2–9.4) — ✅ shipped. `Clamp`
    length ctor, closed `Breakpoint` variant, the read-only `viewport` root, and the
    `responsive | …` keyword sugar (2026-06-08, desugars to `match viewport.breakpoint`
-   with full exhaustiveness) all landed. See §9.3/§9.4 *As-built*. **Deferred to #6:**
-   prop-site auto-collapse of a `Responsive(Length)` value against the live breakpoint.
+   with full exhaustiveness) all landed — **and (2026-06) the prop-site auto-collapse**
+   of a `Responsive(Length)` value (a `Breakpoint -> Length` accepted directly in a
+   `Length` prop, collapsed against the live `viewport.breakpoint`; `setViewport`
+   re-collapses on swap). See §9.3/§9.4 *As-built*. Responsive is now built end-to-end.
 6. **Convergence layer** (§6) — ✅ shipped (2026-06). `converge.ts` + an
    `Evaluator.converge` pass over the concrete tree: self/parent/prev/next/children
    refs via deferred props, (element,prop) DAG, Kahn topo-sort, cycle = RuntimeError.
-   See §6.6 *As-built*. Still to do here: responsive prop-site auto-collapse (the
-   §9.4 deferred half, now unblocked) and contrast-after-resolve hookup.
+   See §6.6 *As-built*. The responsive prop-site auto-collapse (the §9.4 deferred
+   half) has since shipped — *not* in this pass but as an eager `viewport.breakpoint`
+   read (the viewport is a §9.1 read-only root, so no (element,prop) edge is needed);
+   see §9.3 *As-built*. Still open here: contrast-after-resolve hookup.
 7. **a11y contrast** (§4.3) — the distinctive feature; needs §6's resolved bg.
 8. **Retained runtime** (§8) — ✅ shipped headless (2026-06). `runtime.ts`
    reconciler + `interactive(view, steps)` driver: handlers fire → stores mutate →
@@ -1287,12 +1326,14 @@ context-validity zero-false-positive (§9.5 as-built), convergence cycle-checked
 
 ### 14.1 Accessibility-as-proof — and the scope that keeps it readable
 
-The one feature the fragment makes *buildable but not yet built* is
-**accessibility-as-proof**: a foreground colour typed against its background so an
-unreadable pairing fails to compile, not lints after the fact —
-`type OnSurface = Color where contrast(value, surface) >= 60` (APCA Lc, §4.3). It adds **no
-new concept**: it is an instance of the refinement mechanism already in the table, so
-there is nothing extra to teach.
+The first row of the table — contrast — is worth expanding, because it is the one
+mechanism with a readability trap. **Accessibility-as-proof** types a foreground
+colour against its background so an unreadable pairing fails to compile, not lints
+after the fact — `type OnSurface = Color where contrast(value, surface) >= 60` (APCA
+Lc, §4.3). It adds **no new concept**: it is an instance of the refinement mechanism
+already in the table, so there is nothing extra to teach. It is **built** (status at
+the end of this section); what follows is the scope discipline that keeps it from
+becoming the action-at-a-distance footgun it easily could.
 
 The only thing that could hurt the mental model is **non-locality** — the background is
 set by an ancestor, so a check that chased it everywhere would produce

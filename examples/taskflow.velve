@@ -207,8 +207,8 @@ def describeList(items: List): String
 
 def describeResult(r: TaskResult): String
   r |> match
-    | Ok msg -> msg
-    | Error msg -> msg
+    | Ok(msg) -> msg
+    | Error(msg) -> msg
 
 def progressNote(s: Status): String
   match s

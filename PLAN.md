@@ -228,6 +228,72 @@ locked in `docs/` never propagated to `SPEC.md`.
       `docs/sketches/`. Left in place + marked aspirational; user's call whether to move.
       Corpus stays at 32 error-fixtures; examples now warning-free.
 
+### Phase 5 — Call-syntax phase 2 (§2.1, the last surface inconsistency)
+The remaining "three application syntaxes" item. Split into the self-contained
+**pattern** unification and the larger **element** surface change.
+- [x] **5a. Constructor pattern space→paren** (`| Ok v ->` → `| Ok(v) ->`). ✅ DONE,
+      edition-gated. **Finding:** paren-form patterns *already parse* to the identical
+      `PCtor` AST (`Ok(v)` ≡ `Ok` + parenthesized `(v)`), so destructuring-as-construction
+      needed **no grammar change** — only deprecating the bare form. `checkCtorPatternForm`
+      in `lower.ts` flags a ctor pattern with a single *undelimited* payload (warning
+      2026.1 / error 2026.6); delimited payloads (`Ok(v)`, `Ok (Chunk c)`, `Ok {body}`) and
+      the binding+record triple (`Ok r {body}`) are left untouched. New codemod
+      `scripts/ctor_pattern_codemod.mjs` (examples-only, tree-sitter render/stitch) wrapped
+      **38 bare patterns across 7 examples**, type-checker-inert (byte-identical error
+      counts). Migrated the 2026.6 fixture `outcome_test.velve` by hand (the gate caught its
+      bare `Committed n`/… end-to-end). New fixtures: `ctor_pattern_test.velve` (2026.6,
+      paren-form, green + runs) and `ctor_pattern_bad.velve` (2026.6, bare form, 2 intended
+      errors). **Verified:** check + runtime baselines byte-identical for all 95 prior
+      fixtures (only the 2 new files added). SPEC §3.5 documents the rule; SPEC bare-ctor
+      *pattern* examples swept to paren-form (19 branch patterns; step-body *constructions*
+      like `:abort Error e` left for the separate construction-drift sweep).
+- [x] **5b. Element surface space→paren** (`Text "hi" size=12` → `Text("hi", size=12)`).
+      ✅ DONE (core), edition-gated. The reader-facing §2.1 win. **As-built:**
+      • **Single source of truth** `checker/src/elements.ts` (`PRIMITIVE_MODE` + derived
+        `PRIMITIVE_ELEMENTS`), shared by the lowerer and `infer.ts`. The ~20 primitive names
+        are **reserved** (a user ADT ctor may not shadow them).
+      • **Childless paren elements** are disambiguated from ADT ctors at **lower-time**: a
+        `call` whose head is a primitive (`Text(…)`) lowers to an `Element`, not a `Call`
+        (`elementFromCall`); `Ok(x)` etc. stay calls. The `Element` AST node is **kept**, so
+        infer/eval are byte-identical (no element logic relocated).
+      • **Children-bearing paren elements** (`Column(gap=8)` + block) get a dedicated grammar
+        rule (`element_args` on `element`/`element_leaf`, `token.immediate('(')`), unambiguous
+        vs `call` (which carries no children block). Parser regenerated + native binding rebuilt.
+      • **Space-form deprecation** (`checkElementForm`): warning 2026.1 / error 2026.6.
+      • Migrated the 2026.6 fixtures (`accessibility_test`/`bad`) by hand — the gate caught
+        their space-form end-to-end (and the contrast check correctly re-fires through the
+        paren-form tree). New fixtures: `element_paren_test.velve` (childless + children-bearing
+        + nested, green + renders HTML) and `element_paren_bad.velve` (space-form in 2026.6, 2
+        intended errors).
+      • **Verified:** full check + runtime baselines vs post-2B — only intended deltas:
+        accessibility error *column* shifts (paren is 1 char wider), the 2 new fixtures, and
+        `taskflow` 49→46 (its glued `Text(…)` now resolve as elements instead of
+        `unresolved name: Text` — a correctness win). **Zero** new tree-sitter corpus-test
+        failures (the 9 pre-existing failures are `member_name` drift, confirmed identical on
+        the committed grammar). SPEC §11.1/§11.1.1/§11.3 + scattered examples rewritten to
+        paren-form with the deprecation note.
+      **Deferred (logged, not silent):** (1) the **examples** codemod
+      (`scripts/element_paren_codemod.mjs` exists, migrates 48 elements / skips 12 with
+      spread+handler props) is **not applied** — the aspirational examples have *pre-existing
+      syntax errors*, so the partial-parse migration isn't byte-identical (±1 error shifts).
+      They stay space-form (a 2026.1 warning) until first made syntactically clean.
+      (2) **Inline handler props** (`onClick -> body`) and **spread props** (`...rec`) don't map
+      to paren `name=value` — they need call-arg-spread + handler-arg grammar (a separate
+      build); handlers already attach via the `on …` children block.
+- [x] **5c. Delete curried (value-level) juxtaposition** (`add 1 2`). ✅ DONE. **As-found:**
+      value juxtaposition was *already* gone — phase 1's unified postfix `call`
+      (`token.immediate('(')`) left no spaced-application rule, so `add 1 2` and the juxtaposed
+      IIFE `(fn x -> x + 1) 9` are hard syntax errors in **every** edition (not an edition gate).
+      This step closed the **doc/reality gap**: SPEC "Calling functions and constructors" and
+      "Currying & over-application" no longer claim `add 1 2` is legal; currying is now shown
+      only through parens (`add(1)(2)`, partial `add(1)`). New fixtures `juxtaposition_test`
+      (green — currying + type-juxtaposition, runs `11766`) / `juxtaposition_bad` (2 syntax
+      errors). **Type-level juxtaposition kept** (the locked asymmetry): built-in parametric
+      types keep `Result a e` / `Async a` / `Tainted a`; generic types use parens `List(Number)`.
+      Corrected a pre-existing SPEC error that listed `List Number` as valid — there is no
+      generic `Name T` type juxtaposition (`List Number` is a syntax error). **Verified:**
+      baseline delta is exactly the 2 new fixture rows; zero crashes, no source/grammar change.
+
 ---
 
 ## Track B — Decided semantic gaps (independent of Track A; medium)
@@ -244,9 +310,15 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       when `f` is effectful. Currently unspecified.
 - [ ] **Module-qualified resolution** (§3.6): `Math.sqrt` still doesn't resolve while
       stdlib docs are written qualified.
-- [ ] **`Responsive(Length)` prop-only auto-collapse** (§3.1): collapse a
-      `Responsive(Length)` against the current breakpoint *in prop position only*
-      (same shape as the bare-number→`Px` coercion). Enables declare-once-reuse.
+- [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
+      A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
+      the live `viewport.breakpoint` — a second prop-site coercion exactly beside
+      bare-number→`Px` (type-gated: return must be a `Length`). Collapsed eagerly at
+      eval, *not* in the convergence pass (the viewport is a §9.1 read-only root → no
+      (element,prop) edge). Added `setViewport` (the viewport sibling of `setTheme`) so
+      a resize re-collapses every responsive prop. Fixtures `responsive_prop_test`
+      (320px@Desktop → 100%@Mobile on swap) + `responsive_prop_bad` (2 type errors).
+      Enables declare-once-reuse; responsive is now built end-to-end (styles §9.2–9.4).
 - [x] **Accessibility-as-proof** (`OnSurface` contrast refinement, styles-design §14.1).
       ✅ DONE (conservative scope). `Color where contrast(value, surface) >= Lc` is enforced
       at compile time — an unreadable foreground/background pairing fails to check.

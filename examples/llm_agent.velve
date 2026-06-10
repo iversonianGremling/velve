@@ -56,22 +56,22 @@ def runAgent(task: String): Effect [network] Result () String
       race
         go askLLM(ask AgentMemory log)
         after 60s
-      | Ok (Chunk c) ->
+      | Ok (Chunk(c)) ->
         send OutputStream (Push(c))
         :think
-      | Ok (Tool call) -> :use_tool call
-      | Ok Done ->
+      | Ok (Tool(call)) -> :use_tool call
+      | Ok(Done) ->
         send OutputStream Finish
         :done
-      | Ok (Failed e) -> :failed e
+      | Ok (Failed(e)) -> :failed e
       | Timeout       -> :failed "LLM timed out"
 
     :use_tool call
       callTool(call.name, call.args)
-      | Ok result ->
+      | Ok(result) ->
         send AgentMemory (Add(#{ role: "tool", content: result }))
         :think
-      | Error e -> :failed e
+      | Error(e) -> :failed e
 
     :done     -> Ok()
     :failed e -> Error(e)
@@ -81,7 +81,7 @@ def runAgent(task: String): Effect [network] Result () String
 def readStream(): Effect [ui] ()
   loop
     await OutputStream
-      | Push chunk -> send UI (Append(chunk))
+      | Push(chunk) -> send UI (Append(chunk))
       | Finish     -> break
 
 -- ── Entry point ───────────────────────────────────────────────────────────────

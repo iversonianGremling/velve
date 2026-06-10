@@ -35,11 +35,11 @@ store Reports
 def loadReports(): Effect [network] ()
   send Reports Load
   match netGet("/api/reports")
-    | Ok raw ->
+    | Ok(raw) ->
       match decodeReports(raw)
-        | Ok reports -> send Reports (Loaded(reports))
-        | Error msg  -> send Reports (Failed("decode error: {msg}"))
-    | Error msg -> send Reports (Failed(msg))
+        | Ok(reports) -> send Reports (Loaded(reports))
+        | Error(msg)  -> send Reports (Failed("decode error: {msg}"))
+    | Error(msg) -> send Reports (Failed(msg))
 
 def deleteReport(id: Number): Effect [network] ()
   netDelete("/api/reports/{id}")?

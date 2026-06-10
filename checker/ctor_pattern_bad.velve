@@ -1,0 +1,9 @@
+@edition "2026.6"
+
+-- The bare space-form constructor pattern is removed in edition 2026.6. Each bare
+-- payload below is an intended error — use the paren-form `Ok(v)` / `Error(e)`.
+
+def unwrap(r: Result Number String): Number
+  match r
+    | Ok v -> v
+    | Error e -> 0

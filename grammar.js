@@ -631,6 +631,7 @@ export default grammar({
         optional($.param_list),
         ':',
         $._type,
+        optional($.using_clause),
         $._newline,
         $._indent,
         repeat1($._statement),
@@ -643,10 +644,20 @@ export default grammar({
         optional($.param_list),
         ':',
         $._type,
+        optional($.using_clause),
         '->',
         $._expr,
         $._newline,
       ),
+    ),
+
+    // Explicit ambient-surface application on an element-returning function
+    // (theme-design §2b). `using panel` applies a named Surface role; the inline
+    // `using surface = <expr>` form declares-and-applies in one breath.
+    using_clause: $ => seq(
+      'using',
+      $.lower_id,
+      optional(seq('=', $._expr)),
     ),
 
     // where clause as first line(s) of body
@@ -1568,18 +1579,42 @@ export default grammar({
     // inside a children_block, where no adt_call competes.)
     element: $ => seq(
       $.upper_id,
-      optional($.element_content),
       choice(
-        seq(repeat1($.prop), $._newline, optional($.children_block)),
-        seq($._newline, $.children_block),
+        // Legacy space-form (deprecated → error in edition 2026.6): `Text "hi" size=12`,
+        // `Column gap=8` + children. Props are space-separated `key=value`.
+        seq(
+          optional($.element_content),
+          choice(
+            seq(repeat1($.prop), $._newline, optional($.children_block)),
+            seq($._newline, $.children_block),
+          ),
+        ),
+        // Paren-form with a children block: `Column(gap=8)` + indented children.
+        // Content is the first positional, props are `name=value`. Childless paren
+        // elements (`Text("hi")`) parse as `call` and lower to an Element by
+        // primitive-name — only the children-bearing form needs the block attached
+        // here, where `call` (which has no children block) cannot reach.
+        seq($.element_args, $._newline, $.children_block),
       ),
+    ),
+
+    // The glued paren argument list of a paren-form element, reusing the call
+    // `_arg_list` (positional content + `name=value` props). `token.immediate`
+    // mirrors the call rule so `Column(gap=8)` (not `Column (gap=8)`) opens it.
+    element_args: $ => seq(
+      token.immediate('('),
+      optional($._arg_list),
+      ')',
     ),
 
     // A content-only / bare element, valid only as a child (no adt_call ambiguity
     // there): `Text "hello"`, `Spacer`.
     element_leaf: $ => seq(
       $.upper_id,
-      optional($.element_content),
+      choice(
+        optional($.element_content),   // space-form leaf: `Text "hi"`, `Spacer`
+        $.element_args,                // paren-form leaf: `Text("hi", size=12)`
+      ),
       $._newline,
     ),
 

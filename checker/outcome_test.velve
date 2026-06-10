@@ -32,8 +32,8 @@ def transfer(amt: Number): Outcome(Number)
 
 def main(): Unit
   transfer(30) |> match
-    | Committed n -> print("  outcome: Committed {n}")
-    | Aborted e   -> print("  outcome: Aborted {e}")
-    | Conflict c  -> print("  outcome: Conflict retries={c.retries}")
-    | Timeout t   -> print("  outcome: Timeout after={t.after}")
-    | Cancelled   -> print("  outcome: Cancelled")
+    | Committed(n) -> print("  outcome: Committed {n}")
+    | Aborted(e)   -> print("  outcome: Aborted {e}")
+    | Conflict(c)  -> print("  outcome: Conflict retries={c.retries}")
+    | Timeout(t)   -> print("  outcome: Timeout after={t.after}")
+    | Cancelled    -> print("  outcome: Cancelled")

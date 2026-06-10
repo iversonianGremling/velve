@@ -408,7 +408,7 @@ f(width = 320)            -- named call argument (§3.21) — also a name-to-val
 
 **`->`** — here comes code:
 ```
-| Ok x   -> process x     -- match branch body
+| Ok(x)  -> process x     -- match branch body
 fn x     -> x * 2         -- lambda body
 def foo(): Number -> 42   -- single-line function
 :idle    -> ()            -- saga terminal step
@@ -416,7 +416,7 @@ def foo(): Number -> 42   -- single-line function
 
 **`|`** — here comes a branch:
 ```
-| Ok x   ->    -- match case
+| Ok(x)  ->    -- match case
 | ->           -- catchall
 | ()           -- nothing case
 ```
@@ -477,11 +477,19 @@ covers functions *and* data constructors. Two consequences worth stating:
 - **Constructors in expression position need the parens.** Write `Ok(x)`, not `Ok x`.
   A capitalized name followed by a space-separated value (`Ok x`) parses as a UI
   *element*, not a constructor call, so it will not type-check as a `Result`.
-- **Space juxtaposition is reserved.** `add 1 2` works only as currying/saturation of
-  an already-curried function (equivalent to `add(1)(2)`); and at the *type* level,
-  juxtaposition is how type application is written — `List Number`, `Result a e`,
-  `Async a` (the paren forms `List(Number)`, `Result(a, e)`, `Async(a)` are also
-  accepted). For ordinary calls, prefer `f(x)`.
+- **Value-level juxtaposition is gone.** `add 1 2` is a *syntax error*, not a call —
+  there is exactly one way to apply a value, the parens. Currying still composes through
+  them: `add(1)(2)`, and `add(1)` is a partial (§ Partial application). This is the last
+  of the "three application syntaxes" (call-syntax §2.1) retired; capitalization, not
+  spacing, now carries the only call/construct cue.
+- **Type-level juxtaposition is kept — a deliberate asymmetry.** At the *type* level,
+  juxtaposition remains how the built-in parametric types are written: `Result ok err`,
+  `Async a`, `Tainted a` (each also accepts a paren form — `Result(ok, err)`, `Async(a)`,
+  `Tainted(a)`). Generic and user types use the paren form only: `List(Number)`,
+  `Map(String, Number)` — there is no generic `Name T` juxtaposition (`List Number` is a
+  syntax error). Types and values diverge here on purpose: type application has no currying
+  and no element grammar to collide with, so the built-in `Result ok err` reads cleanly and
+  stays unambiguous, whereas at the value level the same spacing was the ambiguity we removed.
 
 Module-qualified calls (`Math.sqrt(x)`) do **not** resolve yet — import the name
 (`import { sqrt } from "Math"`) and call it unqualified. See §14.
@@ -550,6 +558,20 @@ match report.status
   | ->           Text "Pending"
 ```
 
+**Constructor patterns mirror construction.** A constructor pattern destructures
+its payload with the *same* paren-form used to build the value — `Ok(v)`, not the
+bare `Ok v` (call-syntax §3.2). This is the last space-form retired by the
+application-syntax unification: from **edition 2026.6 the bare `Ok v` form is a
+compile error** (deprecation warning in 2026.1), so destructuring reads exactly
+like construction. Nullary constructors take no parens (`Done`, `:resolved`).
+Paren-form lowers to the identical pattern node — the change is purely surface.
+
+```
+match result
+  | Ok(v)    -> v            -- 2026.6: paren-form, mirrors `Ok(v)` construction
+  | Error(e) -> 0            -- (bare `Ok v` / `Error e` deprecated → error in 2026.6)
+```
+
 **Multi-pattern branches:**
 ```
 match event
@@ -561,7 +583,7 @@ match event
 ```
 match result
   | Ok response { value, rest } -> process(value, rest)
-  | Error msg                   -> Error(msg)
+  | Error(msg)                  -> Error(msg)
 ```
 
 **Guard patterns:**
@@ -574,7 +596,7 @@ match x
 
 **If-pattern** — pattern match as condition:
 ```
-if getUser = Ok x
+if getUser = Ok(x)
   showProfile x
 else
   showLogin
@@ -598,21 +620,22 @@ fn         -> "no param"
 
 -- Multi-branch
 fn
-  | Ok x    -> process(x)
-  | Error e -> Error(e)
+  | Ok(x)    -> process(x)
+  | Error(e) -> Error(e)
 ```
 
 **Currying & over-application.** A function that returns a function can be applied to
-all its arguments in one expression — by repeated parens or by juxtaposition — and a
-parenthesized lambda literal can be applied directly (an IIFE):
+all its arguments in one expression by repeated parens, and a parenthesized lambda literal
+can be applied directly (an IIFE). Every application is parenthesized — there is no
+juxtaposition shorthand (`add 3 4` is a syntax error):
 
 ```
 let add = fn a -> fn b -> a + b
 add(10)(5)            -- 15
-add 3 4               -- 7  (curried juxtaposition)
+add(3)(4)             -- 7
 
 (fn x -> x * 2)(3)    -- 6  (IIFE)
-(fn x -> x + 1) 9     -- 10
+(fn x -> x + 1)(9)    -- 10
 ```
 
 **Partial application.** Supplying *fewer* arguments than a function's arity returns a
@@ -757,9 +780,9 @@ def sumRange(n: Number): Number
 **if/else:**
 ```
 if user.role == Admin
-  Button "Admin Panel"
+  Button("Admin Panel")
 else
-  Button "Home"
+  Button("Home")
 ```
 
 **Inline conditional:** `if c then a else b` — an expression (distinct from the
@@ -807,8 +830,8 @@ def loadBalance(id: Number): String
       acct = fetchAccount(u)     -- Result → unwrapped
       acct.balance               -- plain value → block yields Ok(balance)
   match outcome
-    | Ok b    -> "balance {b}"
-    | Error e -> "unavailable: {e}"      -- caught here; function returns String
+    | Ok(b)    -> "balance {b}"
+    | Error(e) -> "unavailable: {e}"     -- caught here; function returns String
 ```
 
 **`retry [N] [D]`** — run a `try`-style body; on failure, re-run, up to `N` times
@@ -884,7 +907,7 @@ With branches:
 ```
 loop
   await ResponseStream
-    | Push chunk -> send UI (Append chunk)
+    | Push(chunk) -> send UI (Append chunk)
     | Done       -> break
 ```
 
@@ -945,8 +968,8 @@ text can be written directly). Other escapes: `\n \t \r \" \\`.
 
 ```
 #{ ...baseRecord, status: :resolved }
-Row ...baseProps background=#fff
-  Text "hello"
+Row ...baseProps background=#fff    -- spread props attach in space-form (paren-form fold pending)
+  Text("hello")
 ```
 
 ### 3.18 Optional chaining
@@ -1034,7 +1057,7 @@ def tcpHandshake(): ()
   machine
     :listen
       until recvSYN
-        | Ok syn -> :syn_received syn
+        | Ok(syn) -> :syn_received syn
         | Timeout -> :listen
 
     :syn_received syn
@@ -1042,7 +1065,7 @@ def tcpHandshake(): ()
       race
         go until recvACK
         after 3s
-      | Ok _ -> :established
+      | Ok(_) -> :established
       | Timeout -> :listen
 
     :established -> ()
@@ -1056,8 +1079,8 @@ when a step body is a plain expression *immediately followed by `|` branches* �
 ```
 :validate
   validateCart(cart)               -- subject expression (a plain call)
-    | Ok clean -> :reserve clean    -- implicitly matched against the call's result
-    | Error e  -> :abort (InvalidCart(e))
+    | Ok(clean) -> :reserve clean    -- implicitly matched against the call's result
+    | Error(e)  -> :abort (InvalidCart(e))
 ```
 It reads as "run this, then dispatch on the result," and lowers to the same node as an
 explicit `match`. (`race`/`until`/`await` blocks also take trailing `|` branches, but
@@ -1083,27 +1106,27 @@ def checkout(cart: Cart): Effect [payment, inventory] Result Receipt AppError
   saga CheckoutState
     :validate
       validate cart
-      | Ok clean -> :reserve clean
-      | Error e  -> :abort Error "invalid: {e}"
+      | Ok(clean) -> :reserve clean
+      | Error(e)  -> :abort Error "invalid: {e}"
 
     :reserve clean
       reserve clean
-      | Ok r     ->
+      | Ok(r)     ->
         r ? rollback :stock
         :charge clean.total r
-      | Error _  -> :abort Error "out of stock"
+      | Error(_)  -> :abort Error "out of stock"
 
     :charge total reservation
       charge total
-      | Ok payment ->
+      | Ok(payment) ->
         payment ?: rollback :reserve
         :fulfill reservation payment
-      | Error e -> :abort Error e
+      | Error(e) -> :abort Error e
 
     :fulfill reservation payment
       createOrder reservation payment
-      | Ok order -> :done (Ok (Receipt { order }))
-      | Error _  -> :abort Error "order failed"
+      | Ok(order) -> :done (Ok (Receipt { order }))
+      | Error(_)  -> :abort Error "order failed"
 
     :done result   -> result
     :abort e       -> e
@@ -1120,8 +1143,8 @@ def checkout(cart: Cart): Effect [payment, inventory] Result Receipt AppError
 ```
 -- Implicit match (no match keyword):
 validate input
-  | Ok x -> :next x
-  | Error e -> :failed e
+  | Ok(x) -> :next x
+  | Error(e) -> :failed e
 
 -- Step transition:
 :nextStep arg1 arg2
@@ -1142,10 +1165,10 @@ machine Checkout(stockOk: Bool, payOk: Bool): String persisted over CheckoutStat
     :reserve
   :reserve
     reserve stockOk
-      | Ok res ->
+      | Ok(res) ->
         res ? rollback :undoStock
         :charge res
-      | Error e -> :abort "reserve failed ({e})"
+      | Error(e) -> :abort "reserve failed ({e})"
   ...
   :done result -> result
   :abort e     -> "ABORTED: {e}"
@@ -1241,7 +1264,7 @@ Both parse to the same AST; runtime behaviour is identical. New code should use
     go ask Payment (Charge amount)
     after 30s
     until ask Order IsCancelled
-  | Ok receipt -> :done receipt
+  | Ok(receipt) -> :done receipt
   | Timeout    -> :retry
   | Cancelled  -> :abort Error "cancelled"
 ```
@@ -1255,7 +1278,7 @@ go send Analytics (Track event)
 ```
 :idle
   await EventStream
-    | Push e -> :handle e
+    | Push(e) -> :handle e
     | Done   -> :shutdown
 ```
 
@@ -1513,7 +1536,7 @@ transaction within { from: now, to: now + 5000, maxRetry: 3 }
   ask AccountB (Deposit balance)
   ask AccountA Withdraw
 |> match
-   | Ok _               -> ()
+   | Ok(_)               -> ()
    | Timeout { after }  -> send Logger (Log "timed out after {after}ms")
    | Conflict { retries } -> send Logger (Log "failed after {retries} retries")
    | Cancelled          -> ()
@@ -1640,7 +1663,7 @@ def streamResponse(prompt: String): Effect [network] ()
 def display(): Effect [ui] ()
   loop
     await ResponseStream
-      | Push chunk -> send UI (Append chunk)
+      | Push(chunk) -> send UI (Append chunk)
       | Done       -> break
 ```
 
@@ -1657,14 +1680,25 @@ onDerender : Event ()    -- element leaves render tree
 
 ### 11.1 Element syntax
 
+Elements use the **unified application form** (call-syntax §3.2): `Text("hi", size=12)`
+— the same `Name(positional…, name=value…)` shape as a function call or constructor.
+Content is the first positional; props are `name=value`; children ride the indented
+block. **Capitalization is the cue** — an Uppercase head naming a built-in primitive
+(`Text`, `Column`, …) constructs an element; everything else is a call/constructor.
+
 ```
-Column gap=8 padding=16 background=#f9f9f9
-  Text "Hello" size=12
-  Input value=(Form.name)
+Column(gap=8, padding=16, background=#f9f9f9)
+  Text("Hello", size=12)
+  Input(value=Form.name)
     on onInput e -> send Form (SetName(e.value))   -- `e` : Event { value, key, checked }
-  Button "Submit"
+  Button("Submit")
     on onClick -> send Form (Submit())
 ```
+
+> **Edition 2026.6:** the legacy **space-form** `Text "hi" size=12` (a third application
+> syntax) is removed — a deprecation warning in 2026.1, an error in 2026.6. Use the
+> paren-form above. (Inline handler props and spread props still attach via the children
+> block / `...` — the remaining surface to fold.)
 
 An `on <event> [param] -> …` child wires a handler. The optional param binds the DOM
 event as `Event { value: String, key: String, checked: Bool }` (`value`/`checked`
@@ -1674,8 +1708,8 @@ from the target, `key` from keyboard events) — so form handlers read `e.value`
 
 ```
 for r in rows           -- render one element per item, auto-keyed on r.id
-  Row gap=8
-    Text (r.title)
+  Row(gap=8)
+    Text(r.title)
 ```
 
 `for r in rows` renders the indented element for each item and gives each a stable
@@ -1700,10 +1734,10 @@ Divider :                              Element
 ### 11.3 Units
 
 ```
-Column gap=8            -- Px 8
-Column width={Fr 0.5}   -- fraction
-Column width={Pct 100}  -- percentage
-Column width=Fit        -- content
+Column(gap=8)            -- Px 8
+Column(width=Fr(0.5))    -- fraction
+Column(width=Pct(100))   -- percentage
+Column(width=Fit)        -- content
 ```
 
 ### 11.4 Styling
@@ -1804,16 +1838,22 @@ appendix at the end of this document, so this section documents only what exists
 
 ### 15.1 std/web
 
-Status: **partial** — `viewport` and the `Breakpoint` enum are defined; `onRender`/
-`onDerender` lifecycle events and the `responsive | …` sugar are not yet wired.
+Status: **mostly wired** — `viewport` (a read-only reactive root) and the `Breakpoint`
+enum are defined, the `responsive | …` sugar is wired (desugars to
+`match viewport.breakpoint`, exhaustiveness-checked), and a `Responsive(Length)` value
+(`Breakpoint -> Length`) auto-collapses at a `Length` prop site against the live
+breakpoint (`setViewport` re-collapses on swap; styles-design §9.3). Still not wired:
+the `onRender`/`onDerender` lifecycle events.
 
 
 
 ```
 onRender   : Event ()
 onDerender : Event ()
-viewport   : { width: Number, height: Number, breakpoint: Breakpoint }
+viewport    : { width: Number, height: Number, breakpoint: Breakpoint }
 -- read-only reactive root; `responsive | …` sugar = `match viewport.breakpoint`
+setViewport : { width: Number, height: Number, breakpoint: Breakpoint } -> ()
+-- host swap channel for the viewport root (parallel of setTheme); re-collapses responsive props
 type Breakpoint = Mobile | Tablet | Desktop | Wide
 ```
 
