@@ -325,7 +325,7 @@ export class Evaluator {
             child.define("value", value);
             const ok = await this.evalExpr(pred, child);
             if (ok.tag === "VBool" && ok.v) return { tag: "VCtor", name: "Ok", payload: value };
-            return { tag: "VCtor", name: "Error", payload: { tag: "VStr", v: `${typeName}: ${display(value)} failed refinement` } };
+            return { tag: "VCtor", name: "Error", payload: parseErrorVal(typeName, display(value), `fails the '${typeName}' refinement`) };
           });
           env.define(typeName, { tag: "VRecord", fields: new Map([["parse", parse]]) });
         }
@@ -1693,6 +1693,16 @@ function themeValue(roles: { readonly [role: string]: string }): Value {
     Object.entries(roles).map(([k, v]) => [k, { tag: "VStr", v } as Value])) };
 }
 
+// Structured parse failure (prelude ParseError ADT, TODO 3.5): builds the
+// ParseError({expected, got, detail}) ctor value. Callers wrap it in Error(...).
+function parseErrorVal(expected: string, got: string, detail: string): Value {
+  return { tag: "VCtor", name: "ParseError", payload: { tag: "VRecord", fields: new Map<string, Value>([
+    ["expected", { tag: "VStr", v: expected }],
+    ["got",      { tag: "VStr", v: got }],
+    ["detail",   { tag: "VStr", v: detail }],
+  ]) } };
+}
+
 function buildPrelude(): Env {
   const env = new Env();
 
@@ -1701,6 +1711,8 @@ function buildPrelude(): Env {
 
   env.define("Ok",    builtin("Ok",    args => ({ tag: "VCtor", name: "Ok",    payload: args[0] ?? { tag: "VUnit" } })));
   env.define("Error", builtin("Error", args => ({ tag: "VCtor", name: "Error", payload: args[0] ?? { tag: "VUnit" } })));
+  // Named parse-error ADT (single ctor, shared name) - payload {expected, got, detail}
+  env.define("ParseError", builtin("ParseError", args => ({ tag: "VCtor", name: "ParseError", payload: args[0] ?? { tag: "VUnit" } })));
   env.define("Some",  builtin("Some",  args => ({ tag: "VCtor", name: "Some",  payload: args[0] ?? { tag: "VUnit" } })));
   env.define("None",  { tag: "VCtor", name: "None", payload: null });
 
@@ -1850,6 +1862,15 @@ function buildPrelude(): Env {
     const n = parseFloat(str(args[0]));
     return isNaN(n)
       ? { tag: "VCtor" as const, name: "Error", payload: { tag: "VStr" as const, v: "not a number" } }
+      : { tag: "VCtor" as const, name: "Ok", payload: { tag: "VNum" as const, v: n } };
+  });
+  // The canonical boundary parser (SPEC 2.6): whole-string parse via Number(),
+  // so trailing garbage ("3abc") is an Error, with the structured ParseError.
+  def("parseNumber", args => {
+    const s = str(args[0]);
+    const n = s.trim() === "" ? NaN : Number(s);
+    return isNaN(n)
+      ? { tag: "VCtor" as const, name: "Error", payload: parseErrorVal("Number", s, "not a number") }
       : { tag: "VCtor" as const, name: "Ok", payload: { tag: "VNum" as const, v: n } };
   });
 
@@ -2545,7 +2566,7 @@ const ERR = (m: string): Value => ({ tag: "VCtor", name: "Error", payload: { tag
 const JSON_RT: Record<string, Value> = {
   parse:       builtin("parse",       args => {
     try { return OK(jsToVelve(JSON.parse(str(args[0])))); }
-    catch (e) { return ERR(e instanceof Error ? e.message : "invalid JSON"); }
+    catch (e) { return { tag: "VCtor", name: "Error", payload: parseErrorVal("Json", str(args[0]), e instanceof Error ? e.message : "invalid JSON") }; }
   }),
   stringify:   builtin("stringify",   args => ({ tag: "VStr", v: JSON.stringify(velveToJs(args[0]!)) ?? "null" })),
   prettyPrint: builtin("prettyPrint", args => ({ tag: "VStr", v: JSON.stringify(velveToJs(args[0]!), null, num(args[1])) ?? "null" })),

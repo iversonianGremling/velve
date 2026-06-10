@@ -1,0 +1,29 @@
+@edition "2026.6"
+
+-- Guardrails for named error ADTs (TODO §3.5). Each numbered block carries
+-- exactly one error; expected count: 4.
+
+type LoadError
+  = NotFound String
+  | Timeout Number
+
+-- 1. The stringly habit is now a type error: a ParseError is not a String.
+def stringly(): String
+  parseNumber("x") |> match
+    | Ok(n) -> "ok"
+    | Error(e) -> e
+
+-- 2. Prose where a named error is declared: Error("...") is not a ParseError.
+def prose(): Result Number ParseError
+  Error("something went wrong")
+
+-- 3. The structured payload is typed: ParseError has no field 'message'.
+def wrongField(): String
+  parseNumber("x") |> match
+    | Ok(n) -> "ok"
+    | Error(ParseError(e)) -> e.message
+
+-- 4. Domain error ADTs are exhaustiveness-checked: Timeout arm missing.
+def partial(e: LoadError): String
+  match e
+    | NotFound(what) -> "not found: {what}"

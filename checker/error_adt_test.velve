@@ -1,0 +1,41 @@
+@edition "2026.6"
+
+-- Named error ADTs (TODO §3.5): errors are names, not prose.
+-- 1. The stdlib's boundary parses fail with the structured prelude ADT
+--    `ParseError({ expected, got, detail })` — `parseNumber : String -> Result Number ParseError`
+--    and refinement `T.parse : Base -> Result Base ParseError`.
+-- 2. The convention for domain errors: define your own error ADT, use
+--    `Result T YourError`, and map stdlib errors at the boundary. Matches on the
+--    domain ADT are exhaustiveness-checked like any other ADT.
+
+type Age = Number where 0 <= value && value <= 150
+
+type LoadError
+  = NotFound String
+  | Timeout Number
+
+-- Map the stdlib ParseError into the domain ADT at the boundary.
+def loadCount(raw: String): Result Number LoadError
+  parseNumber(raw) |> match
+    | Ok(n) -> Ok(n)
+    | Error(ParseError(e)) -> Error(NotFound("count: {e.detail}, got '{e.got}'"))
+
+def describe(r: Result Number LoadError): String
+  match r
+    | Ok(n) -> "loaded {n}"
+    | Error(NotFound(what)) -> "not found: {what}"
+    | Error(Timeout(ms)) -> "timed out after {ms}ms"
+
+def main(): Unit
+  -- structured stdlib error, fields accessible by name
+  parseNumber("3abc") |> match
+    | Ok(n) -> print("unexpected ok")
+    | Error(ParseError(e)) -> print("expected={e.expected} got={e.got} detail={e.detail}")
+  -- refinement parse fails with the same named ADT
+  Age.parse(200) |> match
+    | Ok(a) -> print("unexpected ok")
+    | Error(ParseError(e)) -> print("age: {e.got} {e.detail}")
+  -- domain mapping + exhaustive match over the domain error ADT
+  print(describe(loadCount("42")))
+  print(describe(loadCount("nope")))
+  print(describe(Error(Timeout(30))))

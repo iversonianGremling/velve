@@ -322,8 +322,14 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       (2 unknown-state errors from await branches); baselines byte-identical otherwise.
 - [ ] **`try` soundness fix** (§3.5): polymorphic try line resolved to `Result` later
       — monomorphize-before-try, reject, or warn (`blocks-design.md §12`).
-- [ ] **Named error ADTs** (§3.5): stdlib support + `T.parse`/decoders return a
-      structured error type, not `String`.
+- [x] **Named error ADTs** (§3.5): ✅ DONE (2026-06, SPEC §2.6, `error_adt_test`/`_bad`).
+      Prelude single-ctor ADT `ParseError { expected, got, detail }` (registered in
+      resolve/infer/exhaust/eval); refinement `T.parse : Base -> Result Base ParseError`;
+      `parseNumber` made real end-to-end (was typed-only — neither resolved nor ran) with
+      whole-string semantics and the structured error; `Json.parse` structured at runtime.
+      Stringly error use is now a check error; SPEC documents the map-at-the-boundary
+      domain-ADT convention. Residual: `parseInt`/`parseFloat`/`String.toNumber` still
+      stringly; inferred error rows are the separate A+ mechanism (north-star §4).
 - [ ] **Effect polymorphism** for higher-order fns (§3.6): effect of `map(f, xs)`
       when `f` is effectful. Currently unspecified.
 - [ ] **Module-qualified resolution** (§3.6): `Math.sqrt` still doesn't resolve while

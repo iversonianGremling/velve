@@ -476,6 +476,8 @@ const BUILTINS = new Set([
   "__arg",
   // Result / Option constructors
   "Ok", "Error", "Some", "None",
+  // Named parse-error ADT (single ctor, shared name) + the canonical boundary parser
+  "ParseError", "parseNumber",
   // Async(a) loading-state constructors (§2.10) — `Error` shared with Result above
   "Before", "During", "After",
   // Transaction-outcome constructors. `Conflict`/`Timeout`/`Cancelled` are stable;

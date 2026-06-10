@@ -1,6 +1,6 @@
 -- Refinement types: `type T = Base where <pred>` (predicate refers to the value
 -- as `value`). The type is transparent for checking (usable anywhere Base is),
--- and `T.parse : Base -> Result Base String` enforces the predicate at runtime.
+-- and `T.parse : Base -> Result Base ParseError` enforces the predicate at runtime.
 -- Plain aliases (`type UserId = Number`) now resolve to their base too.
 
 type UserId  = Number

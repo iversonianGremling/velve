@@ -16,6 +16,10 @@ type TypeDefMap = Map<string, CtorInfo[]>;
 function buildTypeDefs(mod: Module): TypeDefMap {
   const map: TypeDefMap = new Map();
   map.set("Result", [{ name: "Ok", hasPayload: true }, { name: "Error", hasPayload: true }]);
+  // Named parse-error ADT (TODO §3.5): single ctor carrying {expected, got, detail}.
+  // A user ADT may reuse the ctor *name* (e.g. pipeline.velve's PipelineError);
+  // lookups here are keyed by the scrutinee's type name, so they don't collide.
+  map.set("ParseError", [{ name: "ParseError", hasPayload: true }]);
   // The closed transaction-outcome ADT (commit/abort + concurrency). Renamed in
   // edition 2026.6: `TxResult`/`Ok`/`Error` → `Outcome`/`Committed`/`Aborted`. Both
   // type names are registered so a match is exhaustiveness-checked under whichever

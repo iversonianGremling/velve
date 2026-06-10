@@ -41,9 +41,9 @@ means there is a green fixture exercising it under `checker/`.
 | UI element tree + prop typing | ⚠ Partial | `ui_render_test`, `prop_unknown_test` pass, but the component/stdlib surface used by `examples/` (e.g. `Text`, `onClick`) is incomplete. |
 | Color / APCA legibility | ✅ Built | `color_test`, `color_ext_test`; consumed by the theme system (`theme_record_test`). |
 | Accessibility-as-proof (contrast) | ✅ Built (opt-in) | `accessibility_test`; **off by default, never forced** — turns on only if a project defines `OnSurface = Color where contrast(value, surface) >= Lc`, then checked at compile time against the resolved background (APCA Lc in `constEval`). |
-| Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `parseNumber`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. |
+| Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. (`parseNumber` now resolves + runs, 2026-06.) |
 | Module-qualified resolution (`Math.sqrt`) | ❌ Not built | Track B; stdlib docs are written qualified but qualified names don't resolve. |
-| Named error ADTs / structured `parse` errors | ❌ Not built | Track B; errors are `String` today. |
+| Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
 | Effect polymorphism (HOFs) | ❌ Not built | Track B; effect of `map(f, xs)` when `f` is effectful is unspecified. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
@@ -169,7 +169,7 @@ type NonZero  = Number where value != 0
 email : Email = "user@example.com"
 
 -- Runtime: explicit parse, runs once at boundary
-Email.parse : String -> Result Email String
+Email.parse : String -> Result Email ParseError
 ```
 
 **Implemented behavior.** A refinement type is *transparent to its base* — `Age`
@@ -187,8 +187,40 @@ its predicate. Two enforcement points:
   **literal patterns** *(2026-06)*: a literal matched against a refined type that
   fails its predicate can never match, so `| 200 ->` on an `Age` scrutinee — or a
   typo'd chord pattern `"Ctl+S"` on a `Chord` stream (§10.5) — is a check error.
-- **Runtime, explicit.** `T.parse : Base -> Result Base String` runs the predicate
-  on a dynamic value, returning `Ok(value)` or `Error(msg)`.
+- **Runtime, explicit.** `T.parse : Base -> Result Base ParseError` runs the predicate
+  on a dynamic value, returning `Ok(value)` or a *structured* error (see below).
+
+**Named parse errors** *(2026-06)*. Boundary parses fail with a name, not prose: the
+prelude defines the single-ctor ADT
+
+```
+type ParseError = ParseError { expected: String, got: String, detail: String }
+```
+
+and both refinement `T.parse` and the canonical boundary parser
+`parseNumber : String -> Result Number ParseError` return it (`Json.parse` produces
+it at runtime too, with the underlying parser message in `detail`). The fields are
+data, not a pre-formatted sentence: `expected` is the type/format name, `got` the
+offending input rendered, `detail` human prose. Treating the error as a `String` is
+now a type error — the stringly habit is rejected at the check stage
+(`error_adt_test` / `error_adt_bad`).
+
+**Convention for domain errors:** define a domain error ADT and map stdlib errors
+into it at the boundary, so callers match on *your* names:
+
+```
+type LoadError = NotFound String | Timeout Number
+
+def loadCount(raw: String): Result Number LoadError
+  parseNumber(raw) |> match
+    | Ok(n) -> Ok(n)
+    | Error(ParseError(e)) -> Error(NotFound("count: {e.detail}"))
+```
+
+Matches over a domain error ADT are exhaustiveness-checked like any other ADT.
+`parseInt`/`parseFloat`/`String.toNumber` still return `Result _ String` (residual;
+`parseNumber` is the canonical whole-string parser — `parseNumber("3abc")` is an
+`Error` where `parseFloat` would yield `Ok(3)`).
 
 ### 2.7 Dependent types
 

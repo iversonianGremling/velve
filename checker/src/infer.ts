@@ -554,6 +554,18 @@ function buildPrelude(): TypeEnv {
   env.define("Ok",    { forall: [a.id, e.id], type: fn([a], resultA) });
   env.define("Error", { forall: [a.id, e.id], type: fn([e], resultA) });
 
+  // Named error ADT for boundary parses (SPEC §2.7): the stdlib's parse builtins
+  // and refinement `T.parse` fail with a *structured* error, not a String —
+  // `expected` (the type/format name), `got` (the offending input, rendered),
+  // `detail` (human prose). Single-ctor ADT; the ctor and type share the name.
+  const parseErrorT: Type = { tag: "Named", name: "ParseError", args: [] };
+  const parseErrorPayload: Type = { tag: "Record", fields: [
+    { name: "expected", type: str, optional: false },
+    { name: "got",      type: str, optional: false },
+    { name: "detail",   type: str, optional: false },
+  ] };
+  env.define("ParseError", { forall: [], type: fn([parseErrorPayload], parseErrorT) });
+
   // Async(a) loading-state ctors (SPEC §2.10). Before/During are nullary values;
   // After carries the payload. `Error` is shared with Result (defined above) — an
   // `Error` used where Async is expected is disambiguated at the match site
@@ -719,7 +731,7 @@ function buildPrelude(): TypeEnv {
   env.define("strContains", { forall: [],             type: fn([str, str], { tag: "Prim", kind: "Bool" }) });
   env.define("strToUpper",  { forall: [],             type: fn([str], str) });
   env.define("strToLower",  { forall: [],             type: fn([str], str) });
-  env.define("parseNumber", { forall: [e.id],         type: fn([str], { tag: "Named", name: "Result", args: [num, e] }) });
+  env.define("parseNumber", { forall: [],             type: fn([str], { tag: "Named", name: "Result", args: [num, { tag: "Named", name: "ParseError", args: [] }] }) });
   env.define("toString",    { forall: [a.id],         type: fn([a], str) });
 
   // Number ops
@@ -1168,12 +1180,13 @@ class Inferrer {
       case "TBAlias": {
         const base = resolveRef(decl.body.ref, tp);
         if (decl.body.pred) {
-          // Refinement type: expose `TypeName.parse : Base -> Result Base String`
+          // Refinement type: expose `TypeName.parse : Base -> Result Base ParseError`
           // (the runtime-checked boundary). The type itself stays transparent.
+          // The error is the named prelude ADT, not a String (TODO §3.5).
           const parseT: Type = {
             tag: "Fn",
             params: [base],
-            ret: { tag: "Named", name: "Result", args: [base, { tag: "Prim", kind: "String" }] },
+            ret: { tag: "Named", name: "Result", args: [base, { tag: "Named", name: "ParseError", args: [] }] },
             effects: [],
           };
           env.define(decl.name, generalize(env, this.ctx.subst,
