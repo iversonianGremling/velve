@@ -1,0 +1,35 @@
+@edition "2026.6"
+
+-- Guardrails for the `try` soundness fix (blocks-design §12). The pre-fix
+-- checker passed a Var-typed try line through unpeeled with no diagnostic,
+-- while eval unwraps by runtime value — the static type and the runtime
+-- disagreed. Each numbered block carries exactly one error; expected count: 2.
+
+def fallible(n: Number): Result Number String
+  if n > 0 then Ok(n) else Error("neg")
+
+def takesResult(r: Result Number String): Number
+  r |> match
+    | Ok(n) -> n
+    | Error(e) -> 0
+
+-- 1. Resolved to Result too late: `h = identity(g)` is a bare type variable
+--    when the line is checked, so the block does not unwrap it — but
+--    `takesResult(h)` later pins it to `Result Number String`. At runtime eval
+--    WOULD unwrap an Ok/Error value here, handing takesResult a bare Number.
+def lateResult(): Result Number String
+  try
+    xs = []
+    g = listHead(xs)
+    h = identity(g)
+    n = takesResult(h)
+    Ok(n)?
+
+-- 2. Never resolved: `h = identity(g)` stays polymorphic — whether it unwraps
+--    depends on the value that arrives at runtime. Rejected.
+def neverPinned(): Result Number String
+  try
+    xs = []
+    g = listHead(xs)
+    h = identity(g)
+    Ok(7)?

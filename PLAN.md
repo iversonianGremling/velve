@@ -320,8 +320,12 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       walk them unchanged. Self-goto drain loop works (`| Push(e) -> :collect (acc+e)`).
       Fixtures `machine_await_test` (runs, drains a stream to 60) + `machine_await_bad`
       (2 unknown-state errors from await branches); baselines byte-identical otherwise.
-- [ ] **`try` soundness fix** (§3.5): polymorphic try line resolved to `Result` later
-      — monomorphize-before-try, reject, or warn (`blocks-design.md §12`).
+- [x] **`try` soundness fix** (§3.5): ✅ DONE (2026-06, `try_sound_test`/`_bad`).
+      Deferred monomorphize-then-decide sweep after whole-module inference: Var-typed
+      try lines accepted retroactively if they resolve to a concrete non-Result, errors
+      if they resolve to Result too late or never. Unknown-callee calls return `Unknown`
+      (no leaked leniency vars); `print`/`println` typed; `identity`/`listHead` made real
+      (blocks-design §12 updated).
 - [x] **Named error ADTs** (§3.5): ✅ DONE (2026-06, SPEC §2.6, `error_adt_test`/`_bad`).
       Prelude single-ctor ADT `ParseError { expected, got, detail }` (registered in
       resolve/infer/exhaust/eval); refinement `T.parse : Base -> Result Base ParseError`;

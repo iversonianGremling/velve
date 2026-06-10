@@ -398,10 +398,18 @@ dimension machinery generalize?
   `parseFloat`/`String.toNumber` still return `Result _ String`; a user ADT may
   reuse the `ParseError` ctor name (pipeline does) — exhaustiveness is keyed by
   scrutinee type name, so no collision.
-- [ ] 🟡 Fix the `try` soundness gap (blocks-design §12): a line whose type is
+- [x] 🟡 Fix the `try` soundness gap (blocks-design §12): a line whose type is
   an unresolved type variable later resolved to `Result` is unwrapped by eval
   but not by infer. Either monomorphize-before-try, reject polymorphic try
-  lines, or warn.
+  lines, or warn. **DONE 2026-06** (`try_sound_test`/`_bad`, SPEC §3.2): a hybrid
+  of the first two options — a *deferred monomorphize-then-decide sweep*. Var-typed
+  try/retry lines are recorded at peel time and re-judged after the whole module is
+  inferred: resolved to concrete non-Result → accepted retroactively; resolved to
+  Result too late, or never → check error. Riders: calls to Unknown callees now
+  return `Unknown` (not a leaked leniency var — same discipline as failed calls);
+  `print`/`println` typed `forall a. a -> Unit` (surfaced + fixed dishonest
+  `: String` print-bodied compensations in `saga_demo`); `identity`/`listHead`
+  made real in resolve+eval; `listHead`'s free error var → concrete `String`.
 - [ ] 🟡 Error-type A+ path: **infer error rows internally, pin an explicit ascription at
   module boundaries** (Zig `!T` ergonomics + a reviewed contract at the edge). This is the
   *same row-polymorphic inference* as effects (§3.6) — build it once. See

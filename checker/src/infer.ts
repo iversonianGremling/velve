@@ -566,6 +566,11 @@ function buildPrelude(): TypeEnv {
   ] };
   env.define("ParseError", { forall: [], type: fn([parseErrorPayload], parseErrorT) });
 
+  // I/O — typed (`forall a. a -> Unit`) so a print line inside `try` has a
+  // concrete type instead of a leniency var (see inferTryBody / the §12 sweep).
+  env.define("print",   { forall: [a.id], type: fn([a], { tag: "Prim", kind: "Unit" }) });
+  env.define("println", { forall: [a.id], type: fn([a], { tag: "Prim", kind: "Unit" }) });
+
   // Async(a) loading-state ctors (SPEC §2.10). Before/During are nullary values;
   // After carries the payload. `Error` is shared with Result (defined above) — an
   // `Error` used where Async is expected is disambiguated at the match site
@@ -677,7 +682,9 @@ function buildPrelude(): TypeEnv {
   env.define("listReverse", { forall: [a.id],         type: fn([listA], listA) });
   env.define("listTake",    { forall: [a.id],         type: fn([listA, num], listA) });
   env.define("listDrop",    { forall: [a.id],         type: fn([listA, num], listA) });
-  env.define("listHead",    { forall: [a.id, e.id],   type: fn([listA], { tag: "Named", name: "Result", args: [a, e] }) });
+  // Concrete String error (its runtime failure IS the string "empty list") — a
+  // free error var here would be the same unsound leniency parseNumber had.
+  env.define("listHead",    { forall: [a.id],         type: fn([listA], { tag: "Named", name: "Result", args: [a, str] }) });
   env.define("listFilter",  { forall: [a.id],         type: fn([listA, fn([a], { tag: "Prim", kind: "Bool" })], listA) });
   env.define("listMap",     { forall: [a.id, b.id],   type: fn([listA, fn([a], b)], listB) });
 
@@ -999,6 +1006,7 @@ export function infer(mod: Module, resolutions: ResolutionMap): InferResult {
   const inferrer = new Inferrer(ctx, types);
   inferrer.collectDecls(mod.decls, env);
   inferrer.inferDecls(mod.decls, env);
+  inferrer.checkPendingTryVars();
   const nameToTypeString = new Map<string, string>();
   for (const [name, scheme] of env.allSchemes()) {
     nameToTypeString.set(name, typeToString(ctx.subst.apply(instantiate(scheme))));
@@ -1728,6 +1736,12 @@ class Inferrer {
           });
         }
 
+        // Unknown callee (an unresolved or not-yet-typed builtin): the call's
+        // result is Unknown too — same discipline as a failed call below. Letting
+        // the fresh `ret` var escape instead would leak a leniency var that the
+        // try-soundness sweep (§12) cannot tell from a genuine polymorphic line.
+        if (resolvedFnT.tag === "Unknown") return { tag: "Unknown" };
+
         const requiredEffects = resolvedFnT.tag === "Fn" ? resolvedFnT.effects : [];
 
         const prevErrCount = this.ctx.diagnostics.length;
@@ -2353,18 +2367,24 @@ class Inferrer {
   private inferTryBody(stmts: Stmt[], parentEnv: TypeEnv, errType: Type, span: Span): Type {
     let env = parentEnv;
     let last: Type = { tag: "Prim", kind: "Unit" };
-    const peel = (t: Type): Type => {
+    // Lines whose type is still an unresolved Var when peeled. Eval unwraps by
+    // RUNTIME value, so a line passed through unpeeled here that later turns out
+    // to be a Result is a soundness hole (blocks-design §12) — each one is judged
+    // again once the whole module is inferred (deferred monomorphize-then-decide;
+    // see the sweep in `infer`).
+    const peel = (t: Type, sp: Span): Type => {
       const at = this.ctx.subst.apply(t);
       if (at.tag === "Named" && at.name === "Result" && at.args.length === 2) {
         unify(at.args[1]!, errType, this.ctx, span, "try error type");
         return at.args[0]!;
       }
+      if (at.tag === "Var") this.pendingTryVars.push({ t: at, span: sp });
       return at;
     };
     for (const stmt of stmts) {
       switch (stmt.tag) {
         case "SBind": {
-          let bindType = peel(this.inferExpr(stmt.value, env));
+          let bindType = peel(this.inferExpr(stmt.value, env), stmt.span);
           if (stmt.ascription) {
             const prevErrCount = this.ctx.diagnostics.length;
             unify(resolveRef(stmt.ascription, new Map(), this.sagaRets), bindType, this.ctx, stmt.span);
@@ -2377,7 +2397,7 @@ class Inferrer {
           break;
         }
         case "SExpr":
-          last = peel(this.inferExpr(stmt.expr, env));
+          last = peel(this.inferExpr(stmt.expr, env), stmt.span);
           break;
         case "SAssign": {
           const tt = this.inferExpr(stmt.target, env);
@@ -2387,11 +2407,29 @@ class Inferrer {
           break;
         }
         case "SBreak": case "SReturn":
-          if (stmt.value) last = peel(this.inferExpr(stmt.value, env));
+          if (stmt.value) last = peel(this.inferExpr(stmt.value, env), stmt.span);
           break;
       }
     }
     return last;
+  }
+
+  // Deferred try-soundness sweep (blocks-design §12), run once after the whole
+  // module is inferred: a Var-typed try line was not unwrapped at its peel. If
+  // later constraints resolved it to a Result, the static type and the runtime
+  // unwrap disagree; if it stayed polymorphic, whether it unwraps depends on
+  // the value that arrives. Both are rejected — only a line that resolved to a
+  // concrete non-Result type was soundly passed through.
+  readonly pendingTryVars: { t: Type; span: Span }[] = [];
+  checkPendingTryVars(): void {
+    for (const p of this.pendingTryVars) {
+      const rt = this.ctx.subst.apply(p.t);
+      if (rt.tag === "Named" && rt.name === "Result") {
+        err(this.ctx, p.span, `this try line's type resolved to '${typeToString(rt)}' only after the line was checked, so it was not unwrapped — give the expression a concrete Result type at this line (e.g. annotate the value it comes from), or match on it outside the try`);
+      } else if (rt.tag === "Var") {
+        err(this.ctx, p.span, "a try line cannot stay polymorphic — whether it unwraps depends on the value that arrives at runtime; give it a concrete type or match on it outside the try");
+      }
+    }
   }
 
   // ── Literal types ─────────────────────────────────────────────────────────

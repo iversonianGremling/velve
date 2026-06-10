@@ -869,6 +869,15 @@ def loadBalance(id: Number): String
     | Error(e) -> "unavailable: {e}"     -- caught here; function returns String
 ```
 
+**Soundness** *(2026-06, `try_sound_test`/`_bad`)*: whether a line unwraps is
+decided at *check* time, but eval unwraps by *runtime* value — so a line whose
+type is still an unresolved variable when checked is judged again after the whole
+module is inferred. If it resolved to a concrete non-`Result` type, passing it
+through was sound and it is accepted retroactively; if it resolved to `Result`
+only after the fact, or never resolved at all, it is a check error ("a try line
+cannot stay polymorphic"). Lines calling an *unknown* (not-yet-typed) builtin are
+`Unknown`-typed and stay outside this net, lenient as everywhere else.
+
 **`retry [N] [D]`** — run a `try`-style body; on failure, re-run, up to `N` times
 (or until it succeeds if no count), sleeping the duration `D` between attempts. A
 list of durations is a backoff schedule. Value is the first `Ok`, or the last

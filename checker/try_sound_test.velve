@@ -1,0 +1,54 @@
+@edition "2026.6"
+
+-- `try` soundness (blocks-design §12): eval unwraps a line by its RUNTIME value,
+-- so infer must know at check time whether a line is a Result. A line whose type
+-- is still an unresolved variable when checked is judged again after the whole
+-- module is inferred (deferred monomorphize-then-decide):
+--   * resolved to a concrete NON-Result type -> passing it through unpeeled was
+--     sound; accepted retroactively (lateButFine below);
+--   * resolved to Result too late, or never -> rejected (try_sound_bad).
+-- Concrete try lines are unchanged (compute below). Lines whose callee is an
+-- Unknown (not-yet-typed) builtin stay lenient — outside the net, by the same
+-- Unknown discipline as everywhere else in the checker.
+
+def fallible(n: Number): Result Number String
+  if n > 0 then Ok(n) else Error("neg {n}")
+
+-- `h = identity(g)` is a bare type variable when its line is checked (g came
+-- out of an empty-list listHead, so nothing has pinned it yet); the later
+-- `n + h` pins it to Number — a non-Result, so not unwrapping was the right
+-- call. Accepted by the deferred sweep. At runtime listHead([]) is an Error,
+-- so the block collapses on line one — deterministically.
+def lateButFine(): Result Number String
+  try
+    xs = []
+    g = listHead(xs)
+    h = identity(g)
+    n = fallible(3)
+    Ok(n + h)?
+
+-- ordinary concrete try: Result lines unwrap, non-Result lines (typed print)
+-- pass through, the value is Ok(last).
+def compute(): Result Number String
+  try
+    u = fallible(4)
+    print("mid {u}")
+    v = fallible(u + 1)
+    Ok(u + v)?
+
+-- the first Error collapses the block
+def failing(): Result Number String
+  try
+    u = fallible(0)
+    Ok(u)?
+
+def main(): Unit
+  compute() |> match
+    | Ok(n) -> print("compute: {n}")
+    | Error(e) -> print("compute err: {e}")
+  failing() |> match
+    | Ok(n) -> print("unexpected {n}")
+    | Error(e) -> print("collapsed: {e}")
+  lateButFine() |> match
+    | Ok(n) -> print("unexpected {n}")
+    | Error(e) -> print("late collapsed: {e}")

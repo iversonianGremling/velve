@@ -380,11 +380,23 @@ Each line auto-unwraps: a `Result` line unwraps (`Ok v` → `v`), the first `Err
 collapses the block, a non-`Result` line (e.g. `print`) passes through. No `?`
 needed. Block value is `Ok(last)`. Implemented as `evalTryBody`/`inferTryBody`
 (peel each line; infer checks `subst.apply(t)` for a concrete `Result`). Explicit
-`?` inside still works (caught at the boundary). **Known limit:** if a line's type
-is an *unresolved* type variable that only later resolves to `Result`, infer
-passes it through (no unwrap) while eval would unwrap at runtime — a soundness gap
-for genuinely polymorphic try lines. Rare in practice (try bodies call concrete
-fallible functions); documented rather than solved.
+`?` inside still works (caught at the boundary). **Known limit — CLOSED 2026-06**
+(`try_sound_test`/`_bad`): if a line's type was an *unresolved* type variable that
+only later resolved to `Result`, infer passed it through (no unwrap) while eval
+would unwrap at runtime — a soundness gap. Fixed by a **deferred
+monomorphize-then-decide sweep**: each Var-typed line is recorded at peel time and
+judged again once the whole module is inferred. Resolved to a concrete non-Result
+type → accepted retroactively (not unwrapping was right); resolved to Result too
+late, or never → check error. Riders the fix needed: a call to an *Unknown* callee
+(unresolved / not-yet-typed builtin) now returns `Unknown` instead of leaking a
+fresh leniency var — the same discipline as a failed call — so such lines stay
+lenient and outside the net (residual: Unknown-typed lines remain
+unwrap-undecidable, as Unknown is everywhere); `print`/`println` got typed
+(`forall a. a -> Unit`) so the most common pass-through line is concrete — which
+surfaced wrong `: String` ascriptions on print-bodied compensations in
+`saga_demo` (fixed to honest returns); `identity`/`listHead` (already typed) were
+made real in resolve+eval, and `listHead`'s free error var became the concrete
+`String` it actually fails with.
 
 **`retry [N] [D]` — juxtaposed duration, no `after` keyword.** `retry 5 200ms`
 (5 attempts, 200ms apart), `retry [100ms, 1s]` (backoff schedule), `retry 3`,

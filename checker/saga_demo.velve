@@ -42,8 +42,16 @@ def charge(ok: Bool): Result String String
     Error("card declined")
 
 -- Compensations: undo side effects. They run in REVERSE registration order.
-def releaseStock(res: String): String -> print("  <- compensate: released {res}")
-def refund(pay: String): String -> print("  <- compensate: refunded {pay}")
+-- (They return a String because a terminal machine step's value unifies with
+-- the machine's result type — `print` alone would be Unit, caught since print
+-- became a typed builtin.)
+def releaseStock(res: String): String
+  print("  <- compensate: released {res}")
+  "released"
+
+def refund(pay: String): String
+  print("  <- compensate: refunded {pay}")
+  "refunded"
 
 -- A checkout machine backed by the CheckoutState store. On `:abort`, every
 -- `? rollback :step` registered so far runs in reverse (LIFO).
@@ -106,7 +114,9 @@ machine Shipping(crashFirst: Bool): String persisted over RecoveryState
   :label
     crashIf(crashFirst)
     :done "shipped"
-  :unpack r -> print("  <- compensate: unpacked {r}")
+  :unpack r
+    print("  <- compensate: unpacked {r}")
+    "unpacked"
   :done result -> result
   :abort e -> "ABORTED: {e}"
 

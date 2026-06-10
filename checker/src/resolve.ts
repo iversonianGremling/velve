@@ -502,7 +502,7 @@ const BUILTINS = new Set([
   // List
   "length", "isEmpty", "head", "tail", "append", "prepend", "concat",
   "reverse", "slice", "zip", "range", "map", "filter", "foldl", "foldr",
-  "forEach", "flatMap", "any", "all", "sortBy",
+  "forEach", "flatMap", "any", "all", "sortBy", "identity", "listHead",
   // String
   "trim", "split", "join", "contains", "matches", "startsWith", "endsWith",
   "toUpperCase", "toLowerCase", "parseInt", "parseFloat",

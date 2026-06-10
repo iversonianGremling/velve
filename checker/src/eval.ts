@@ -1816,6 +1816,14 @@ function buildPrelude(): Env {
     throw new RuntimeError(`length: expected List or String`);
   });
   def("isEmpty", args => ({ tag: "VBool", v: toList(args[0]!).length === 0 }));
+  def("identity", args => args[0] ?? ({ tag: "VUnit" as const }));
+  // Total head: Ok(first) / Error("empty list") - the typed prelude's listHead.
+  def("listHead", args => {
+    const elems = toList(args[0]!);
+    return elems.length
+      ? { tag: "VCtor" as const, name: "Ok", payload: elems[0]! }
+      : { tag: "VCtor" as const, name: "Error", payload: { tag: "VStr" as const, v: "empty list" } };
+  });
   def("head", args => {
     const elems = toList(args[0]!);
     if (!elems.length) throw new RuntimeError("head: empty list");
