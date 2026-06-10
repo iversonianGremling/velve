@@ -1,0 +1,42 @@
+-- `inputmap Name over Stream` (multitarget-design §4.0): a typed pattern-match
+-- over an input-event stream, written as a table. Each row maps a pattern over
+-- the stream's event type to an action call, with an optional inline help label
+-- (the substrate for the help overlay). Calling the inputmap runs the drain
+-- loop: await event, run the FIRST matching row's action (with the pattern's
+-- bindings in scope), fall through when no row matches (implicit `_ -> ()`),
+-- stop on Done — after a bound Done row runs.
+@edition "2026.6"
+
+stream Keys : String
+
+def selectNext(): Unit
+  print("next")
+
+def selectPrev(): Unit
+  print("prev")
+
+def report(k: String): Unit
+  print("guarded:")
+  print(k)
+
+-- Rows exercise: literal patterns, a guarded row (binds `n`, passes it to the
+-- action), and a bound Done row. The "x" event matches no row and falls
+-- through silently (implicit `_ -> ()`). Guarded rows are exempt from the
+-- conflict analysis — the guard may fail, so they neither bind-twice nor shadow.
+inputmap Editor over Keys
+  Push("j") -> selectNext()  "Next item"
+  Push("k") -> selectPrev()  "Previous item"
+  Push(n) if n == "g" -> report(n)  "Go to top"
+  Done -> print("editor: done")  "Quit"
+
+def producer(): Unit
+  send Keys (Push("j"))
+  send Keys (Push("g"))
+  send Keys (Push("x"))
+  send Keys (Push("k"))
+  send Keys Done
+
+def main(): Unit
+  go producer()
+  Editor()
+  print("editor stopped")

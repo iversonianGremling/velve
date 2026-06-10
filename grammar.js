@@ -248,6 +248,8 @@ export default grammar({
       $.machine_def,
       $.saga_def,
       $.stream_def,
+      $.inputmap_def,
+      $.keymap_def,
       $.module_def,
       $.function_def,
       $.function_sig,
@@ -317,6 +319,45 @@ export default grammar({
     stream_policy: $ => choice(
       'drop',
       seq($.lower_id, optional($.number)),
+    ),
+
+    // inputmap Name over Stream — a typed pattern-match over an input-event
+    // stream, written as a table (multitarget-design §4.0). Each row maps a
+    // pattern over the stream's event type to an action expression, with an
+    // optional inline help label (the substrate for the auto-generated help
+    // overlay). Semantics: the stream drain loop —
+    //   await Stream | <pat> -> <action> | _ -> ()   (Done terminates the loop)
+    // `inputmap` is a reserved keyword (like `machine`/`stream`); `over` was
+    // already one (over_clause).
+    inputmap_def: $ => seq(
+      'inputmap',
+      $.upper_id,
+      'over',
+      $.upper_id,
+      $._newline,
+      $._indent,
+      repeat1($.inputmap_row),
+      $._dedent,
+    ),
+
+    inputmap_row: $ => seq(
+      $.pattern,
+      '->',
+      $._expr,
+      optional(field('label', $.string)),
+      $._newline,
+    ),
+
+    // keymap Name — sugar for `inputmap Name over Key` (multitarget §4.0:
+    // "a keymap = inputmap over the keyboard"). The `Key` stream must be in
+    // scope (declared, or from a Key device library once one ships).
+    keymap_def: $ => seq(
+      'keymap',
+      $.upper_id,
+      $._newline,
+      $._indent,
+      repeat1($.inputmap_row),
+      $._dedent,
     ),
 
     // ----------

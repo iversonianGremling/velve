@@ -49,7 +49,7 @@ means there is a green fixture exercising it under `checker/`.
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | `animated` modifier / `frames` clock | ❌ Not built | Track C. |
 | Games / `@interaction` model | ❌ Not built | Track C. |
-| `inputmap` multitarget | ❌ Not built | Track C (locked design, unbuilt). |
+| `inputmap` multitarget | 🟡 Core built | `inputmap{,_help,_layer,_chord}_test`/`_bad` + `keymap_test`/`_bad`; table → drain loop, typed rows, conflict check, `Inputmap` type, `help(map)` derived data, `++` layering, chord-refinement literals, `keymap` sugar (§10.5). Key-device lib/zones/rendered overlay remain. |
 
 The `examples/` programs are **aspirational sketches**: they exercise the surface and
 read as real apps, but call into the not-yet-built stdlib/UI surface, so they do not
@@ -183,7 +183,10 @@ its predicate. Two enforcement points:
   boundary `150` and passes. The folder covers literals, arithmetic, comparison and
   logical operators, `!`/unary-minus, and `matches(value, "regex")`. Non-constant
   arguments (`birthday(someVar)`) are skipped — they type-check via the transparent
-  base and are guarded at the runtime boundary instead.
+  base and are guarded at the runtime boundary instead. The same fold fires on
+  **literal patterns** *(2026-06)*: a literal matched against a refined type that
+  fails its predicate can never match, so `| 200 ->` on an `Age` scrutinee — or a
+  typo'd chord pattern `"Ctl+S"` on a `Chord` stream (§10.5) — is a check error.
 - **Runtime, explicit.** `T.parse : Base -> Result Base String` runs the predicate
   on a dynamic value, returning `Ok(value)` or `Error(msg)`.
 
@@ -1707,6 +1710,91 @@ def display(): Effect [ui] ()
 onRender   : Event ()    -- element enters render tree
 onDerender : Event ()    -- element leaves render tree
 ```
+
+### 10.5 inputmap — input as a typed pattern-match table
+
+*(Built 2026-06 — the core of multitarget-design §4.0: declaration, typed rows,
+conflict analysis, labels, the drain-loop runtime, `help(map)` derived data
+over a dedicated `Inputmap` type, `++` layering, chord-as-refinement literal
+validation, and `keymap` sugar. Fixtures `inputmap{,_help,_layer,_chord}_test`
+/ `_bad`, `keymap_test` / `_bad`.)*
+
+An `inputmap` binds patterns over an input-event stream to **actions**, as a
+table — binding lives in a declaration separate from behavior, so it is
+inspectable and (eventually) rebindable:
+
+```
+stream Keys : String
+
+inputmap Editor over Keys
+  Push("j") -> selectNext()  "Next item"
+  Push("k") -> selectPrev()  "Previous item"
+  Push(n) if n == "g" -> goTop(n)  "Go to top"
+  Done -> print("editor: done")  "Quit"
+```
+
+- **Row** = `pattern -> action ["label"]`. The pattern is matched against the
+  stream's event type (full pattern grammar: literals, ctor payloads, binders,
+  guards). The action is an expression evaluated with the pattern's bindings in
+  scope; the trailing string is inline help text.
+- **Help is derived data**: `help(map)` returns the labelled rows as
+  `List({pattern: String, label: String})`, in declaration order — only
+  labelled rows appear (a label is the row's opt-in to user-facing help);
+  guarded rows render with an `if ...` marker. An inputmap declaration has the
+  dedicated type **`Inputmap`** (the `SagaFn` precedent — type-ness survives
+  `let m = Editor` aliasing), so `help(42)` or `help` of a plain function is a
+  *check-time* error, and calls are arity-checked (`Editor(1)` errors).
+- **Chords are compile-time-validated strings** — no new grammar. A chord type
+  is a String refinement (`type Chord = String where matches(value, …)`); a
+  stream of `Chord` carries the refinement to every match of its events, and a
+  **literal pattern is folded against the refinement of the type it matches** —
+  a literal that fails the predicate can never match, so `Push("Ctl+S")` (the
+  typo'd modifier) is a *check-time* error, in inputmap rows and at every other
+  match site alike. Pairs with the pre-existing value-side fold (a bad chord
+  *argument* already failed at the call). Two pieces make it work: the literal-
+  pattern refinement fold in `checkPat`, and `Push(p)` against a stream of `T`
+  checking `p` against `T` itself (which also types the binder in
+  `Push(e) -> …` — previously unchecked). Non-folding and dependent predicates
+  skip, per the conservative-skip discipline.
+- **`keymap` sugar**: `keymap Name` ≡ `inputmap Name over Key` — pure sugar,
+  same decl, all the same machinery (chords, help, layering; a keymap layers
+  with any `inputmap … over Key`). The `Key` stream must be in scope; a keymap
+  without one gets a tailored fix-it explaining the desugar. *(A std `Key`
+  device library will eventually provide the stream; today the program
+  declares it.)*
+- **Layering**: an inputmap is a value — `base ++ overrides` builds a NEW map
+  over the same stream. An unguarded override row *replaces* the same-pattern
+  base row **in place** (patterns compared structurally, binder names ignored —
+  so help keeps the base ordering); other override rows append after the base
+  rows. Guarded rows never replace and are never replaced (a guard may fail, so
+  they don't claim a pattern). Both operands are untouched (maps are values);
+  the merged map is callable and `help`-able like any other. The `Inputmap`
+  type carries its stream, so layering maps over *different* streams — or with
+  a non-inputmap — is a **check-time** error.
+- **Actions are explicit calls.** A bare function-valued action (`-> save`) is
+  a checker error with a fix-it (`save()`) — consistent with the §2.1 unified
+  call syntax. *(As-built deviation: the design sketch's bare `-> save` rows
+  predate the call unification.)*
+- **Conflict analysis** (the design's "bound twice"/"shadowed" check, the dual
+  of exhaustiveness): a row structurally equal to an earlier row is an error,
+  as is any row after an irrefutable catch-all. Binder names don't matter —
+  `Push(x)` and `Push(y)` claim the same events. Guarded rows are exempt
+  (a guard may fail). Rows need **not** be exhaustive: an unmatched event falls
+  through silently (implicit `_ -> ()`).
+- **Running**: calling the inputmap (`Editor()`) runs the drain loop — await an
+  event, run the first matching row's action, repeat — and returns `Unit` when
+  the stream's `Done` arrives (after a bound `Done` row runs). This is exactly
+  the desugar the design specifies; pair it with a `block` policy (§10.1) when
+  dropping input is unacceptable.
+
+Not yet built (later slices): the logical-vs-physical key prefix (`"@KeyW"`)
+and a std `Key` device library with a canonical chord refinement (the
+*mechanism* — chords as refinement-validated literals — is built, above, as is
+the `keymap` form it plugs into), mode/zone scoping
+(modes already fall out of layering + `match`, but focus-scoped capture/bubble
+does not), the *rendered* help overlay element (the data side, `help(map)`, is
+built — fixtures `inputmap_help_test`/`_bad`), and device libraries
+(`over Midi` etc. via the extern-source unlock §4.1 of the design note).
 
 ---
 

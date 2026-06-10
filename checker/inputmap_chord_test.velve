@@ -1,0 +1,40 @@
+-- Chords as compile-time-validated strings (multitarget §4.0, SPEC §10.5):
+-- NO new grammar — a chord is a refinement of String
+-- (`type Chord = String where matches(value, …)`), and a literal pattern is
+-- folded against the refinement of the type it matches. A typo'd chord can
+-- never match, so it fails at CHECK time (see inputmap_chord_bad). This works
+-- because `Push(p)` matched against a stream of T checks p against T itself,
+-- carrying the refined element type into the payload literal — at inputmap
+-- rows, machine awaits, and plain match alike.
+@edition "2026.6"
+
+type Chord = String where matches(value, "^((Ctrl|Alt|Shift)\\+)*[A-Za-z?]$")
+
+stream Keys : Chord
+
+def save(): Unit
+  print("saved")
+
+def describe(k: Chord): String
+  match k
+    | "Ctrl+S" -> "the save chord"
+    | _ -> "another chord"
+
+inputmap Editor over Keys
+  Push("Ctrl+S") -> save()  "Save"
+  Push("Shift+Alt+P") -> print("palette")  "Command palette"
+  Push("?") -> print("shortcuts")  "Shortcuts"
+  Push(other) -> print(other)
+  Done -> print("editor: done")
+
+def producer(): Unit
+  send Keys (Push("Ctrl+S"))
+  send Keys (Push("?"))
+  send Keys (Push("j"))
+  send Keys Done
+
+def main(): Unit
+  print(describe("Ctrl+S"))
+  go producer()
+  Editor()
+  print("end")

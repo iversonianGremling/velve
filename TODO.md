@@ -16,7 +16,7 @@ Legend: 🔴 load-bearing (fix before the surface freezes) · 🟡 important · 
 |---|---|---|---|
 | Type system core (HM + refinements + dependent) | **A−** | TS, Elm, F#, Liquid Haskell | Refinements-as-transparent-base with free constant-folding is genuinely better ergonomics than all four; conservative skip keeps it honest. |
 | UI / styling | **A** *(2026.6)* | React+CSS, Elm, SwiftUI | Typed props, context-validity (`gap` on non-flex = error), real units, and **accessibility-as-proof** — an unreadable `color` on its resolved background now *fails to compile* (APCA Lc, opt-in `OnSurface`), not just a linter note — beat CSS's silent no-ops. The **element/call syntax duality is now closed** (§2.1, PLAN §5b): elements use the unified paren-form `Text("hi", size=12)` (space-form deprecated→error in 2026.6), proven by green `element_paren_test`. (Responsive shipped end-to-end 2026-06; the only design-only UI-adjacent item left is `inputmap`, an event/input concern — see the event/state row §3.2. Residual §2.1 tail: inline-handler/spread props in paren-form; value juxtaposition is now fully removed.) The **theme system is now COMPLETE (4/4)**: typed `Surface` tokens, the `using` clause, a `Theme` record whose roles are *derived* via `std/color` and folded into the contrast proof at check time (`std/color`'s first consumer), and — as of Slice 4 — `theme` as a built-in **read-only reactive root** that is APCA-proven against at check time *and* swappable at runtime (`setTheme`), acyclic by construction (a `theme.*` read adds no convergence edge; container-query feedback is rejected by the existing §6.2 cycle-checker). Accessibility-as-proof now fires on token, `using`-surface, computed, **and live-root** colours, not just inline hex. And as of 2026-06 **responsive is built end-to-end** (§9.2–9.4): closed `Breakpoint` variant, `Clamp` band, the read-only `viewport` root, the `responsive | …` keyword, and now **prop-site auto-collapse** — a `Responsive(Length)` (`Breakpoint -> Length`) handed directly to a `Length` prop and collapsed against the live `viewport.breakpoint`, with `setViewport` re-collapsing on swap (the viewport sibling of `setTheme`). **Now A** (the row's prior A− hold was "responsive/inputmap design-only"; responsive is now shipped, and `inputmap` is an input/event-handling item tracked in the event/state row §3.2, not UI styling). Residual UI-styling polish, not pillars: compile-time (vs runtime) convergence-cycle detection (§3.1) and the §2.1 inline-handler/spread-prop tail. |
-| Event handling / state | **A** *(2026-06)* | Elm, Redux, Rx, XState, Erlang/OTP | The four-primitive taxonomy (store/machine/stream/transaction + `persisted`) with a "what do I reach for" table is the best-explained state story in any draft language I know. `machine … persisted` + journal + `resume` is XState+Temporal in one construct. **Both named gaps closed by green fixtures (2026-06):** per-stream backpressure (`drop`/`buffer N`/`block` at decl site, `stream_policy_test`) and `await`→step-goto in machine steps (`machine_await_test` — machines drain streams idiomatically now). Re-graded A− → **A**. Residual for A→A+: `inputmap` (locked-but-unbuilt, the typed-pattern-match input story; store messages dispatch synchronously today, so streams are the only queue and they now have policies). |
+| Event handling / state | **A** *(2026-06)* | Elm, Redux, Rx, XState, Erlang/OTP | The four-primitive taxonomy (store/machine/stream/transaction + `persisted`) with a "what do I reach for" table is the best-explained state story in any draft language I know. `machine … persisted` + journal + `resume` is XState+Temporal in one construct. **Both named gaps closed by green fixtures (2026-06):** per-stream backpressure (`drop`/`buffer N`/`block` at decl site, `stream_policy_test`) and `await`→step-goto in machine steps (`machine_await_test` — machines drain streams idiomatically now). Re-graded A− → **A**. The `inputmap` **core is now built** (2026-06, SPEC §10.5, `inputmap_test`/`_bad`): the typed pattern-match input table over a stream, with conflict analysis ("bound twice"/"shadowed") and the drain-loop runtime — plus the **`Inputmap` type and `help(map)` derived data** (`inputmap_help_test`/`_bad`): the auto-help table is queryable, check-time-typed data — plus **`++` layering** (`inputmap_layer_test`/`_bad`): maps are values, `default ++ userOverrides` works, cross-stream layering is a check error — plus **chord-refinement literals** (`inputmap_chord_test`/`_bad`): a typo'd chord pattern is a check-time error at every match site, via the literal-pattern refinement fold — plus **`keymap` sugar** (`keymap_test`/`_bad`). Residual for A→A+: the remaining inputmap *breadth* — std `Key` device library + physical-key prefix, focus-zone scoping, the *rendered* overlay element (store messages dispatch synchronously today, so streams are the only queue and they now have policies). |
 | Error handling | **B+** *(2026.6)* | Rust `?`, Zig, Go | `?`/`?:`/`try`/`retry` cover the space well; the whitespace-keyed `?` (spaced = ternary vs glued = propagate, §2.2) — the draft's worst readability decision — is **gone from edition 2026.6**: the ternary was deleted in favour of `if c then a else b`, so `?` now carries one glued meaning. |
 | Low-level | **B−** | Rust, Zig | Ptr/regions/outlives/move tracking are real and end-to-end. But unified `Number` vs. planned sized types vs. `Duration` dimensions vs. `Px` units = four numeric stories that haven't met each other (§3.4). `std/low`/gpu/audio are sketches. |
 | Games / intensive interactive | **C+** (today) / **A−** (as designed) | Unity C#, Bevy ECS, Pony | `docs/interaction-model-design.md` (footprint = `mut` params, capability-keyed dispatch, `@interaction`/`@confined`) is a credible, novel answer to ECS — but nothing of it is implemented, there is no frame clock, and a tree-walking interpreter can't hold 60fps. The claim depends on the compiled target. |
@@ -40,7 +40,8 @@ call-syntax phase 2) — now the top surface item before 0.6.
 > unchanged because their named gaps are still open (low-level/games/animation as
 > noted). The event/state row's two named gaps (backpressure, `await`→step-goto)
 > both closed 2026-06 with green fixtures → re-graded A− → A (`inputmap` is its
-> A→A+ residual). The UI row's gaps have since
+> A→A+ residual; its *core* — table, conflict check, drain loop — shipped
+> 2026-06, breadth remains). The UI row's gaps have since
 > closed — call-syntax duality (paren-form elements), the theme system (4/4), and now
 > responsive end-to-end (prop-site auto-collapse) are all proven by green fixtures, so it
 > is re-graded to A. Re-grade a row only when a green fixture proves its gap closed.
@@ -297,9 +298,52 @@ context — precisely the "no magic" principle the SPEC leads with.
   `machine_await_bad` (2 errors: gotos to unknown states from await branches —
   undetectable pre-fix because the statement was dropped). SPEC §4.3 note rewritten
   as-built; corpus baseline byte-identical (0 CRASH).
-- [ ] 🟡 `inputmap` is locked-but-unbuilt (multitarget §4). It's the keystone of
-  "event handling reads as a typed pattern-match"; until it exists, input is
-  raw `await`+`match` loops.
+- [x] 🟡 **`inputmap` core** — ✅ BUILT (2026-06, SPEC §10.5). `inputmap Name over
+  Stream` + `pattern -> action ["label"]` rows: typed against the stream's event
+  type (full pattern grammar incl. guards), labels parsed and retained (help-
+  overlay substrate), and **conflict analysis** — "bound twice" (structural
+  pattern equality, binder names normalized) and "shadowed" (row after an
+  irrefutable catch-all); guarded rows exempt. Calling the map runs the drain
+  loop (first matching row's action; unmatched falls through; `Done` terminates
+  after a bound `Done` row runs). **As-built deviation:** actions are explicit
+  calls — bare `-> save` is an error with a fix-it (`save()`), consistent with
+  the §2.1 call unification, which postdates the design sketch's bare-ref rows.
+  Fixtures `inputmap_test` (0 err, runs: literals/guard/fallthrough/Done order
+  proven) + `inputmap_bad` (4 errors: bound-twice, shadowed, bare-fn action,
+  unknown stream). **Help-as-derived-data shipped too** (2026-06): a dedicated
+  **`Inputmap` type** (SagaFn precedent — survives aliasing; nullary-callable,
+  arity-checked) and `help(map) : List({pattern, label})` — labelled rows only
+  (a label is the opt-in to user-facing help), declaration order, guarded rows
+  marked `if ...`. Fixtures `inputmap_help_test` (patterns/labels/alias proven,
+  unlabelled row hidden) + `inputmap_help_bad` (3 errors: `help(42)`,
+  `help(fn)`, `Editor(1)` — all check-time). **Layering shipped too**
+  (2026-06): `base ++ overrides` builds a new map — unguarded override rows
+  replace same-pattern base rows *in place* (structural compare via the shared
+  `patKey`; help keeps base ordering), other rows append; operands untouched.
+  The `Inputmap` type carries its stream, so cross-stream layering and
+  `map ++ 5` are check-time errors. Fixtures `inputmap_layer_test`
+  (override-wins/base-preserved/new-row run order + merged help + base help
+  unchanged) + `inputmap_layer_bad` (2 errors). **Chords shipped too**
+  (2026-06): no new grammar — `type Chord = String where matches(value, …)` +
+  a **literal-pattern refinement fold in `checkPat`** (a literal that fails
+  the matched type's refinement can never match → check error, at EVERY match
+  site, conservative-skip on non-folding/dependent preds) + `Push(p)` against
+  a stream of `T` now checks `p` against `T` itself (also types the `Push(e)`
+  binder, previously unchecked; corpus baseline byte-identical). Fixtures
+  `inputmap_chord_test` (typo-free table runs; value-side call fold passes) +
+  `inputmap_chord_bad` (3 errors: row typo `Push("Ctl+S")`, plain-match typo,
+  value-side `describe("notachord!")`). **`keymap` sugar shipped too**
+  (2026-06): `keymap Name` ≡ `inputmap Name over Key`, same decl (a `form`
+  field only tailors diagnostics); missing `Key` stream gets a fix-it
+  explaining the desugar. Fixtures `keymap_test` (a keymap layers with an
+  `inputmap … over Key` and the merged map runs + helps — sugar proven by
+  unification) + `keymap_bad` (2 errors: no-`Key`-in-scope fix-it,
+  cross-stream layering showing the keymap's type carries "Key"). Remaining
+  slices (still 🟡, tracked in multitarget §4): the physical-key prefix
+  (`"@KeyW"`) + a std `Key` device library with a canonical chord refinement,
+  focus-zone scoping (plain modes already fall out of layering + `match`), the
+  *rendered* overlay element, device libraries over the extern-source unlock
+  (§4.1).
 
 ### 3.3 Games / interaction model
 - [ ] 🔴 Implement the `@interaction` marker (no-ambient-writes) from

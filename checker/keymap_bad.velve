@@ -1,0 +1,18 @@
+-- keymap guardrails (SPEC §10.5). 2 intended errors:
+--   1. a keymap with no `Key` stream in scope — the tailored fix-it explains
+--      the sugar (`keymap X` = `inputmap X over Key`)
+--   2. layering the keymap with a map over another stream — the keymap's
+--      Inputmap type carries "Key", so the cross-stream check fires
+@edition "2026.6"
+
+stream Pads : Number
+
+keymap Lost
+  Push("Ctrl+S") -> print("save")  "Save"
+
+inputmap PadMap over Pads
+  Push(1) -> print("pad")  "Pad 1"
+
+def main(): Unit
+  let merged = Lost ++ PadMap
+  print("end")

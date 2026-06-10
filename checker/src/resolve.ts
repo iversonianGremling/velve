@@ -101,6 +101,10 @@ class Resolver {
           scope.define("Push", { name: "Push", kind: "ctor", span: decl.span });
           scope.define("Done", { name: "Done", kind: "ctor", span: decl.span });
           break;
+        case "DInputmap":
+          // Callable: `Editor()` runs the drain loop to stream completion.
+          scope.define(decl.name, { name: decl.name, kind: "fn", span: decl.span });
+          break;
         case "DLet":
           scope.define(decl.name, { name: decl.name, kind: "var", span: decl.span });
           break;
@@ -143,6 +147,21 @@ class Resolver {
       // A module-level constant: resolve its RHS against the global scope (the name
       // itself is already registered by collectDecls, so siblings can forward-ref it).
       this.resolveExpr(decl.value, scope);
+      return;
+    }
+    if (decl.tag === "DInputmap") {
+      // The `over` target must be a declared stream; each row's action resolves
+      // with the row pattern's bindings in scope (like a match branch).
+      const src = scope.lookup(decl.stream);
+      if (!src) this.error(decl.span, decl.form === "keymap"
+        ? `keymap '${decl.name}' needs a \`Key\` stream in scope — declare \`stream Key : Chord\` (a keymap is sugar for \`inputmap ${decl.name} over Key\`)`
+        : `inputmap '${decl.name}' is over unknown stream '${decl.stream}' — declare it with \`stream ${decl.stream} : T\``);
+      for (const row of decl.rows) {
+        const rs = new Scope(scope);
+        this.bindPat(row.pat, rs);
+        if (row.guard) this.resolveExpr(row.guard, rs);
+        this.resolveExpr(row.action, rs);
+      }
       return;
     }
     if (decl.tag !== "DFn") return;
@@ -487,7 +506,7 @@ const BUILTINS = new Set([
   "toUpperCase", "toLowerCase", "parseInt", "parseFloat",
   // Streams
   "streamMap", "streamFilter", "streamTake", "streamFold",
-  "streamMerge", "streamDebounce", "streamThrottle", "externSource",
+  "streamMerge", "streamDebounce", "streamThrottle", "externSource", "help",
   // Concurrency
   "sleep", "pmap", "pfilter", "parallel",
   // UI

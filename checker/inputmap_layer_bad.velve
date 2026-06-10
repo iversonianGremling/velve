@@ -1,0 +1,20 @@
+-- Inputmap layering guardrails (SPEC §10.5). The Inputmap type carries its
+-- stream, so both errors are CHECK-time. 2 intended errors:
+--   1. layering maps over different streams (the merged loop could only
+--      drain one of them)
+--   2. layering an inputmap with a non-inputmap
+@edition "2026.6"
+
+stream Keys : String
+stream Pads : Number
+
+inputmap KeyMap over Keys
+  Push("j") -> print("j")  "Next"
+
+inputmap PadMap over Pads
+  Push(1) -> print("pad")  "Pad 1"
+
+def main(): Unit
+  let a = KeyMap ++ PadMap
+  let b = KeyMap ++ 5
+  print("end")

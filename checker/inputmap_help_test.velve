@@ -1,0 +1,32 @@
+-- The inputmap help table as derived data (SPEC §10.5, multitarget §4.0's
+-- "help overlay = derived data"): `help(map)` returns the labelled rows as
+-- List({pattern, label}), in declaration order. Only labelled rows appear —
+-- a label is the row's opt-in to user-facing help (the unlabelled "z" row is
+-- hidden). Guarded rows render with an `if …` marker. The second loop goes
+-- through an alias: inputmap type-ness (and the table) survives `let m = Editor`,
+-- the SagaFn precedent.
+@edition "2026.6"
+
+stream Keys : String
+
+def selectNext(): Unit
+  print("next")
+
+inputmap Editor over Keys
+  Push("j") -> selectNext()  "Next item"
+  Push("k") -> print("prev")  "Previous item"
+  Push(n) if n == "g" -> print(n)  "Go to top"
+  Push("z") -> print("internal")
+  Done -> print("bye")  "Quit"
+
+-- (Two passes rather than one two-field helper: an un-ascribed helper param
+-- would need record row-inference, which is unbuilt — see north-star §4.)
+def main(): Unit
+  print("patterns:")
+  for (row in help(Editor)) -> print(row.pattern)
+  print("labels:")
+  for (row in help(Editor)) -> print(row.label)
+  let m = Editor
+  print("aliased:")
+  for (row in help(m)) -> print(row.label)
+  print("end")

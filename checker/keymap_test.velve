@@ -1,0 +1,36 @@
+-- `keymap Name` (SPEC §10.5, multitarget §4.0: "a keymap = inputmap over the
+-- keyboard") — pure sugar for `inputmap Name over Key`. Everything inputmap
+-- has, a keymap has: chord-refinement literal checking (Key : Chord), labels,
+-- help(), and `++` layering — proven here by layering the keymap with a plain
+-- `inputmap … over Key`, which only type-checks because both are maps over
+-- the same stream.
+@edition "2026.6"
+
+type Chord = String where matches(value, "^((Ctrl|Alt|Shift)\\+)*[A-Za-z?]$")
+
+stream Key : Chord
+
+def save(): Unit
+  print("saved")
+
+keymap Editor
+  Push("Ctrl+S") -> save()  "Save"
+  Push("?") -> print("shortcuts")  "Shortcuts"
+  Done -> print("editor: done")
+
+inputmap Extras over Key
+  Push("Alt+X") -> print("extra!")  "Extra"
+
+def producer(): Unit
+  send Key (Push("Ctrl+S"))
+  send Key (Push("Alt+X"))
+  send Key (Push("?"))
+  send Key Done
+
+def main(): Unit
+  let user = Editor ++ Extras
+  print("labels:")
+  for (row in help(user)) -> print(row.label)
+  go producer()
+  user()
+  print("end")

@@ -369,7 +369,16 @@ Real, endorsed, but each is a major build and out of scope for the consistency p
 - `animated` modifier + motion-policy chokepoint (`animated-modifier-design.md`).
 - Theme system (roles, `using`, `OnSurface` contrast) — `std/color` is built and has
   no consumer yet.
-- `inputmap` (locked-but-unbuilt, `multitarget-design.md §4`).
+- `inputmap` — **core built 2026-06** (SPEC §10.5; `inputmap_test`/`_bad`):
+  declaration + typed rows + conflict analysis + labels + drain-loop runtime;
+  plus the `Inputmap` type + `help(map)` derived data
+  (`inputmap_help_test`/`_bad`); plus `++` layering
+  (`inputmap_layer_test`/`_bad`); plus chord-refinement literals
+  (`inputmap_chord_test`/`_bad` — the literal-pattern refinement fold is
+  general, not inputmap-only); plus `keymap` sugar (`keymap_test`/`_bad`).
+  Remaining breadth (std `Key` device library + physical-key prefix,
+  focus-zone scoping, the *rendered* overlay element, device libraries) stays
+  Track C (`multitarget-design.md §4`).
 
 ---
 

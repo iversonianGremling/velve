@@ -1,0 +1,21 @@
+-- Inputmap type guardrails (SPEC §10.5). The dedicated `Inputmap` type means
+-- `help` rejects non-inputmaps at CHECK time and calls are arity-checked.
+-- 3 intended errors:
+--   1. help(42) — a Number is not an inputmap
+--   2. help(beep) — a plain function is not an inputmap (Fn ≠ Inputmap)
+--   3. Editor(1) — calling an inputmap runs the drain loop; it takes no args
+@edition "2026.6"
+
+stream Keys : String
+
+def beep(): Unit
+  print("beep")
+
+inputmap Editor over Keys
+  Push("j") -> beep()  "Beep"
+
+def main(): Unit
+  let a = help(42)
+  let b = help(beep)
+  Editor(1)
+  print("end")

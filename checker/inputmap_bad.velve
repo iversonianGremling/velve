@@ -1,0 +1,26 @@
+-- inputmap guardrails (multitarget-design §4.0). 4 intended errors:
+--   1. two rows with the same pattern — "bound twice" (conflict analysis; the
+--      binder name doesn't matter: Push("j") twice claims the same event)
+--   2. a row after a catch-all binder row — "shadowed" (unreachable)
+--   3. a bare function-valued action — rows call actions explicitly (§2.1
+--      unified call syntax), so `-> save` gets a fix-it: `save()`
+--   4. `over` an unknown stream
+@edition "2026.6"
+
+stream Keys : String
+
+def save(): Unit
+  print("saved")
+
+inputmap Broken over Keys
+  Push("j") -> save()
+  Push("j") -> save()
+  Done -> save
+  any -> save()
+  Push("k") -> save()
+
+inputmap Orphan over Nowhere
+  Done -> save()
+
+def main(): Unit
+  Broken()

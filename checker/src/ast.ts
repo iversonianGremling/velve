@@ -210,6 +210,22 @@ export type Decl =
        inner: TypeRef;
        policy: StreamPolicy | null }                                          & Node)
 
+  // `inputmap Name over Stream` — a typed pattern-match over an input-event
+  // stream, written as a table (multitarget-design §4.0). Each row maps a
+  // pattern over the stream's event type to an action expression; the optional
+  // label is help text (the substrate for the auto-generated help overlay).
+  // Calling the inputmap (`Editor()`) runs the drain loop: await event, run the
+  // first matching row's action, fall through on no match, stop on `Done`.
+  // `form` records the surface keyword: `keymap Name` is pure sugar for
+  // `inputmap Name over Key` (multitarget §4.0) and lowers to the same decl —
+  // the form only tailors diagnostics (a keymap missing its `Key` stream gets
+  // a keymap-shaped fix-it).
+  | ({ tag: "DInputmap";
+       name: string;
+       stream: string;
+       form: "inputmap" | "keymap";
+       rows: InputmapRow[] }                                                  & Node)
+
   // A module-level binding: `let name [: Type] = expr` at the top level. The
   // semantic-token tier of styles-design §4.2 (`let surface = #0d1117`) and the
   // substrate the theme system folds into the contrast proof (theme-design §3,
@@ -268,6 +284,53 @@ export type SagaStmt =
   | { tag: "Rollback"; expr: Expr; mode: "defer" | "recover"; target: string; span: Span } // expr ? rollback :step | expr ?: rollback :step
 
 export interface SagaBranch { pat: Pat; body: SagaStmt[] }
+
+// One `pattern -> action ["label"]` row of an inputmap table. The action is an
+// expression evaluated with the pattern's bindings in scope — an explicit call
+// (`save()`), per the §2.1 unified call syntax; a bare function reference is a
+// checker error with a fix-it.
+export interface InputmapRow { pat: Pat; guard: Expr | null; action: Expr; label: string | null; span: Span }
+
+// Canonical structural key of a pattern, for inputmap conflict analysis and
+// `++` layering (match-overlap, multitarget-design §4.0). Binders normalize to
+// `_` — what a row *matches* is unaffected by what it names: `Push(x)` and
+// `Push(y)` (and `Push(_)`) all claim the same events.
+export function patKey(p: Pat): string {
+  switch (p.tag) {
+    case "PWild": case "PVar": case "PTyped": return "_";
+    case "PLit":    return JSON.stringify(p.lit);
+    case "PAtom":   return `:${p.name}`;
+    case "PCtor":   return `${p.name}(${p.inner ? patKey(p.inner) : ""})`;
+    case "PTuple":  return `(${p.elems.map(patKey).join(",")})`;
+    case "PRecord": return `{${p.fields.map(f => f.name).sort().join(",")}}`;
+  }
+}
+
+// Source-shaped print of a pattern, for the inputmap help table (SPEC §10.5) —
+// what a help overlay shows next to the label. Not a parser round-trip
+// guarantee; just the obvious rendering of each form.
+export function patToSource(p: Pat): string {
+  switch (p.tag) {
+    case "PWild":   return "_";
+    case "PVar":    return p.name;
+    case "PTyped":  return `${p.name}: …`;
+    case "PAtom":   return `:${p.name}`;
+    case "PCtor":   return p.inner ? `${p.name}(${patToSource(p.inner)})` : p.name;
+    case "PTuple":  return `(${p.elems.map(patToSource).join(", ")})`;
+    case "PRecord": return `{${p.fields.map(f => f.name).join(", ")}}`;
+    case "PLit": {
+      const l = p.lit;
+      switch (l.tag) {
+        case "Str":      return JSON.stringify(l.value);
+        case "Num":      return String(l.value);
+        case "Bool":     return String(l.value);
+        case "Unit":     return "()";
+        case "Atom":     return `:${l.name}`;
+        case "Duration": return `${l.ms}ms`;
+      }
+    }
+  }
+}
 
 // One arm of a `race` block. In the synchronous model a `go` arm yields its
 // expression's value; `after` yields `Timeout`; `until` (true) yields `Cancelled`.

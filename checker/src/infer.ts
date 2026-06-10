@@ -7,6 +7,7 @@ import type {
   Module, Decl, Expr, Stmt, Pat, FnClause, FnSig, SagaStmt,
   TypeRef, Lit, Param,
 } from "./ast.js";
+import { patKey } from "./ast.js";
 import type { ResolutionMap, Diagnostic } from "./resolve.js";
 import { resolveNamedCall, needsResolution, type ParamSlot } from "./callresolve.js";
 import { type Edition, atLeast } from "./edition.js";
@@ -53,7 +54,7 @@ class Subst {
   apply(t: Type): Type {
     switch (t.tag) {
       case "Var":        return this.map.get(t.id) ?? t;
-      case "Prim": case "Atom": case "Unknown": return t;
+      case "Prim": case "Atom": case "Unknown": case "Inputmap": return t;
       case "Named":      return { ...t, args: t.args.map(a => this.apply(a)) };
       case "Fn":         return { ...t, params: t.params.map(p => this.apply(p)), ret: this.apply(t.ret) };
       case "SagaFn":     return { ...t, params: t.params.map(p => this.apply(p)), ret: this.apply(t.ret) };
@@ -70,7 +71,7 @@ class Subst {
 function applyOne(t: Type, id: number, rep: Type): Type {
   switch (t.tag) {
     case "Var":        return t.id === id ? rep : t;
-    case "Prim": case "Atom": case "Unknown": return t;
+    case "Prim": case "Atom": case "Unknown": case "Inputmap": return t;
     case "Named":      return { ...t, args: t.args.map(a => applyOne(a, id, rep)) };
     case "Fn":         return { ...t, params: t.params.map(p => applyOne(p, id, rep)), ret: applyOne(t.ret, id, rep) };
     case "SagaFn":     return { ...t, params: t.params.map(p => applyOne(p, id, rep)), ret: applyOne(t.ret, id, rep) };
@@ -681,6 +682,15 @@ function buildPrelude(): TypeEnv {
   // externSource(setup) — the input FFI: setup gets `push: a -> Unit` and `done: () -> Unit`.
   const unitT: Type = { tag: "Prim", kind: "Unit" };
   env.define("externSource", { forall: [a.id], type: fn([fn([fn([a], unitT), fn([], unitT)], unitT)], streamA) });
+  // help(map) — the inputmap's labelled rows as derived data (SPEC §10.5): the
+  // substrate of the auto-generated help overlay. Only labelled rows appear —
+  // a label is the row's opt-in to user-facing help.
+  const strT: Type = { tag: "Prim", kind: "String" };
+  const helpRow: Type = { tag: "Record", fields: [
+    { name: "pattern", type: strT, optional: false },
+    { name: "label",   type: strT, optional: false },
+  ] };
+  env.define("help", mono(fn([{ tag: "Inputmap", name: "", stream: "" }], { tag: "Named", name: "List", args: [helpRow] })));
   env.define("streamDebounce", { forall: [a.id],     type: fn([streamA, num], streamA) });
   env.define("streamThrottle", { forall: [a.id],     type: fn([streamA, num], streamA) });
   env.define("listFlatMap", { forall: [a.id, b.id],   type: fn([listA, fn([a], listB)], listB) });
@@ -827,6 +837,10 @@ function unify(a: Type, b: Type, ctx: Ctx, span: Span, hint?: string): void {
 
   if (ta.tag === "SagaFn" && tb.tag === "SagaFn" && ta.name === tb.name) return;
 
+  // Inputmap (SPEC §10.5): the name is provenance, not structure — `help` takes
+  // *any* inputmap, so two inputmap types always unify.
+  if (ta.tag === "Inputmap" && tb.tag === "Inputmap") return;
+
   // Named("()",[]) ≡ Prim("Unit")
   if (isUnit(ta) && isUnit(tb)) return;
 
@@ -854,6 +868,10 @@ function err(ctx: Ctx, span: Span, message: string): void {
 function warn(ctx: Ctx, span: Span, message: string): void {
   ctx.diagnostics.push({ kind: "warning", span, message });
 }
+
+// patKey (the canonical structural key for conflict analysis) lives in ast.ts —
+// shared with eval.ts, where `++` layering uses the same key to decide which
+// base rows an override replaces.
 
 // ── Element prop schemas ────────────────────────────────────────────────────────
 // The view-DSL primitives (Column/Text/Button/…) share a global prop vocabulary,
@@ -1090,6 +1108,13 @@ class Inferrer {
           env.defineMono(decl.name, { tag: "Stream", inner });
           break;
         }
+        case "DInputmap": {
+          // A dedicated Inputmap type (the SagaFn precedent — type-ness survives
+          // aliasing): nullary-callable (drain loop → Unit) and accepted by
+          // `help`, which a plain `Fn` could not distinguish.
+          env.defineMono(decl.name, { tag: "Inputmap", name: decl.name, stream: decl.stream });
+          break;
+        }
         case "DLet": {
           // Register the binding's type so siblings/functions can reference it. An
           // ascription pins it; otherwise a fresh var reconciled when the body is
@@ -1198,6 +1223,7 @@ class Inferrer {
       if (decl.tag === "DStore")  { this.inferStore(decl, env); continue; }
       if (decl.tag === "DSaga")   { this.inferSaga(decl, env); continue; }
       if (decl.tag === "DStream") continue; // fully typed by collectDecls; nothing to infer
+      if (decl.tag === "DInputmap") { this.inferInputmap(decl, env); continue; }
       if (decl.tag === "DLet")    { this.inferLet(decl, env); continue; }
       if (decl.tag !== "DFn") continue;
       const multiClause = decl.clauses.length > 1;
@@ -1376,6 +1402,45 @@ class Inferrer {
 
   // A first-class saga's step bodies are type-checked like a machine's, with the
   // constructor inputs in scope and the trailing yields unified with its result.
+  // `inputmap Name over Stream` (multitarget-design §4.0). Three checks per
+  // table: (1) every row pattern matches the stream's event type and the action
+  // type-checks with the pattern's bindings; (2) a bare function-valued action
+  // is rejected with a fix-it (rows call actions explicitly, per the §2.1 call
+  // unification — the design sketch's bare `-> save` predates it); (3) conflict
+  // analysis — a row structurally equal to an earlier one is "bound twice", a
+  // row after an earlier catch-all is "shadowed" (guarded rows are exempt:
+  // a guard may fail, so they neither conflict nor shadow).
+  private inferInputmap(decl: Extract<Decl, { tag: "DInputmap" }>, env: TypeEnv): void {
+    const srcScheme = env.lookup(decl.stream);
+    const srcT = srcScheme ? this.ctx.subst.apply(instantiate(srcScheme)) : null;
+    if (!srcT || srcT.tag !== "Stream") {
+      if (srcT) err(this.ctx, decl.span, `${decl.form} '${decl.name}' is over '${decl.stream}', which is not a stream (it is ${typeToString(srcT)})`);
+      return; // unknown stream already reported by resolution
+    }
+    const inner = srcT.inner;
+    const seen: { key: string; span: Span }[] = [];
+    let catchAll: Span | null = null;
+    for (const row of decl.rows) {
+      const rowEnv = env.child();
+      this.checkPat(row.pat, this.ctx.subst.apply(inner), rowEnv);
+      if (row.guard) unify(this.inferExpr(row.guard, rowEnv), { tag: "Prim", kind: "Bool" }, this.ctx, row.span);
+      const actionT = this.ctx.subst.apply(this.inferExpr(row.action, rowEnv));
+      if (row.action.tag === "Var" && (actionT.tag === "Fn" || actionT.tag === "SagaFn" || actionT.tag === "Inputmap")) {
+        err(this.ctx, row.span, `inputmap '${decl.name}': action \`${row.action.name}\` is a function value — call it: \`${row.action.name}()\``);
+      }
+      if (row.guard) continue; // guarded rows are exempt from conflict analysis
+      const key = patKey(row.pat);
+      const dup = seen.find(s => s.key === key);
+      if (dup) {
+        err(this.ctx, row.span, `inputmap '${decl.name}': this pattern is already bound (row at line ${dup.span.start.line + 1}) — two rows matching the same event is a conflict`);
+      } else if (catchAll) {
+        err(this.ctx, row.span, `inputmap '${decl.name}': row is unreachable — shadowed by the catch-all row at line ${catchAll.start.line + 1}`);
+      }
+      seen.push({ key, span: row.span });
+      if (row.pat.tag === "PWild" || row.pat.tag === "PVar") catchAll ??= row.span;
+    }
+  }
+
   private inferSaga(decl: Extract<Decl, { tag: "DSaga" }>, parent: TypeEnv): void {
     const env = parent.child();
     const tp = new Map<string, Type>();
@@ -1582,6 +1647,13 @@ class Inferrer {
               err(this.ctx, argExprs[i]!.span,
                 `value ${JSON.stringify(v)} does not satisfy refinement '${pt.pred}'`);
           }
+        }
+
+        // Inputmap: nullary call runs the drain loop to the stream's Done (§10.5).
+        if (resolvedFnT.tag === "Inputmap") {
+          if (argTs.length !== 0)
+            err(this.ctx, expr.span, `inputmap '${resolvedFnT.name}' takes no arguments (calling it runs the drain loop), got ${argTs.length}`);
+          return { tag: "Prim", kind: "Unit" };
         }
 
         // SagaFn: calling runs the saga to completion synchronously, yielding its
@@ -2191,8 +2263,23 @@ class Inferrer {
         unify(l, num, this.ctx, expr.span, `'${expr.op}' requires Number`);
         unify(r, num, this.ctx, expr.span, `'${expr.op}' requires Number`);
         return num;
-      case "++":
+      case "++": {
+        // Inputmap layering (SPEC §10.5): `base ++ overrides` merges two maps
+        // over the SAME stream into a new one (override rows win on the same
+        // pattern). The stream lives in the type, so a cross-stream layer is a
+        // check-time error — at runtime the merged loop could only drain one.
+        const lA = this.ctx.subst.apply(l), rA = this.ctx.subst.apply(r);
+        if (lA.tag === "Inputmap" || rA.tag === "Inputmap") {
+          if (lA.tag !== "Inputmap" || rA.tag !== "Inputmap") {
+            err(this.ctx, expr.span, `'++' layering needs inputmaps on both sides — got ${typeToString(lA)} and ${typeToString(rA)}`);
+            return lA.tag === "Inputmap" ? lA : rA;
+          }
+          if (lA.stream !== rA.stream)
+            err(this.ctx, expr.span, `cannot layer inputmaps over different streams — '${lA.name}' is over '${lA.stream}', '${rA.name}' over '${rA.stream}'`);
+          return { tag: "Inputmap", name: `${lA.name}++${rA.name}`, stream: lA.stream };
+        }
         unify(l, r, this.ctx, expr.span, "'++' operands must agree"); return this.ctx.subst.apply(l);
+      }
       case "==": case "!=": case "<": case ">": case "<=": case ">=":
         unify(l, r, this.ctx, expr.span, `'${expr.op}' operands must agree`); return bool;
       case "&&": case "||":
@@ -2316,9 +2403,28 @@ class Inferrer {
       case "PVar":  env.defineMono(pat.name, at); break;
       case "PTyped": env.defineMono(pat.name, at); break;
 
-      case "PLit":
+      case "PLit": {
+        // A literal pattern against a refined type folds the refinement with
+        // the literal — a literal that fails the predicate can NEVER match, so
+        // it's a check-time error, not a dead branch. This is multitarget
+        // §4.0's chord story (`type Chord = String where matches(value, …)`
+        // makes `Push("Ctl+S")` a caught typo) but holds at every match site.
+        // Non-folding predicates skip (conservative-skip discipline), as do
+        // dependent refinements — their value-args aren't resolvable here.
+        if (at.tag === "Refinement") {
+          const refinement = REFINEMENTS.get(at.pred);
+          const lv = pat.lit.tag === "Num" || pat.lit.tag === "Str" || pat.lit.tag === "Bool"
+            ? pat.lit.value : undefined;
+          if (refinement && refinement.params.length === 0 && lv !== undefined) {
+            const penv = new Map<string, ConstVal>([["value", lv]]);
+            if (constEval(refinement.pred, penv) === false)
+              err(this.ctx, pat.span,
+                `literal pattern ${JSON.stringify(lv)} can never match — it fails refinement '${at.pred}'`);
+          }
+        }
         unify(at, this.litType(pat.lit), this.ctx, pat.span);
         break;
+      }
 
       case "PAtom":
         unify(at, { tag: "Atom", name: pat.name }, this.ctx, pat.span);
@@ -2359,7 +2465,15 @@ class Inferrer {
           }
         }
         const s = env.lookup(pat.name);
-        if (!s) break;
+        if (!s) {
+          // Stream events: `Push(p)` matched against a stream's element type T
+          // checks p against T itself — awaiting yields Push-wrapped elements
+          // (`Done` is nullary), and Push has no env entry to instantiate. This
+          // is what carries a refined element type (Chord) into the payload
+          // literal, and types the binder in `Push(e) -> … e …`.
+          if (pat.name === "Push" && pat.inner) this.checkPat(pat.inner, at, env);
+          break;
+        }
         const ct = instantiate(s);
         if (ct.tag === "Fn") {
           unify(at, ct.ret, this.ctx, pat.span);

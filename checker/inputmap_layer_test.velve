@@ -1,0 +1,34 @@
+-- Inputmap layering (SPEC §10.5, multitarget §4.0's "inputmap is a value →
+-- layer default ++ userOverrides"). `Base ++ Vim` builds a NEW map over the
+-- same stream: an unguarded override row REPLACES the same-pattern base row
+-- in place (binder names don't matter — patterns are compared structurally),
+-- other override rows append after the base rows. The merged map is callable
+-- and help()-able like any other; Base itself is untouched (maps are values).
+@edition "2026.6"
+
+stream Keys : String
+
+inputmap Base over Keys
+  Push("j") -> print("base: next")  "Next"
+  Push("q") -> print("base: quit")  "Quit"
+  Done -> print("base: done")
+
+inputmap Vim over Keys
+  Push("j") -> print("vim: next")  "Next (vim)"
+  Push("g") -> print("vim: top")  "Top"
+
+def producer(): Unit
+  send Keys (Push("j"))
+  send Keys (Push("q"))
+  send Keys (Push("g"))
+  send Keys Done
+
+def main(): Unit
+  let user = Base ++ Vim
+  print("labels:")
+  for (row in help(user)) -> print(row.label)
+  go producer()
+  user()
+  print("base labels unchanged:")
+  for (row in help(Base)) -> print(row.label)
+  print("end")

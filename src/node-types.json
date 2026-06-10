@@ -7034,6 +7034,215 @@
     }
   },
   {
+    "type": "inputmap_def",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "inputmap_row",
+          "named": true
+        },
+        {
+          "type": "upper_id",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "inputmap_row",
+    "named": true,
+    "fields": {
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "addr_of_expr",
+          "named": true
+        },
+        {
+          "type": "array_index",
+          "named": true
+        },
+        {
+          "type": "ask_expr",
+          "named": true
+        },
+        {
+          "type": "await_expr",
+          "named": true
+        },
+        {
+          "type": "binary_expr",
+          "named": true
+        },
+        {
+          "type": "brace_block",
+          "named": true
+        },
+        {
+          "type": "break_expr",
+          "named": true
+        },
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "comptime_block",
+          "named": true
+        },
+        {
+          "type": "continue_expr",
+          "named": true
+        },
+        {
+          "type": "deref_expr",
+          "named": true
+        },
+        {
+          "type": "drop_expr",
+          "named": true
+        },
+        {
+          "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "for_expr",
+          "named": true
+        },
+        {
+          "type": "go_expr",
+          "named": true
+        },
+        {
+          "type": "grouped",
+          "named": true
+        },
+        {
+          "type": "identifier_expr",
+          "named": true
+        },
+        {
+          "type": "if_expr",
+          "named": true
+        },
+        {
+          "type": "if_pattern_expr",
+          "named": true
+        },
+        {
+          "type": "if_then_expr",
+          "named": true
+        },
+        {
+          "type": "js_block",
+          "named": true
+        },
+        {
+          "type": "lambda",
+          "named": true
+        },
+        {
+          "type": "lazy_expr",
+          "named": true
+        },
+        {
+          "type": "list_literal",
+          "named": true
+        },
+        {
+          "type": "literal",
+          "named": true
+        },
+        {
+          "type": "match_expr",
+          "named": true
+        },
+        {
+          "type": "optional_chain",
+          "named": true
+        },
+        {
+          "type": "pattern",
+          "named": true
+        },
+        {
+          "type": "pipe_expr",
+          "named": true
+        },
+        {
+          "type": "propagate_expr",
+          "named": true
+        },
+        {
+          "type": "range_expr",
+          "named": true
+        },
+        {
+          "type": "record_literal",
+          "named": true
+        },
+        {
+          "type": "record_spread",
+          "named": true
+        },
+        {
+          "type": "responsive_expr",
+          "named": true
+        },
+        {
+          "type": "resume_expr",
+          "named": true
+        },
+        {
+          "type": "send_expr",
+          "named": true
+        },
+        {
+          "type": "ternary_expr",
+          "named": true
+        },
+        {
+          "type": "transaction_expr",
+          "named": true
+        },
+        {
+          "type": "tuple_literal",
+          "named": true
+        },
+        {
+          "type": "type_test",
+          "named": true
+        },
+        {
+          "type": "unary_expr",
+          "named": true
+        },
+        {
+          "type": "unsafe_block",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "js_block",
     "named": true,
     "fields": {}
@@ -7048,6 +7257,25 @@
       "types": [
         {
           "type": "function_def",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "keymap_def",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "inputmap_row",
+          "named": true
+        },
+        {
+          "type": "upper_id",
           "named": true
         }
       ]
@@ -9036,7 +9264,15 @@
           "named": true
         },
         {
+          "type": "inputmap_def",
+          "named": true
+        },
+        {
           "type": "kernel_block",
+          "named": true
+        },
+        {
+          "type": "keymap_def",
           "named": true
         },
         {
@@ -11229,7 +11465,15 @@
           "named": true
         },
         {
+          "type": "inputmap_def",
+          "named": true
+        },
+        {
           "type": "kernel_block",
+          "named": true
+        },
+        {
+          "type": "keymap_def",
           "named": true
         },
         {
@@ -17452,11 +17696,19 @@
     "named": false
   },
   {
+    "type": "inputmap",
+    "named": false
+  },
+  {
     "type": "is",
     "named": false
   },
   {
     "type": "js",
+    "named": false
+  },
+  {
+    "type": "keymap",
     "named": false
   },
   {

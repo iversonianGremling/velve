@@ -12,6 +12,7 @@ export type Type =
   | { tag: "Named";      name: string; args: Type[] }                     // List(a), Result(a,e), Dict(k,v)
   | { tag: "Fn";         params: Type[]; ret: Type; effects: Effect[] }
   | { tag: "SagaFn";     name: string; params: Type[]; ret: Type }        // first-class saga — `go`/`resume`/call; name doubles as handle type
+  | { tag: "Inputmap";   name: string; stream: string }                   // inputmap decl (SPEC §10.5) — nullary-callable (drain loop → Unit), accepted by `help`, layerable with `++` (same-stream only — the stream field makes cross-stream layering a check error). Like SagaFn, type-ness survives aliasing. Name is provenance: any two inputmaps unify.
   | { tag: "Tuple";      elems: Type[] }
   | { tag: "Record";     fields: Field[] }
   | { tag: "Tainted";    inner: Type; source: string }                    // §2.8
@@ -41,7 +42,7 @@ export function resetVarCounter(): void {
 export function isMono(t: Type): boolean {
   switch (t.tag) {
     case "Var": return false;
-    case "Prim": case "Atom": case "Unknown": return true;
+    case "Prim": case "Atom": case "Unknown": case "Inputmap": return true;
     case "Named": return t.args.every(isMono);
     case "Fn": return t.params.every(isMono) && isMono(t.ret);
     case "SagaFn": return t.params.every(isMono) && isMono(t.ret);
@@ -65,6 +66,7 @@ export function typeToString(t: Type): string {
       return `(${t.params.map(typeToString).join(", ")}) ->${eff} ${typeToString(t.ret)}`;
     }
     case "SagaFn": return `saga ${t.name}(${t.params.map(typeToString).join(", ")}) -> ${typeToString(t.ret)}`;
+    case "Inputmap": return t.name ? `inputmap ${t.name}` : "inputmap";
     case "Tuple": return `(${t.elems.map(typeToString).join(", ")})`;
     case "Record": return `{ ${t.fields.map(f => `${f.name}: ${typeToString(f.type)}`).join(", ")} }`;
     case "Tainted": return `Tainted(${typeToString(t.inner)}, ${t.source})`;

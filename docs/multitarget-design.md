@@ -96,7 +96,33 @@ Wins (no framework gives all of these): inline label → **auto-generated help o
 **compile-time conflict check** (two actions, one chord = error); `inputmap` is a value →
 layer `default ++ userOverrides`; **portable** web→terminal (only the source adapter differs).
 
-### 4.0 `inputmap` design (decided 2026-06-09)
+### 4.0 `inputmap` design (decided 2026-06-09; core BUILT 2026-06)
+
+> **Build status (2026-06, SPEC §10.5):** the core shipped — `inputmap Name over
+> Stream`, `pattern -> action ["label"]` rows typed against the stream's event
+> type, conflict analysis ("bound twice"/"shadowed"; guarded rows exempt),
+> labels retained on the AST, and the drain-loop runtime (call the map, it
+> drains until `Done`). Fixtures `checker/inputmap_test.velve` /
+> `inputmap_bad.velve`. **Help-as-derived-data also shipped** (2026-06): a
+> dedicated `Inputmap` type (aliasing-safe, like SagaFn) + `help(map)` →
+> `List({pattern, label})`, labelled rows only, declaration order
+> (`inputmap_help_test`/`_bad`). **Layering also shipped** (2026-06):
+> `base ++ overrides` — unguarded override rows replace same-pattern base rows
+> in place, others append; operands untouched; cross-stream layering is a
+> check-time error since the `Inputmap` type carries its stream
+> (`inputmap_layer_test`/`_bad`). **Chords also shipped** (2026-06), exactly as
+> designed — no new grammar: `type Chord = String where matches(value, …)` + a
+> literal-pattern refinement fold (a literal that fails the matched type's
+> refinement can never match → check error, at every match site) + `Push(p)`
+> against a stream of `T` checking `p` against `T`
+> (`inputmap_chord_test`/`_bad`). **`keymap` also shipped** (2026-06): pure
+> sugar for `inputmap Name over Key`, with a fix-it when no `Key` stream is in
+> scope (`keymap_test`/`_bad`). **As-built deviation:** actions are *explicit
+> calls* — a bare function-valued action (`-> save`) is a checker error with a
+> fix-it (`save()`); this section's bare-reference rows predate the §2.1
+> call-syntax unification. Still unbuilt: the physical-key prefix (`"@KeyW"`)
+> + a std `Key` device library with a canonical chord refinement, focus-zone
+> scoping, the *rendered* overlay element, device libraries (§4.1).
 
 **Core realization: `inputmap` = a typed pattern-match over a merged input-event stream,
 as a table.** Not a new mechanism — it composes three things that exist: **streams** (the

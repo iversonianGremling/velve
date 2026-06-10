@@ -1,0 +1,25 @@
+-- Chord guardrails (SPEC §10.5): the refinement catches chord typos at CHECK
+-- time, on both sides of the match. 3 intended errors:
+--   1. `Push("Ctl+S")` in an inputmap row — typo'd modifier, the literal
+--      pattern can never match a Chord
+--   2. `"Qq+X"` branch in a plain match on a Chord — same fold, any match site
+--   3. `describe("notachord!")` — the VALUE side, via the pre-existing
+--      call-argument refinement fold (pattern + value sides pair up)
+@edition "2026.6"
+
+type Chord = String where matches(value, "^((Ctrl|Alt|Shift)\\+)*[A-Za-z?]$")
+
+stream Keys : Chord
+
+def describe(k: Chord): String
+  match k
+    | "Qq+X" -> "never"
+    | _ -> "ok"
+
+inputmap Editor over Keys
+  Push("Ctl+S") -> print("save")  "Save"
+  Done -> print("done")
+
+def main(): Unit
+  print(describe("notachord!"))
+  Editor()

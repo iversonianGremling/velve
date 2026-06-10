@@ -4,7 +4,7 @@ import type { Span } from "./span.js";
 import type { Diagnostic } from "./resolve.js";
 import type {
   Expr, Stmt, Pat, TypeRef, Decl, Module, FnClause, FnSig,
-  Param, Branch, Prop, NamedArg, Lit, TypeBody, AdtVariant, StreamPolicy,
+  Param, Branch, Prop, NamedArg, Lit, TypeBody, AdtVariant, StreamPolicy, InputmapRow,
 } from "./ast.js";
 import { type Edition, DEFAULT_EDITION, EDITIONS, parseEdition, atLeast } from "./edition.js";
 import { PRIMITIVE_ELEMENTS } from "./elements.js";
@@ -220,6 +220,21 @@ export class Lowerer {
           }
         }
         return { tag: "DStream", name, inner, policy, span: this.sp(n) };
+      }
+      case "inputmap_def": {
+        // `inputmap Name over Stream` + indented `pattern -> action ["label"]`
+        // rows (multitarget-design §4.0). The CST gives [name, stream, rows…].
+        const ids = n.namedChildren.filter(c => c.type === "upper_id");
+        const name = ids[0]?.text ?? "?";
+        const stream = ids[1]?.text ?? "?";
+        return { tag: "DInputmap", name, stream, form: "inputmap", rows: this.lowerInputmapRows(n), span: this.sp(n) };
+      }
+      case "keymap_def": {
+        // `keymap Name` — sugar for `inputmap Name over Key` (multitarget
+        // §4.0: "a keymap = inputmap over the keyboard"). Same decl; the form
+        // tailors the missing-stream diagnostic to a keymap-shaped fix-it.
+        const name = n.namedChildren.find(c => c.type === "upper_id")?.text ?? "?";
+        return { tag: "DInputmap", name, stream: "Key", form: "keymap", rows: this.lowerInputmapRows(n), span: this.sp(n) };
       }
       case "module_def":    return this.lowerModuleDef(n);
       case "binding": {
@@ -1577,6 +1592,35 @@ export class Lowerer {
   }
 
   // ── Patterns ─────────────────────────────────────────────────────────────────
+
+  // The shared row lowering for inputmap_def / keymap_def: each inputmap_row
+  // is [pattern, action-expr, label?-string] — the label string is field-tagged
+  // in the grammar so it can't be confused with the action.
+  private lowerInputmapRows(n: N): InputmapRow[] {
+    return n.namedChildren
+      .filter(c => c.type === "inputmap_row")
+      .map(r => {
+        const span = this.sp(r);
+        const patNode = r.namedChildren.find(c => c.type === "pattern");
+        // Guards ride inside the pattern node (`pat if cond`) — split them
+        // out the same way lowerBranch does.
+        const guardNode = patNode?.namedChildren[0]?.type === "guard_pattern"
+          ? patNode!.namedChildren[0]! : null;
+        const pat = guardNode
+          ? (guardNode.namedChildren[0] ? this.lowerPat(guardNode.namedChildren[0]!) : { tag: "PWild" as const, span })
+          : (patNode ? this.lowerPat(patNode) : { tag: "PWild" as const, span });
+        const guard = guardNode?.namedChildren[1]
+          ? this.lowerExpr(guardNode.namedChildren[1]!) : null;
+        const labelNode = r.childForFieldName("label");
+        const actionNode = r.namedChildren.find(c => c !== patNode && c !== labelNode && isExprKind(c.type));
+        return {
+          pat, guard,
+          action: actionNode ? this.lowerExpr(actionNode) : this.err(span),
+          label: labelNode ? unescapeStr(labelNode.text.slice(1, -1)) : null,
+          span,
+        };
+      });
+  }
 
   lowerPat(n: N): Pat {
     const span = this.sp(n);
