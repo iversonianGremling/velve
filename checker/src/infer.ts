@@ -379,7 +379,7 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
         }
       }
       // contrast(fg, bg) — APCA Lc magnitude, the colour-accessibility predicate
-      // (`OnSurface = Color where contrast(self, surface) >= 60`). Folds only when
+      // (`OnSurface = Color where contrast(value, surface) >= 60`). Folds only when
       // both colours are constant hex strings; a non-literal background (resolved by
       // convergence, themed) stays unfolded → runtime/linter, per styles-design §14.1.
       if (e.fn.tag === "Var" && e.fn.name === "contrast" && e.args.length === 2) {
@@ -817,7 +817,7 @@ export const PROP_SCALE: Record<string, string> = {
 // ── Accessibility-as-proof (§4.3, §14.1 — opt-in) ────────────────────────────────
 // A colour prop is checked for contrast against the element's resolved background —
 // but ONLY when the project defines the named contrast refinement (e.g.
-// `type OnSurface = Color where contrast(self, surface) >= 60`). The predicate's
+// `type OnSurface = Color where contrast(value, surface) >= 60`). The predicate's
 // `surface` is bound to the **ambient background**: the nearest ancestor's literal
 // `background`, threaded down the element tree exactly as the renderer threads it.
 // The check fires only when BOTH the colour and that background are constant hex —
@@ -1918,8 +1918,9 @@ class Inferrer {
           if (surfRef && typeof myBg === "string") {
             const cc = constEval(p.value, EMPTY_ENV);
             if (typeof cc === "string") {
-              // `surface` = ambient background; `self`/`value` = this colour.
-              const penv = new Map<string, ConstVal>([["value", cc], ["self", cc], ["surface", myBg]]);
+              // `value` = this colour (the refinement subject, as everywhere);
+              // `surface` = the resolved ambient background.
+              const penv = new Map<string, ConstVal>([["value", cc], ["surface", myBg]]);
               if (constEval(surfRef.pred, penv) === false) {
                 const lc = apcaLc(cc, myBg);
                 err(this.ctx, p.value.span,

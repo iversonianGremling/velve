@@ -5,7 +5,7 @@
 -- error, not a runtime lint. The fix is a darker foreground or a different surface.
 
 type Color = String
-type OnSurface = Color where contrast(self, surface) >= 60
+type OnSurface = Color where contrast(value, surface) >= 60
 
 def view(): Element
   Column background=#ffffff

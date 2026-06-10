@@ -248,7 +248,7 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       `Responsive(Length)` against the current breakpoint *in prop position only*
       (same shape as the bare-number→`Px` coercion). Enables declare-once-reuse.
 - [x] **Accessibility-as-proof** (`OnSurface` contrast refinement, styles-design §14.1).
-      ✅ DONE (conservative scope). `Color where contrast(self, surface) >= Lc` is enforced
+      ✅ DONE (conservative scope). `Color where contrast(value, surface) >= Lc` is enforced
       at compile time — an unreadable foreground/background pairing fails to check.
       As-built: APCA Lc in `constEval` (`contrast(fg,bg)`); the `Element` walk threads the
       resolved background (`surfaceBg`) down the tree (own literal `background` wins, else

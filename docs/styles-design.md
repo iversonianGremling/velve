@@ -280,7 +280,7 @@ This is the one no mainstream framework enforces and it falls out of refinements
 for free. A foreground colour prop is typed against its background:
 
 ```
-type OnSurface = Color where contrast(self, surface) >= 60   -- APCA Lc (body text)
+type OnSurface = Color where contrast(value, surface) >= 60   -- APCA Lc (body text)
 ```
 
 The `contrast` builtin is **APCA Lc** (perceptual, WCAG-3 / `multitarget-design.md`),
@@ -936,7 +936,7 @@ clean + renders; `scale_ok.velve` → 2/6 (only `raw(13)`/`Px 13`); `ui_render_t
 | Units | **make real** — `Unit` ADT, bare-number→`Px` coercion | infer + `render.ts` |
 | Token scales | **add** — refinement-typed `Space`/`TypeScale`; `raw()` escape | reuse refinements (blocks-design §26) |
 | Three-tier tokens | document idiom; visibility enforcement deferred to v2 | — |
-| a11y contrast | **add** — `OnSurface = Color where contrast(self,bg)>=4.5`; `contrast` in `constEval` | infer; runs after §6 |
+| a11y contrast | **add** — `OnSurface = Color where contrast(value, surface)>=4.5`; `contrast` in `constEval` | infer; runs after §6 |
 | Convergence layer | **add** — (element,prop) DAG, strict-acyclic, topological resolve | new pass between infer and `render.ts` |
 | Cycle policy | **strict DAG** for v1; fixpoint / two-way bind deferred | convergence pass |
 | Flow vs constraints | flow default; constraints an opt-in island; cycle-check confined to it | convergence pass |
@@ -1290,7 +1290,7 @@ context-validity zero-false-positive (§9.5 as-built), convergence cycle-checked
 The one feature the fragment makes *buildable but not yet built* is
 **accessibility-as-proof**: a foreground colour typed against its background so an
 unreadable pairing fails to compile, not lints after the fact —
-`type OnSurface = Color where contrast(self, bg) >= 60` (APCA Lc, §4.3). It adds **no
+`type OnSurface = Color where contrast(value, surface) >= 60` (APCA Lc, §4.3). It adds **no
 new concept**: it is an instance of the refinement mechanism already in the table, so
 there is nothing extra to teach.
 
@@ -1319,8 +1319,10 @@ error, not static. Accessibility-as-proof must obey the same rule.
 > else inherited — mirroring the renderer's `myBg`) into a `surfaceBg` field; a `color`
 > prop is folded against it **only when the project defines `OnSurface`** (the §4.2
 > opt-in pattern, via `PROP_SURFACE`) and both colour and background are constant hex.
-> The predicate binds `self`/`value` = the colour and `surface` = the background. The
-> error reports the computed value — `colour #9aa0a6 fails 'OnSurface' — APCA Lc 51
+> The predicate binds `value` = the colour (the refinement subject, as in every other
+> refinement) and `surface` = the background — deliberately *not* `self`, which already
+> means "this element" in the convergence vocabulary (§6), so reusing it would collide.
+> The error reports the computed value — `colour #9aa0a6 fails 'OnSurface' — APCA Lc 51
 > against background #ffffff` — never a proof obligation. Non-literal / convergence-
 > resolved backgrounds stay silent (runtime/linter), exactly as scoped above. Corpus
 > impact: zero (inert unless `OnSurface` is defined).

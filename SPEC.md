@@ -40,7 +40,7 @@ means there is a green fixture exercising it under `checker/`.
 | Editions | ✅ Built | §17; `2026.1` baseline / `2026.6`, gated semantics. |
 | UI element tree + prop typing | ⚠ Partial | `ui_render_test`, `prop_unknown_test` pass, but the component/stdlib surface used by `examples/` (e.g. `Text`, `onClick`) is incomplete. |
 | Color / APCA legibility | ✅ Built | `color_test`, `color_ext_test`; `std/color` has no theme consumer yet. |
-| Accessibility-as-proof (contrast) | ✅ Built | `accessibility_test`; opt-in `OnSurface = Color where contrast(self, surface) >= Lc` checked at compile time against the resolved background (APCA Lc in `constEval`). |
+| Accessibility-as-proof (contrast) | ✅ Built | `accessibility_test`; opt-in `OnSurface = Color where contrast(value, surface) >= Lc` checked at compile time against the resolved background (APCA Lc in `constEval`). |
 | Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `parseNumber`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. |
 | Module-qualified resolution (`Math.sqrt`) | ❌ Not built | Track B; stdlib docs are written qualified but qualified names don't resolve. |
 | Named error ADTs / structured `parse` errors | ❌ Not built | Track B; errors are `String` today. |

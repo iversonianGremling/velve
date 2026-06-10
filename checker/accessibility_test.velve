@@ -7,7 +7,7 @@
 -- Lc ≥ 60 (including the inverse text on the dark panel), so the view checks clean.
 
 type Color = String
-type OnSurface = Color where contrast(self, surface) >= 60
+type OnSurface = Color where contrast(value, surface) >= 60
 
 def view(): Element
   Column background=#ffffff
