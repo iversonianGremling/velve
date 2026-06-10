@@ -1302,10 +1302,24 @@ when the fact is locally certain; defer otherwise.* Refinements fold only on con
 args; context-validity fires only on known primitives; convergence cycles are a runtime
 error, not static. Accessibility-as-proof must obey the same rule.
 
+> **DECIDED — opt-in, never forced (the load-bearing constraint):**
+> The check is OFF by default and only ever turns on because a project *chose* to define
+> `OnSurface`. The language ships **no** built-in `OnSurface`, and the `color` prop is
+> **never** typed `OnSurface` by default — so plain `Text color=#777` is unconstrained
+> unless the project opts in. Forcing contrast on everyone is explicitly a non-goal: the
+> nesting/border/effective-background subtleties are only worth their complexity to teams
+> that want them, and must never be imposed. A future change that makes the check
+> mandatory (a default `OnSurface`, or typing `color` as `OnSurface`) is forbidden.
+>
 > **DECIDED — conservative scope (binding constraint on any build):**
 > - **Static check ONLY when the background is a literal on a statically-visible
 >   ancestor** (the same parent walk §9.5 already does). Report the *computed* value —
 >   `colour #777 → Lc 38 vs #fff, needs ≥ 60` — never a proof obligation.
+> - **Borders / separators / non-text are NOT this check** — they carry a different,
+>   much lower APCA threshold; conflating them would false-positive on every hairline.
+>   A boundary check, if ever wanted, is its own opt-in refinement on its own prop.
+> - **Non-flat backgrounds** (gradient / image / semi-transparent) don't fold to one
+>   hex, so the check stays silent rather than guess an effective colour.
 > - **Convergence-resolved or theme/role-inherited backgrounds are NOT chased at check
 >   time.** They are already served by the runtime `uiModel` contrast linter
 >   (`render.ts` prints `· contrast … vs …`); that stays their home.
