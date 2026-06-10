@@ -297,13 +297,26 @@ export default grammar({
 
     over_clause: $ => seq('over', $.upper_id, $._newline),
 
-    // stream Name : T  — declares a push-based async channel of type T
+    // stream Name : T [policy] — declares a push-based async channel of type T.
+    // The optional policy is the declaration-site backpressure rule (SPEC §10.1):
+    // `drop` (lossy, deliver-or-discard), `buffer N` (bounded, evict oldest),
+    // `block` (lossless, `send` suspends). Absent → unbounded buffer.
     stream_def: $ => seq(
       'stream',
       $.upper_id,
       ':',
       $._type,
+      optional($.stream_policy),
       $._newline,
+    ),
+
+    // `drop` is already a reserved keyword; `buffer`/`block` stay CONTEXTUAL —
+    // they lex as a plain lower_id here and the lowerer validates the word, so
+    // neither is stolen from users as an identifier (a keyword would reserve it
+    // globally — tree-sitter keyword extraction has no per-state fallback).
+    stream_policy: $ => choice(
+      'drop',
+      seq($.lower_id, optional($.number)),
     ),
 
     // ----------

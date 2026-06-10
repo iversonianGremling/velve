@@ -14334,6 +14334,10 @@
           "named": true
         },
         {
+          "type": "stream_policy",
+          "named": true
+        },
+        {
           "type": "tainted_type",
           "named": true
         },
@@ -14351,6 +14355,25 @@
         },
         {
           "type": "upper_id",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "stream_policy",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "lower_id",
+          "named": true
+        },
+        {
+          "type": "number",
           "named": true
         }
       ]

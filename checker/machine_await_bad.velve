@@ -1,0 +1,18 @@
+-- Await-branch step transitions are CHECKED, not just executed: a goto to an
+-- unknown state from inside an await branch is a checker error. (Before the
+-- §3.2 fix the whole await statement was silently dropped, so these errors
+-- were undetectable.) 2 intended errors.
+@edition "2026.6"
+
+stream Events : Number
+
+machine Lost(): Number persisted
+  :collect
+    await Events
+      | Push(e) -> :nowhere e
+      | Done -> :nirvana
+
+  :done v -> v
+
+def main(): Number
+  Lost()

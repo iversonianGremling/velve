@@ -39,14 +39,14 @@ means there is a green fixture exercising it under `checker/`.
 | Interpreter (`run`) | ✅ Built | `runtime_*_test`, `run_test`; a working subset. |
 | Editions | ✅ Built | §17; `2026.1` baseline / `2026.6`, gated semantics. |
 | UI element tree + prop typing | ⚠ Partial | `ui_render_test`, `prop_unknown_test` pass, but the component/stdlib surface used by `examples/` (e.g. `Text`, `onClick`) is incomplete. |
-| Color / APCA legibility | ✅ Built | `color_test`, `color_ext_test`; `std/color` has no theme consumer yet. |
+| Color / APCA legibility | ✅ Built | `color_test`, `color_ext_test`; consumed by the theme system (`theme_record_test`). |
 | Accessibility-as-proof (contrast) | ✅ Built (opt-in) | `accessibility_test`; **off by default, never forced** — turns on only if a project defines `OnSurface = Color where contrast(value, surface) >= Lc`, then checked at compile time against the resolved background (APCA Lc in `constEval`). |
 | Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `parseNumber`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. |
 | Module-qualified resolution (`Math.sqrt`) | ❌ Not built | Track B; stdlib docs are written qualified but qualified names don't resolve. |
 | Named error ADTs / structured `parse` errors | ❌ Not built | Track B; errors are `String` today. |
 | Effect polymorphism (HOFs) | ❌ Not built | Track B; effect of `map(f, xs)` when `f` is effectful is unspecified. |
-| Backpressure per-stream policy | ❌ Not built | Track B (§10.1). |
-| Theme system (`using` / `OnSurface`) | ❌ Not built | Track C; `OnSurface` is APCA-based (§styles). |
+| Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
+| Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | `animated` modifier / `frames` clock | ❌ Not built | Track C. |
 | Games / `@interaction` model | ❌ Not built | Track C. |
 | `inputmap` multitarget | ❌ Not built | Track C (locked design, unbuilt). |
@@ -1282,11 +1282,14 @@ go send Analytics (Track event)
     | Done   -> :shutdown
 ```
 
-> **Implementation note.** `await Stream` with *value* branches works everywhere,
-> including the `loop`/`break` consumer form (§10.3). The variant above — `await` whose
-> branches are *step-goto targets* (`:handle e`) — does not yet parse inside a `machine`
-> step (the await-branch grammar doesn't admit step gotos, the same gap as if/match in
-> early machine steps). Use the loop+await consumer form to drain a stream for now.
+> **Implementation note.** Both forms work everywhere (2026-06): `await Stream` with
+> *value* branches (including the `loop`/`break` consumer form, §10.3), and the variant
+> above — `await` whose branches are *step-goto targets* (`:handle e`) — inside `machine`
+> steps, including the self-goto drain loop (`| Push(e) -> :collect (acc + e)`). Branch
+> transitions are checked (a goto to an unknown state is an error) and count for step
+> reachability. As-built honesty: the gap was never the grammar — the await statement
+> *parsed* inside a step and was then silently dropped by the lowerer (an empty step
+> body); it now lowers to a step-match on the awaited value.
 
 ### 4.4 Rollback semantics
 
@@ -1607,12 +1610,43 @@ result = @js{ someJsLibrary.doSomething({myValue}) }
 
 ## 10. Events and Streams
 
-### 10.1 Event type
+### 10.1 Event type and backpressure
 
 ```
 type Event(a) = Stream(a)
--- Push-based. Backpressure: drop by default.
+-- Push-based. Backpressure: declared per stream, at the declaration site.
 ```
+
+A stream declaration may carry a **backpressure policy** after its type:
+
+```
+stream Clicks  : Number drop        -- lossy: deliver to a waiting consumer, else discard
+stream Recent  : Number buffer 64   -- bounded: keep the newest 64, evict oldest on overflow
+stream Cmds    : Number block       -- lossless: `send` suspends until a consumer takes it
+stream Logs    : Number             -- no policy: unbounded buffer (the default)
+```
+
+- **`drop`** — if a consumer is parked on `await`, the value is delivered;
+  otherwise it is discarded. For sources where only the freshest value matters
+  (pointer moves, frames): a missed frame is fine, a stale one is not.
+- **`buffer N`** — a bounded queue of capacity `N` (a positive integer literal —
+  `buffer 0` / `buffer 2.5` are checker errors). On overflow the **oldest**
+  value is evicted, so the buffer always holds the newest `N`.
+- **`block`** — a rendezvous: `send` suspends the producer until a consumer
+  takes the value. Lossless — the right policy for command/input streams where
+  dropping an event is unacceptable. `block` takes no capacity (checker error).
+- **No policy** — an unbounded buffer. Honest note: this is and always was the
+  as-built default; an earlier draft of this section claimed "drop by default",
+  which was never what the runtime did.
+
+Policies govern `Push` values only — **`Done` always lands** (a policy that
+could lose the termination signal would park consumers forever). Combinator
+output streams (`streamMap` etc.) are internal and unbounded; a policy applies
+where values *enter* the system, at the declared source.
+
+`drop` is a reserved keyword; `buffer` and `block` are **contextual** — they
+only mean anything in policy position and stay available as ordinary
+identifiers everywhere else.
 
 ### 10.2 Stream combinators
 
@@ -1806,12 +1840,12 @@ velve add pkg       -- add dependency
 
 ## 14. Open Questions
 
-*(Resolved since the original list: the type checker, and the `machine`/`saga`
-runtime including `persisted` saga-state serialization, are all implemented.)*
+*(Resolved since the original list: the type checker, the `machine`/`saga`
+runtime including `persisted` saga-state serialization, multi-clause head
+exhaustiveness (§3.4, edition-gated), and per-stream backpressure (§10.1,
+`drop | buffer N | block` at the declaration site) are all implemented.)*
 
 - Number internal representation (Number vs Int32/Float64 distinction)
-- Streaming backpressure semantics in `send`/`await`
-- Multi-clause function head exhaustiveness checking
 - Module-qualified function calls (`Math.sqrt`, `low.atomicAdd`) — currently you must
   import the name and call it unqualified
 - `---` doc comments vs `--` regular comments (LSP distinction)

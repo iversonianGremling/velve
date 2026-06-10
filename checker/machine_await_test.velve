@@ -1,0 +1,35 @@
+-- `await` whose branches are step-gotos, inside machine steps (SPEC §4.3) — the
+-- idiomatic stream-consuming machine. Closes the §3.2 gap: this statement used
+-- to be silently DROPPED by the lowerer (empty step body, every await-targeted
+-- step "unreachable"). The self-goto in :collect is the canonical drain loop:
+-- accumulate on Push, transition out on Done.
+@edition "2026.6"
+
+stream Events : Number
+
+machine Sum(): Number persisted
+  :start
+    :collect 0
+
+  :collect acc
+    await Events
+      | Push(e) -> :collect (acc + e)
+      | Done -> :finish acc
+
+  :finish total
+    :done (total * 10)
+
+  :done v -> v
+
+def producer(): Unit
+  send Events (Push(1))
+  send Events (Push(2))
+  send Events (Push(3))
+  send Events Done
+
+def main(): Number
+  go producer()
+  let r = Sum()
+  print("machine drained stream, sum*10:")
+  print(r)
+  r

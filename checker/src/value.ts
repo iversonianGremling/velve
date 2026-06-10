@@ -69,17 +69,60 @@ export function dictKey(v: Value): string {
 
 // ── Stream queue ─────────────────────────────────────────────────────────────
 
+// The declaration-site backpressure policy (SPEC §10.1). Policies govern `Push`
+// values only — `Done` is the termination signal and always lands (a policy
+// that lost `Done` would leave consumers parked forever). Absent (null) =
+// unbounded buffer, the default.
+export type StreamQueuePolicy =
+  | { kind: "drop" }                // lossy: deliver to a waiting consumer, else discard
+  | { kind: "buffer"; n: number }   // bounded: keep the newest n, evict oldest on overflow
+  | { kind: "block" }               // lossless: `send` suspends until a consumer takes it
+
+const isDoneSignal = (v: Value): boolean => v.tag === "VCtor" && v.name === "Done";
+
 export class VStreamQueue {
   private buffer: Value[] = [];
   private waiters: Array<(v: Value) => void> = [];
+  // `block`-policy producers parked mid-`send`, each holding its undelivered value.
+  private senders: Array<{ v: Value; release: () => void }> = [];
+
+  constructor(private readonly policy: StreamQueuePolicy | null = null) {}
 
   push(v: Value): void {
-    if (this.waiters.length) this.waiters.shift()!(v);
-    else this.buffer.push(v);
+    if (this.waiters.length) { this.waiters.shift()!(v); return; }
+    if (!isDoneSignal(v)) {
+      if (this.policy?.kind === "drop") return;
+      if (this.policy?.kind === "buffer" && this.buffer.length >= this.policy.n) this.buffer.shift();
+    }
+    this.buffer.push(v);
+  }
+
+  // Policy-aware producer side. Identical to push() except under `block`, where
+  // the returned promise parks the producer until a consumer takes the value —
+  // the cooperative scheduler only advances the clock once every task is parked,
+  // so a blocked `send` is deterministic, not a busy-wait.
+  send(v: Value): Promise<void> {
+    if (this.policy?.kind === "block" && !this.waiters.length && !isDoneSignal(v)) {
+      return new Promise(release => this.senders.push({ v, release }));
+    }
+    this.push(v);
+    return Promise.resolve();
+  }
+
+  // Take the next ready value: buffered first, then a parked sender's (releasing it).
+  private takeReady(): Value | undefined {
+    if (this.buffer.length) return this.buffer.shift()!;
+    if (this.senders.length) {
+      const s = this.senders.shift()!;
+      s.release();
+      return s.v;
+    }
+    return undefined;
   }
 
   next(): Promise<Value> {
-    if (this.buffer.length) return Promise.resolve(this.buffer.shift()!);
+    const ready = this.takeReady();
+    if (ready !== undefined) return Promise.resolve(ready);
     return new Promise(resolve => this.waiters.push(resolve));
   }
 
@@ -87,7 +130,8 @@ export class VStreamQueue {
   // value arrives. Unlike racing next() against a timer, the waiter is removed on
   // timeout, so no pushed value is ever lost. Used by `streamDebounce`.
   nextWithin(ms: number, sched: { sleep(ms: number): Promise<void> }): Promise<Value | undefined> {
-    if (this.buffer.length) return Promise.resolve(this.buffer.shift()!);
+    const ready = this.takeReady();
+    if (ready !== undefined) return Promise.resolve(ready);
     return new Promise(resolve => {
       let settled = false;
       const waiter = (v: Value) => { if (settled) return; settled = true; resolve(v); };

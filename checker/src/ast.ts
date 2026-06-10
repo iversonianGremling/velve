@@ -202,9 +202,13 @@ export type Decl =
        deprecated: boolean;    // surface form used the deprecated `saga` keyword
        steps: MachineStep[] }                                                & Node)
 
+  // The declaration-site backpressure policy (SPEC §10.1). Applies to `Push`
+  // values only — `Done` is the termination signal and is never dropped/blocked.
+  // Absent (null) = unbounded buffer (the pre-policy behavior, kept as default).
   | ({ tag: "DStream";
        name: string;
-       inner: TypeRef }                                                      & Node)
+       inner: TypeRef;
+       policy: StreamPolicy | null }                                          & Node)
 
   // A module-level binding: `let name [: Type] = expr` at the top level. The
   // semantic-token tier of styles-design §4.2 (`let surface = #0d1117`) and the
@@ -225,6 +229,15 @@ export type Decl =
        name: string;
        capabilities: string[];
        decls: Decl[] }                                                       & Node)
+
+// The per-stream backpressure policy (SPEC §10.1), written at the declaration
+// site: `drop` (lossy — deliver to a waiting consumer, else discard), `buffer N`
+// (bounded — keep the newest N, evict oldest on overflow), `block` (lossless —
+// `send` suspends until a consumer takes the value).
+export type StreamPolicy =
+  | { kind: "drop" }
+  | { kind: "buffer"; n: number }
+  | { kind: "block" }
 
 // ── Type bodies (for type declarations) ──────────────────────────────────────
 

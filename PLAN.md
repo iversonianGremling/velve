@@ -298,10 +298,28 @@ The remaining "three application syntaxes" item. Split into the self-contained
 
 ## Track B — Decided semantic gaps (independent of Track A; medium)
 Endorsed in review; not part of the surface refactor but cleared to build.
-- [ ] **Backpressure per-stream policy** (§3.2): `drop | buffer N | block` at the
-      declaration site (not "drop by default"). SPEC §10.1 + checker.
-- [ ] **Machine `await`→step-goto grammar gap** (§3.2): close it so machines can
-      consume streams idiomatically (`SPEC §4.3` note).
+- [x] **Backpressure per-stream policy** (§3.2): ✅ DONE (2026-06). `stream Name : T
+      [drop | buffer N | block]` at the declaration site; SPEC §10.1 rewritten (the old
+      "drop by default" line was fiction — the as-built queue was an unbounded buffer,
+      which stays the no-policy default so every existing stream fixture is untouched).
+      `drop` = deliver-to-waiter-else-discard; `buffer N` = bounded, evicts oldest
+      (positive-integer literal enforced in the lowerer); `block` = rendezvous — `send`
+      parks the producer until a consumer takes the value (deterministic under the
+      cooperative scheduler; zero scheduler changes). `Done` is policy-exempt. Surface:
+      `buffer`/`block` are CONTEXTUAL words (lower_id in policy position, validated at
+      lower time) — making them grammar keywords reserved them globally and broke
+      `buffer` as a store state field (`examples/llm_agent.velve`), caught by the corpus
+      diff and reverted. Fixtures `stream_policy_test` (ordering/eviction/rendezvous
+      proven, runs) + `stream_policy_bad` (2 errors); baselines byte-identical otherwise.
+- [x] **Machine `await`→step-goto gap** (§3.2): ✅ DONE (2026-06). Not a grammar
+      gap as-found — `await_stmt` parsed inside steps and `_branch_body` already
+      admitted `step_goto`; the lowerer's default case silently dropped the statement
+      (empty step body). Fixed with one `lowerSagaStmt` case: `await` in a step lowers
+      to a `SagaMatch` on a branch-less `Await` subject, so branch bodies get the full
+      saga-branch grammar (goto/rollback/blocks) and existing infer/eval/reachability
+      walk them unchanged. Self-goto drain loop works (`| Push(e) -> :collect (acc+e)`).
+      Fixtures `machine_await_test` (runs, drains a stream to 60) + `machine_await_bad`
+      (2 unknown-state errors from await branches); baselines byte-identical otherwise.
 - [ ] **`try` soundness fix** (§3.5): polymorphic try line resolved to `Result` later
       — monomorphize-before-try, reject, or warn (`blocks-design.md §12`).
 - [ ] **Named error ADTs** (§3.5): stdlib support + `T.parse`/decoders return a

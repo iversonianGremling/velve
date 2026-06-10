@@ -1,0 +1,9 @@
+-- Backpressure policy misuse (SPEC §10.1): `buffer N` needs a positive integer
+-- capacity — a zero or fractional bound has no queue meaning. 2 intended errors.
+@edition "2026.6"
+
+stream Z : Number buffer 0
+stream F : Number buffer 2.5
+
+def main(): Number
+  0

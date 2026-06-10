@@ -1,0 +1,63 @@
+-- Declaration-site backpressure (SPEC §10.1): `stream Name : T [drop | buffer N | block]`.
+-- Policies govern Push values only — Done always lands (losing the termination
+-- signal would park consumers forever). No policy = unbounded buffer, the
+-- default every other stream fixture relies on.
+@edition "2026.6"
+
+stream Lossy : Number drop
+stream Recent : Number buffer 2
+stream Hand : Number block
+
+-- drop: a Push with nobody awaiting is discarded, not buffered
+def lateProducer(): Unit
+  sleep(10)
+  send Lossy (Push(42))
+  send Lossy Done
+
+def consumeLossy(): Number
+  await Lossy
+    | Push(v) -> v
+    | Done -> 0
+
+def consumeRecent(): Number
+  await Recent
+    | Push(v) -> v
+    | Done -> 0
+
+-- block: this send suspends until a consumer takes the value
+def blockProducer(): Unit
+  send Hand (Push(7))
+  print("block: send released")
+
+def consumeHand(): Number
+  await Hand
+    | Push(v) -> v
+    | Done -> 0
+
+def main(): Number
+  -- drop: Push(1) is sent before anyone awaits → discarded, not queued.
+  -- The consumer then parks, and the late Push(42) is what arrives.
+  send Lossy (Push(1))
+  go lateProducer()
+  let a = consumeLossy()
+  print("drop kept:")
+  print(a)
+
+  -- buffer 2: three sends into capacity 2 → the oldest (1) is evicted
+  send Recent (Push(1))
+  send Recent (Push(2))
+  send Recent (Push(3))
+  let b1 = consumeRecent()
+  let b2 = consumeRecent()
+  print("buffer kept:")
+  print(b1)
+  print(b2)
+
+  -- block: the spawned producer parks mid-send while main sleeps; the
+  -- consumer's await is what releases it (lossless rendezvous)
+  go blockProducer()
+  sleep(5)
+  print("block: consumer arriving")
+  let h = consumeHand()
+  print(h)
+  a + b1 + b2 + h

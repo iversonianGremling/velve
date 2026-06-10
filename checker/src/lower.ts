@@ -4,7 +4,7 @@ import type { Span } from "./span.js";
 import type { Diagnostic } from "./resolve.js";
 import type {
   Expr, Stmt, Pat, TypeRef, Decl, Module, FnClause, FnSig,
-  Param, Branch, Prop, NamedArg, Lit, TypeBody, AdtVariant,
+  Param, Branch, Prop, NamedArg, Lit, TypeBody, AdtVariant, StreamPolicy,
 } from "./ast.js";
 import { type Edition, DEFAULT_EDITION, EDITIONS, parseEdition, atLeast } from "./edition.js";
 import { PRIMITIVE_ELEMENTS } from "./elements.js";
@@ -195,7 +195,31 @@ export class Lowerer {
         const name  = n.namedChildren.find(c => c.type === "upper_id")?.text ?? "?";
         const typeNode = n.namedChildren.find(isTypeKind);
         const inner = typeNode ? this.lowerTypeRef(typeNode) : { tag: "TRNamed" as const, name: "Unknown", args: [] };
-        return { tag: "DStream", name, inner, span: this.sp(n) };
+        // Optional backpressure policy (SPEC §10.1): `drop | buffer N | block`.
+        // `drop` is a keyword; `buffer`/`block` are CONTEXTUAL (a lower_id in
+        // the grammar, validated here) so neither is reserved as an identifier.
+        const polNode = n.namedChildren.find(c => c.type === "stream_policy");
+        let policy: StreamPolicy | null = null;
+        if (polNode) {
+          const word = polNode.namedChildren.find(c => c.type === "lower_id")?.text ?? "drop";
+          const numNode = polNode.namedChildren.find(c => c.type === "number");
+          const polErr = (message: string) =>
+            this.diagnostics.push({ kind: "error", span: this.sp(polNode), message });
+          if (word === "drop") {
+            policy = { kind: "drop" };
+          } else if (word === "block") {
+            if (numNode) polErr("`block` takes no capacity — it is a rendezvous (`send` suspends until a consumer takes the value).");
+            policy = { kind: "block" };
+          } else if (word === "buffer") {
+            const cap = numNode ? Number(numNode.text) : NaN;
+            if (!numNode) polErr("`buffer` needs a capacity: `buffer N`.");
+            else if (!Number.isInteger(cap) || cap < 1) polErr(`\`buffer ${numNode.text}\` — stream buffer capacity must be a positive integer.`);
+            policy = { kind: "buffer", n: cap };
+          } else {
+            polErr(`unknown stream policy \`${word}\` — expected \`drop\`, \`buffer N\`, or \`block\`.`);
+          }
+        }
+        return { tag: "DStream", name, inner, policy, span: this.sp(n) };
       }
       case "module_def":    return this.lowerModuleDef(n);
       case "binding": {
@@ -597,6 +621,19 @@ export class Lowerer {
         const [subj, ...rest] = n.namedChildren;
         const branches = rest.filter(c => c.type === "match_branch").map(b => this.lowerSagaBranch(b));
         return [{ tag: "SagaMatch", subject: subj ? this.lowerExpr(subj) : this.err(span), branches, span }];
+      }
+      case "await_stmt": {
+        // `await Stream` inside a machine step (SPEC §4.3) — the consumer form
+        // whose branches may be step transitions (`| Push(e) -> :handle e`).
+        // Lowers to a SagaMatch on a branch-less Await subject: the Await pulls
+        // the next value, and the saga-branch machinery gives the branch bodies
+        // the full step grammar (Goto / rollback / blocks). Before this case
+        // existed the statement fell to the default and was silently DROPPED
+        // (an empty step body) — the §3.2 await→step-goto gap.
+        const subjNode = n.namedChildren.find(c => isExprKind(c.type));
+        const branches = n.namedChildren.filter(c => c.type === "match_branch").map(b => this.lowerSagaBranch(b));
+        const subject: Expr = { tag: "Await", expr: subjNode ? this.lowerExpr(subjNode) : this.err(span), branches: [], span };
+        return [{ tag: "SagaMatch", subject, branches, span }];
       }
       case "if_expr": {
         const cond = n.namedChildren[0]!;
