@@ -1,0 +1,16 @@
+@edition "2026.6"
+
+-- The ambient namespaces are TYPED, not a resolution loophole.
+-- Expected: 3 errors.
+
+-- 1. unknown member on a known module is a check error
+def badMember(): Number
+  Math.cube(3)
+
+-- 2. qualified calls are fully typed — wrong argument type is caught
+def badArg(): Number
+  Math.sqrt("nine")
+
+-- 3. an unknown module is still an unresolved name, not silently Unknown
+def badModule(): Number
+  Trig.sin(1)

@@ -437,9 +437,18 @@ dimension machinery generalize?
   their bodies are checked against the enclosing declaration and can't escape
   (no fn-type ascription syntax). Rows (north-star §4) subsume this as the
   closed-row case when they land.
-- [ ] 🟢 Module-qualified calls (`Math.sqrt`) still don't resolve while all
+- [x] 🟢 Module-qualified calls (`Math.sqrt`) still don't resolve while all
   planned stdlib docs are written in qualified style. Land qualified resolution
-  before the stdlib grows further.
+  before the stdlib grows further. **DONE 2026-06** (SPEC §5.5,
+  `qualified_test`/`_bad`): the capitalized slash-free stdlib aliases (`Math`,
+  `String`, `Json`, `Color`, `Duration`, `Dict`, `Set`, `IO`) are *ambient* —
+  resolve/infer/eval each fall back to the module registry after normal lookup
+  fails, so user bindings shadow. Members fully typed (unknown member / wrong
+  arg type are check errors; unknown module still unresolved); the ambient form
+  reuses the namespace-import record type, so the two spellings can't diverge.
+  All three registries already existed (stdlib.ts MODULE_ALIASES, eval
+  STDLIB_RUNTIME, import machinery) — the slice wired the bare-name fallback
+  and added the missing `IO`/`JSON` runtime keys.
 
 ---
 

@@ -1546,6 +1546,13 @@ export class Evaluator {
   private lookupVar(name: string, env: Env): Value {
     const v = env.lookup(name);
     if (v !== undefined) return v;
+    // Ambient stdlib namespace (mirrors resolve/infer, SPEC 5.5): Math.sqrt(x)
+    // with no import. Capitalized aliases only, and only after a normal lookup
+    // fails, so user bindings shadow modules. Lowercase/path forms stay import-only.
+    if (/^[A-Z]/.test(name)) {
+      const mod = STDLIB_RUNTIME[name];
+      if (mod) return { tag: "VRecord", fields: new Map(Object.entries(mod)) };
+    }
     throw new RuntimeError(`undefined variable: ${name}`);
   }
 }
@@ -2642,7 +2649,8 @@ const STDLIB_RUNTIME: Record<string, Record<string, Value>> = {
   "std/Set": SET_RT, "std/set": SET_RT,
   "Json": JSON_RT, "json": JSON_RT,
   "std/Json": JSON_RT, "std/json": JSON_RT,
-  "io": IO_RT, "std/io": IO_RT,
+  "io": IO_RT, "std/io": IO_RT, "IO": IO_RT,
+  "JSON": JSON_RT,
 };
 
 function num(v: Value | undefined): number {

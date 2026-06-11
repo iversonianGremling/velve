@@ -42,7 +42,7 @@ means there is a green fixture exercising it under `checker/`.
 | Color / APCA legibility | ✅ Built | `color_test`, `color_ext_test`; consumed by the theme system (`theme_record_test`). |
 | Accessibility-as-proof (contrast) | ✅ Built (opt-in) | `accessibility_test`; **off by default, never forced** — turns on only if a project defines `OnSurface = Color where contrast(value, surface) >= Lc`, then checked at compile time against the resolved background (APCA Lc in `constEval`). |
 | Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. (`parseNumber` now resolves + runs, 2026-06.) |
-| Module-qualified resolution (`Math.sqrt`) | ❌ Not built | Track B; stdlib docs are written qualified but qualified names don't resolve. |
+| Module-qualified resolution (`Math.sqrt`) | ✅ Built | §5.5, `qualified_test`/`_bad`: capitalized stdlib namespaces (`Math`, `String`, `Json`, …) are ambient — no import needed, members fully typed, user bindings shadow. Lowercase/path forms stay import-only. |
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. Conservative (no effect rows yet). |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
@@ -1436,6 +1436,31 @@ audio       -- real-time audio (std/audio only)
 pure        -- no effects (default)
 ```
 
+### 5.5 Ambient qualified modules
+
+The capitalized stdlib namespaces are **ambient**: `Math.sqrt(x)` checks and
+runs with no import, matching the qualified style this document and the
+stdlib docs are written in.
+
+```
+def hyp(a: Number, b: Number): Number
+  Math.sqrt(Math.pow(a, 2) + Math.pow(b, 2))   -- no import anywhere
+```
+
+As built (2026-06, `qualified_test`/`_bad`):
+
+- Ambient names are exactly the capitalized, slash-free module aliases —
+  `Math`, `String`, `Json`/`JSON`, `Color`, `Duration`, `Dict`, `Set`, `IO`.
+  Lowercase (`math`) and path (`std/math`) spellings stay import-only, so the
+  no-import surface is exactly the documented spelling.
+- Qualified members are **fully typed** — `Math.cube` is a check error
+  (no such member) and `Math.sqrt("nine")` is a type error. An unknown
+  module (`Trig.sin`) is still an unresolved name, not a silent `Unknown`.
+- The ambient form and a namespace import build the *same* module record
+  type, so the two spellings cannot drift apart.
+- User bindings **shadow** ambient modules: every consumer (resolve, infer,
+  eval) falls back to the ambient set only after a normal lookup fails.
+
 ---
 
 ## 6. Memory Model
@@ -2028,8 +2053,9 @@ exhaustiveness (§3.4, edition-gated), and per-stream backpressure (§10.1,
 `drop | buffer N | block` at the declaration site) are all implemented.)*
 
 - Number internal representation (Number vs Int32/Float64 distinction)
-- Module-qualified function calls (`Math.sqrt`, `low.atomicAdd`) — currently you must
-  import the name and call it unqualified
+- ~~Module-qualified function calls (`Math.sqrt`, `low.atomicAdd`)~~ — resolved
+  2026-06 (§5.5): capitalized stdlib namespaces are ambient. (`low.atomicAdd`
+  waits on std/low existing at all.)
 - `---` doc comments vs `--` regular comments (LSP distinction)
 - Multiline leading `|>` — currently requires trailing `|>` convention
 - Element vs type ambiguity in certain positions

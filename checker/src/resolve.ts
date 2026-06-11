@@ -1,5 +1,6 @@
 import type { Span } from "./span.js";
 import type { Module, Decl, Expr, Stmt, Pat, FnClause } from "./ast.js";
+import { STDLIB_MODULE_NAMES } from "./stdlib.js";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -519,6 +520,9 @@ const BUILTINS = new Set([
 
 function isBuiltin(name: string): boolean {
   if (BUILTINS.has(name)) return true;
+  // Ambient stdlib namespaces — `Math.sqrt(x)` with no import (SPEC §5.5).
+  // Scope lookup ran first, so user bindings shadow these.
+  if (STDLIB_MODULE_NAMES.has(name)) return true;
   // send_X / ask_X are synthesized names from the lowerer
   if (name.startsWith("send_") || name.startsWith("ask_")) return true;
   return false;

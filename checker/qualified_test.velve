@@ -1,0 +1,27 @@
+@edition "2026.6"
+
+-- Module-qualified resolution (TODO §3.6, SPEC §5.5): the capitalized stdlib
+-- namespaces are AMBIENT — `Math.sqrt(x)` checks and runs with no import,
+-- matching the qualified style every stdlib doc is written in. Members are
+-- fully typed (qualified_bad.velve shows the rejections), and the same
+-- record-type path serves namespace imports, so the two forms can't diverge.
+
+def hyp(a: Number, b: Number): Number
+  Math.sqrt(Math.pow(a, 2) + Math.pow(b, 2))
+
+def main(): Unit
+  r = Math.sqrt(81)
+  println("sqrt: {r}")
+  h = hyp(3, 4)
+  println("hyp: {h}")
+  c = Math.clamp(15, 0, 10)
+  println("clamp: {c}")
+  f = Math.floor(Math.pi)
+  println("floor pi: {f}")
+  up = String.toUpper("velve")
+  println("upper: {up}")
+  parts = String.split("a,b,c", ",")
+  p1 = parts[1]
+  println("part: {p1}")
+  j = Json.stringify([1, 2, 3])
+  println("json: {j}")

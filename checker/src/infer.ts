@@ -1,6 +1,6 @@
 import type { Span } from "./span.js";
 import { freshVar, typeToString } from "./types.js";
-import { stdlibLookup, stdlibModule } from "./stdlib.js";
+import { stdlibLookup, stdlibModule, STDLIB_MODULE_NAMES } from "./stdlib.js";
 import { PRIMITIVE_MODE } from "./elements.js";
 import type { Type, Field } from "./types.js";
 import type {
@@ -30,6 +30,16 @@ function instantiate(s: Scheme): Type {
   const sub = new Map<number, Type>();
   for (const id of s.forall) sub.set(id, freshVar());
   return substVars(s.type, sub);
+}
+
+// A stdlib module as a Record type — shared by namespace imports and the
+// ambient qualified form (`Math.sqrt` with no import, SPEC §5.5).
+function moduleRecordType(mod: Record<string, Scheme>): Type {
+  return { tag: "Record", fields: Object.entries(mod).map(([name, scheme]) => ({
+    name,
+    type: scheme.type, // intentionally not generalized — field access is monomorphic
+    optional: false,
+  })) };
 }
 
 function generalize(env: TypeEnv, subst: Subst, t: Type): Scheme {
@@ -1160,16 +1170,8 @@ class Inferrer {
             // Namespace import — bind the module alias as a record of its exports.
             const mod = stdlibModule(decl.path);
             const bindName = decl.names[0]?.alias ?? decl.names[0]?.name ?? decl.path;
-            if (mod) {
-              const fields: Field[] = Object.entries(mod).map(([fname, scheme]) => ({
-                name: fname,
-                type: scheme.type, // intentionally not generalized — field access is monomorphic
-                optional: false,
-              }));
-              env.defineMono(bindName, { tag: "Record", fields });
-            } else {
-              env.defineMono(bindName, { tag: "Unknown" });
-            }
+            if (mod) env.defineMono(bindName, moduleRecordType(mod));
+            else env.defineMono(bindName, { tag: "Unknown" });
           }
           break;
         }
@@ -1608,7 +1610,12 @@ class Inferrer {
 
       case "Var": {
         const s = env.lookup(expr.name);
-        return s ? instantiate(s) : { tag: "Unknown" };
+        if (s) return instantiate(s);
+        // Ambient stdlib namespace — `Math.sqrt(x)` with no import (SPEC §5.5).
+        // Fires only when the name is unbound, so user bindings shadow modules.
+        const mod = STDLIB_MODULE_NAMES.has(expr.name) ? stdlibModule(expr.name) : null;
+        if (mod) return moduleRecordType(mod);
+        return { tag: "Unknown" };
       }
 
       case "Call": {

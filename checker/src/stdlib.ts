@@ -285,3 +285,12 @@ export function stdlibLookup(modulePath: string, exportName: string): Scheme | n
 export function stdlibModule(modulePath: string): Record<string, Scheme> | null {
   return MODULE_ALIASES[modulePath]?.() ?? null;
 }
+
+// AMBIENT module names: `Math.sqrt(x)` resolves with no import (SPEC §5.5) —
+// the stdlib docs are written in qualified style. Only the capitalized,
+// slash-free aliases are ambient; lowercase (`math`) and path forms
+// (`std/math`) stay import-only so the no-import surface is exactly the
+// documented spelling. User bindings shadow these: every consumer falls back
+// to this set only after a normal lookup fails.
+export const STDLIB_MODULE_NAMES: ReadonlySet<string> = new Set(
+  Object.keys(MODULE_ALIASES).filter(k => !k.includes("/") && /^[A-Z]/.test(k)));

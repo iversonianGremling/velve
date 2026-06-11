@@ -341,8 +341,11 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       requires them (conservative — the callee may invoke it). Fires for
       untyped (`map`) and typed (`pmap`) callees; aliasing doesn't launder;
       edition-gated like the pure-hole (1b). Effect rows subsume this later.
-- [ ] **Module-qualified resolution** (§3.6): `Math.sqrt` still doesn't resolve while
-      stdlib docs are written qualified.
+- [x] **Module-qualified resolution** (§3.6): ✅ DONE (2026-06, SPEC §5.5,
+      `qualified_test`/`_bad`). Capitalized stdlib namespaces are ambient —
+      `Math.sqrt(x)` checks (fully typed members) and runs with no import;
+      user bindings shadow; lowercase/path forms stay import-only; ambient and
+      namespace-import forms share one record type.
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside
