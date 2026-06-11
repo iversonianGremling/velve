@@ -1,0 +1,35 @@
+@edition "2026.6"
+
+-- Effect tails (S4c/E1, row-variables-design §4): builtin HOF signatures
+-- carry an effect tail — the call is charged with the fn ARGUMENT's effect
+-- row, precisely, replacing the conservative §12.4 latent charge for tailed
+-- callees. `identity` is tailed on its own row only (it returns its argument
+-- without invoking it), so handing it an effectful fn charges nothing — the
+-- case the conservative rule over-approximated.
+-- Expected: 0 errors. Runs.
+
+def netGet(url: String): Effect [io] String -> "body of {url}"
+
+def double(n: Number): Number -> n * 2
+
+-- 1. pure HOF use stays pure: the tail binds to [] — no charge
+def doubles(xs: List(Number)): List(Number) -> xs |> pmap(double)
+
+-- 2. THE precision win: identity returns netGet without calling it; before
+--    S4c the latent rule errored here ("the callee may call it")
+def keep(): (String -> String) -> identity(netGet)
+
+-- 3. an invoking HOF's tail binds to [io] at this call, and [io] is
+--    declared: covered (per-call-site — `doubles` above shares the def)
+def fetchAll(urls: List(String)): Effect [io] List(String) -> urls |> pmap(netGet)
+
+-- 4. no laundering: the identity-returned VALUE still carries [io]; calling
+--    it is the ordinary per-call effect check, satisfied by this io context
+def callDirect(url: String): Effect [io] String
+  h = identity(netGet)
+  h(url)
+
+def main(): Effect [io] ()
+  print("doubles: {doubles([1, 2, 3])}")
+  print("fetch:   {fetchAll(["a"])}")
+  print("direct:  {callDirect("x")}")

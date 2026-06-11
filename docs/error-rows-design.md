@@ -215,10 +215,13 @@ ascription at all.*
    (function-type ascriptions — grammar/lower; the checker is already
    TRFn-ready), S4b (row tails: instantiate-time clones + the existing
    step-0.5 judging), S4c (effect tails on builtin HOF signatures).
-   **S4a + S4b ✅ BUILT 2026-06** (`fn_type_test`/`_bad`,
-   `row_tails_test`/`_bad`; SPEC §2.14 and the §2.13 v2 block): the error
-   side of v2 is shipped — generic row defs, per-call-site rows, tails. S4c
-   (effects) remains.
+   **S4a + S4b + S4c ✅ BUILT 2026-06** (`fn_type_test`/`_bad`,
+   `row_tails_test`/`_bad`, `effect_tails_test`/`_bad`; SPEC §2.14, the
+   §2.13 v2 block, and the §12.4 effect-tails block): v2 is shipped on both
+   sides — generic row defs with per-call-site rows (errors), and effect
+   tails on builtin HOF signatures replacing the conservative §12.4 charge
+   with per-call precision (effects). The §6 convergence is built at E1
+   scope; E2 (user-spelled effect tails) stays deferred.
 
 Each slice keeps the corpus baselines untouched: `_` is additive, and no
 existing fixture uses it.

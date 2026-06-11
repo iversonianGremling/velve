@@ -1,0 +1,31 @@
+@edition "2026.6"
+
+-- Effect tails (S4c/E1) guardrails: the tail CHARGES precisely — the §12.4
+-- laundering cases keep failing, now for the right reason (the tail resolves
+-- to [io] at the call and the caller's context must cover it), and identity's
+-- no-charge handover does not launder: CALLING the kept value still requires
+-- its row.
+-- Expected: 4 errors.
+
+def netGet(url: String): Effect [io] String -> "body of {url}"
+
+def loggedCheck(s: String): Effect [io] Bool -> true
+
+-- 1. pure def: pmap's tail binds to [io] → this call requires [io] → violation
+def launder(urls: List(String)): List(String)
+  urls |> pmap(netGet)
+
+-- 2. declared effects must cover the tail's binding
+def wrongPool(urls: List(String)): Effect [db] List(String)
+  urls |> pmap(netGet)
+
+-- 3. pfilter is tailed too, and aliasing doesn't help: g carries [io]
+def launderAlias(urls: List(String)): List(String)
+  g = loggedCheck
+  urls |> pfilter(g)
+
+-- 4. identity charges nothing at the handover (it never invokes), but the
+--    value keeps its row: calling it in a pure def is a per-call violation
+def callPure(url: String): String
+  h = identity(netGet)
+  h(url)

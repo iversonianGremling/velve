@@ -483,7 +483,22 @@ dimension machinery generalize?
   step 0.5 verbatim. Open rows (tail never resolved) error at the call and
   demand a catch-all in matches. Residual: forwarding a callback through a
   second row def without invoking it leaves the inner tail as an opaque
-  pseudo-ctor (two-level threading out of scope). Next: S4c effect tails.
+  pseudo-ctor (two-level threading out of scope).
+  **S4c BUILT 2026-06** (SPEC §12.4 effect-tails block,
+  `effect_tails_test`/`_bad`): builtin HOF signatures carry an effect TAIL —
+  `Fn` gains `effectTail?: number` (a quantified id, remapped per use by
+  substVars), `EFFECT_TAILS` accumulates what each call's argument row binds
+  into it (Fn-unify's one effect rule: a declared tail absorbs the other
+  side's full row; effects still never unify), and the per-call check charges
+  the resolved row — `pmap` is pure at one call, `[io]` at another. A tailed
+  signature is "accounted": the conservative §12.4 latent rule defers to it,
+  which un-charges `identity(netGet)` (tail on its own row only, never bound
+  — it returns without invoking) while the returned value still carries [io]
+  for the ordinary per-call check (no laundering). Surface `map`/`filter`
+  stay Unknown-callees → conservative rule unchanged; `hof_effects_bad`
+  keeps 4 errors with its pmap case now failing via the tail. Residuals:
+  other fn-taking builtins (`sortBy`, `listReduce`, …) still conservative
+  (mechanical to tail); E2 user-spelled tails deferred. S4/v2 complete.
 - [x] 🟡 **User generics** (found during the error-ADT slice, closed 2026-06;
   SPEC §2.12, `generics_test`/`_bad`): `def idy(x: a): a` parsed but the type
   var was a rigid `Named "a"` never generalized — `idy(5)` was a type error,

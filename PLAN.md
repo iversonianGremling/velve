@@ -412,7 +412,18 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       As-built delta: tails register via a deferred finalize step 0.4
       (callers can check before the def's body fills its tails); judging is
       the existing step 0.5 verbatim. Zero corpus impact.
-      Next: S4c effect tails on builtin HOF signatures.
+- [x] **Effect tails (S4c)**: ✅ DONE (2026-06, SPEC §12.4 effect-tails
+      block, `effect_tails_test`/`_bad`). Builtin HOF signatures carry an
+      effect tail (`Fn.effectTail?: number`, a quantified id; `EFFECT_TAILS`
+      accumulates per-call bindings; Fn-unify's one effect rule: a declared
+      tail absorbs the other side's row). `pmap`/`pfilter` charge the
+      argument's row precisely per call site; `identity` (tail on own row
+      only — never invokes) accepts an effectful fn uncharged, with no
+      laundering (the value keeps its row for the per-call check). The
+      conservative §12.4 rule defers to tailed signatures and governs
+      untailed callees (surface `map`/`filter`, user HOFs) unchanged.
+      Zero corpus impact (`hof_effects_bad` stays 4 — its pmap case now
+      fails via the tail). S4/v2 complete; E2 user-spelled tails deferred.
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside

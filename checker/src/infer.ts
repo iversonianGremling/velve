@@ -118,7 +118,16 @@ function substVars(t: Type, sub: Map<number, Type>): Type {
   switch (t.tag) {
     case "Var":        return sub.get(t.id) ?? t;
     case "Named":      return { ...t, args: t.args.map(a => substVars(a, sub)) };
-    case "Fn":         return { ...t, params: t.params.map(p => substVars(p, sub)), ret: substVars(t.ret, sub) };
+    case "Fn": {
+      const f: Type & { tag: "Fn" } = { ...t, params: t.params.map(p => substVars(p, sub)), ret: substVars(t.ret, sub) };
+      // An effect tail (S4c) is a quantified id too: remap it so each
+      // instantiation judges its own per-call-site binding.
+      if (t.effectTail !== undefined) {
+        const m = sub.get(t.effectTail);
+        if (m?.tag === "Var") f.effectTail = m.id;
+      }
+      return f;
+    }
     case "SagaFn":     return { ...t, params: t.params.map(p => substVars(p, sub)), ret: substVars(t.ret, sub) };
     case "Tuple":      return { ...t, elems: t.elems.map(e => substVars(e, sub)) };
     case "Record":     return { ...t, fields: t.fields.map(f => ({ ...f, type: substVars(f.type, sub) })) };
@@ -231,6 +240,38 @@ let CTOR_OWNERS = new Map<string, { typeName: string; scheme: Scheme }[]>();
 // Cleared per module.
 let ROW_TAIL_PARAMS = new Map<ErrRowT, Map<string, number>>();
 let TAIL_INFO = new Map<number, { owner: string; param: string; tv: string }>();
+// Effect tails (row-variables-design S4c/E1): tail var id → the effect names
+// that flowed into it. A tailed Fn's full effect row is `effects` ∪ its tail's
+// binding. Tails appear only on builtin HOF prelude signatures (E2 user-spelled
+// tails deferred); their ids are quantified, so instantiation remaps them
+// (substVars) and each call site judges its own binding. Bindings ACCUMULATE
+// (effect sets only grow) — the row discipline: accumulate, never unify.
+// Cleared per module.
+let EFFECT_TAILS = new Map<number, string[]>();
+
+// The full effect row of a fn type: its declared names plus whatever its
+// effect tail has absorbed so far.
+function fnEffectRow(f: Type & { tag: "Fn" }): string[] {
+  const tail = f.effectTail !== undefined ? EFFECT_TAILS.get(f.effectTail) : undefined;
+  if (!tail || tail.length === 0) return f.effects;
+  const out = [...f.effects];
+  for (const e of tail) if (!out.includes(e)) out.push(e);
+  return out;
+}
+
+// Fn-unify's only effect rule (S4c): a side that declared a tail absorbs the
+// other side's full row. Effects themselves still never unify — a plain
+// `effects: []` (e.g. a call shape or an ascription) constrains nothing.
+function bindEffectTails(ta: Type & { tag: "Fn" }, tb: Type & { tag: "Fn" }): void {
+  for (const [tailed, other] of [[ta, tb], [tb, ta]] as const) {
+    if (tailed.effectTail === undefined || tailed.effectTail === other.effectTail) continue;
+    const fx = fnEffectRow(other);
+    if (fx.length === 0) continue;
+    const cur = EFFECT_TAILS.get(tailed.effectTail) ?? [];
+    for (const e of fx) if (!cur.includes(e)) cur.push(e);
+    EFFECT_TAILS.set(tailed.effectTail, cur);
+  }
+}
 
 // What a callee's error type contributes to a row. Null = no contribution
 // possible from this type. A Var at the `?` site is DEFERRED and re-judged in
@@ -850,8 +891,19 @@ function buildPrelude(): TypeEnv {
   // Concrete String error (its runtime failure IS the string "empty list") — a
   // free error var here would be the same unsound leniency parseNumber had.
   env.define("listHead",    { forall: [a.id],         type: fn([listA], { tag: "Named", name: "Result", args: [a, str] }) });
-  env.define("listFilter",  { forall: [a.id],         type: fn([listA, fn([a], { tag: "Prim", kind: "Bool" })], listA) });
-  env.define("listMap",     { forall: [a.id, b.id],   type: fn([listA, fn([a], b)], listB) });
+  // Effect tails (S4c/E1, SPEC §12.4): these HOFs carry an effect tail `eff` —
+  // "my effects are exactly my fn argument's". The tail sits on the fn PARAM
+  // (Fn-unify binds it from the argument's row at each call) and on the
+  // builtin's OWN row (so the call is charged with that binding, precisely,
+  // instead of via the conservative latent rule). `identity` (below) carries
+  // the tail on its own row ONLY: it returns its argument without invoking it,
+  // so handing it an effectful fn charges nothing — the case the conservative
+  // rule over-approximated. Other fn-taking builtins (sortBy, listReduce, …)
+  // keep the conservative charge until they're tailed too.
+  const eff = freshVar("eff");
+  const fnE = (params: Type[], ret: Type): Type => ({ tag: "Fn", params, ret, effects: [], effectTail: eff.id });
+  env.define("listFilter",  { forall: [a.id, eff.id],      type: fnE([listA, fnE([a], { tag: "Prim", kind: "Bool" })], listA) });
+  env.define("listMap",     { forall: [a.id, b.id, eff.id], type: fnE([listA, fnE([a], b)], listB) });
 
   // Stream combinators (data-first, so they chain with `|>`)
   const streamA: Type = { tag: "Stream", inner: a };
@@ -890,9 +942,9 @@ function buildPrelude(): TypeEnv {
   // Parallel combinators: ordinary mapper/predicate; pmap/pfilter run each call
   // concurrently on the scheduler and return the resolved list (plain-in/out, so
   // they compose with `|>` and effectful mappers like `oks |> pmap enrich`).
-  env.define("pmap",        { forall: [a.id, b.id],   type: fn([listA, fn([a], b)], listB) });
-  env.define("pfilter",     { forall: [a.id],         type: fn([listA, fn([a], { tag: "Prim", kind: "Bool" })], listA) });
-  env.define("identity",    { forall: [a.id],         type: fn([a], a) });
+  env.define("pmap",        { forall: [a.id, b.id, eff.id], type: fnE([listA, fnE([a], b)], listB) });
+  env.define("pfilter",     { forall: [a.id, eff.id],       type: fnE([listA, fnE([a], { tag: "Prim", kind: "Bool" })], listA) });
+  env.define("identity",    { forall: [a.id, eff.id],       type: fnE([a], a) });
 
   // String ops
   env.define("splitCsv",    { forall: [],             type: fn([str], { tag: "Named", name: "List", args: [str] }) });
@@ -1010,6 +1062,7 @@ function unify(a: Type, b: Type, ctx: Ctx, span: Span, hint?: string): void {
   if (ta.tag === "Fn" && tb.tag === "Fn" && ta.params.length === tb.params.length) {
     for (let i = 0; i < ta.params.length; i++) unify(ta.params[i]!, tb.params[i]!, ctx, span);
     unify(ta.ret, tb.ret, ctx, span);
+    bindEffectTails(ta, tb);  // S4c: a declared effect tail absorbs the other side's row
     return;
   }
 
@@ -1191,6 +1244,7 @@ export function infer(mod: Module, resolutions: ResolutionMap): InferResult {
   CTOR_OWNERS = new Map();
   ROW_TAIL_PARAMS = new Map();
   TAIL_INFO = new Map();
+  EFFECT_TAILS = new Map();
   // Prelude error ADT: the single-ctor pattern (ctor and type share the name).
   ADT_CTORS.set("ParseError", [{ name: "ParseError", payload: null }]);
   registerAliases(mod.decls);
@@ -2007,7 +2061,8 @@ class Inferrer {
               unify(argTs[i + k]!, cur.params[k]!, this.ctx, expr.span, `${fnName} arg ${i + k + 1}`);
             if (n < cur.params.length) {
               // final step is under-applied → yields a smaller function
-              cur = { tag: "Fn", params: cur.params.slice(n), ret: cur.ret, effects: cur.effects };
+              cur = { tag: "Fn", params: cur.params.slice(n), ret: cur.ret, effects: cur.effects,
+                      ...(cur.effectTail !== undefined ? { effectTail: cur.effectTail } : {}) };
               break;
             }
             cur = this.ctx.subst.apply(cur.ret);
@@ -2028,6 +2083,7 @@ class Inferrer {
             params: resolvedFnT.params.slice(argTs.length),
             ret: resolvedFnT.ret,
             effects: resolvedFnT.effects,
+            ...(resolvedFnT.effectTail !== undefined ? { effectTail: resolvedFnT.effectTail } : {}),
           });
         }
 
@@ -2042,8 +2098,10 @@ class Inferrer {
           const sources: string[] = [];
           for (let i = 0; i < argTs.length; i++) {
             const at = this.ctx.subst.apply(argTs[i]!);
-            if (at.tag !== "Fn" || at.effects.length === 0) continue;
-            for (const e of at.effects) if (!latent.includes(e)) latent.push(e);
+            if (at.tag !== "Fn") continue;
+            const row = fnEffectRow(at);   // full row: declared ∪ tail binding (S4c)
+            if (row.length === 0) continue;
+            for (const e of row) if (!latent.includes(e)) latent.push(e);
             const ae = argExprs[i];
             const src = ae && ae.tag === "Var" ? `'${ae.name}'` : "a function argument";
             if (!sources.includes(src)) sources.push(src);
@@ -2076,13 +2134,17 @@ class Inferrer {
           return { tag: "Unknown" };
         }
 
-        const requiredEffects = resolvedFnT.tag === "Fn" ? resolvedFnT.effects : [];
-
         const prevErrCount = this.ctx.diagnostics.length;
         unify(fnT, { tag: "Fn", params: argTs, ret, effects: [] }, this.ctx, expr.span, fnName);
         // If the call itself failed to type-check, return Unknown so downstream
         // uses of this expression's result don't cascade into follow-on errors.
         if (this.ctx.diagnostics.length > prevErrCount) return { tag: "Unknown" };
+
+        // The callee's full effect row: its declared names plus its effect
+        // tail's binding (S4c) — computed AFTER the unify above, which is what
+        // binds the tail from this call's fn arguments. A tailed HOF given an
+        // [io] mapper requires [io] HERE, at this call site only.
+        const requiredEffects = resolvedFnT.tag === "Fn" ? fnEffectRow(resolvedFnT) : [];
 
         // Effect check. Two cases:
         //  (a) the caller declared effects → the callee's effects must be a subset.
@@ -2107,9 +2169,16 @@ class Inferrer {
           }
         }
 
-        // Typed callee (e.g. pmap): latent effects of fn-valued arguments count
-        // exactly as they do for Unknown callees above.
-        checkLatentArgEffects(expr.fn.tag === "Var" ? expr.fn.name : "fn");
+        // Typed callee: latent effects of fn-valued arguments count exactly as
+        // they do for Unknown callees above — UNLESS the callee's signature
+        // carries an effect tail (S4c): a tailed signature accounts for its
+        // arguments' effects explicitly (they were charged through
+        // requiredEffects above, or deliberately not at all for a builtin that
+        // never invokes its argument, e.g. `identity`), so the conservative
+        // rule defers to it. User HOFs never carry tails (E2 deferred), so
+        // they keep the conservative charge.
+        if (!(resolvedFnT.tag === "Fn" && resolvedFnT.effectTail !== undefined))
+          checkLatentArgEffects(expr.fn.tag === "Var" ? expr.fn.name : "fn");
 
         return this.ctx.subst.apply(ret);
       }

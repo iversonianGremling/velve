@@ -10,7 +10,7 @@ export type Type =
   | { tag: "Atom";       name: string }                                   // :ok, :err, :pending …
   | { tag: "Var";        id: number; name?: string }                      // inference variable
   | { tag: "Named";      name: string; args: Type[] }                     // List(a), Result(a,e), Dict(k,v)
-  | { tag: "Fn";         params: Type[]; ret: Type; effects: Effect[] }
+  | { tag: "Fn";         params: Type[]; ret: Type; effects: Effect[]; effectTail?: number }  // effectTail (S4c/E1): a quantified var id — the fn's full effect row is `effects` ∪ whatever the tail absorbed at the call (see EFFECT_TAILS in infer). Present only on builtin HOF signatures; a tailed signature accounts for its fn arguments' effects explicitly, so the conservative §12.4 latent rule defers to it. Check-time only.
   | { tag: "SagaFn";     name: string; params: Type[]; ret: Type }        // first-class saga — `go`/`resume`/call; name doubles as handle type
   | { tag: "Inputmap";   name: string; stream: string }                   // inputmap decl (SPEC §10.5) — nullary-callable (drain loop → Unit), accepted by `help`, layerable with `++` (same-stream only — the stream field makes cross-stream layering a check error). Like SagaFn, type-ness survives aliasing. Name is provenance: any two inputmaps unify.
   | { tag: "Tuple";      elems: Type[] }

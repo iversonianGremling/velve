@@ -1,6 +1,7 @@
 # Row variables (error rows v2 / S4) — design note
 
-*Status: S4a + S4b built (2026-06); S4c (effect tails) remains. This is
+*Status: S4a + S4b + S4c built (2026-06) — the v2 slice family is complete
+(E2 user-spelled effect tails deferred, see §4). This is
 `error-rows-design.md` §6 worked out against the as-built v1 (S1–S3, all
 shipped) to the level where implementation can be sliced. The headline correction to §6's sketch: v2 is
 NOT full row-polymorphic HM. It is **row-polymorphic signatures over the v1
@@ -223,6 +224,42 @@ shape:
    fn without calling it is NOT charged (today's conservative rule errors);
    bad — `map(netGet, urls)` in a pure def still errors, now via the tail
    (the §12.4 fixture keeps failing for the right reason).
+   **✅ BUILT 2026-06** (SPEC §12.4 effect-tails block,
+   `effect_tails_test`/`_bad`). As-built deltas from §4's sketch:
+   - **The tail is an optional id, not a row struct**: `Fn` gains
+     `effectTail?: number` (a quantified var id); `effects: string[]` stays
+     as the closed names and `null`-vs-`[]` never arises (`null` lives only
+     on Ctx). The full row = `effects` ∪ `EFFECT_TAILS[effectTail]`, a
+     module-level accumulate map (the row discipline: bindings only grow,
+     never unify). `substVars` remaps the id, so instantiation gives each
+     call site its own binding — no clone machinery needed because there are
+     no entries to share, just names.
+   - **Binding is eager, not deferred**: Fn-unify's one effect rule — a side
+     that declared a tail absorbs the other side's full row. The per-call
+     charge reads the tail right after the call's unify (which is what bound
+     it), matching the existing eager effect checks rather than S4b's
+     finalize step; an arg still a Var at the call contributes nothing, the
+     same leniency the latent rule already had.
+   - **Tailed = accounted**: the conservative latent rule is skipped exactly
+     when the callee's own Fn carries `effectTail`. The id sits on the OWN
+     row for invoking HOFs (`pmap`, `pfilter`, typed `listMap`/`listFilter`
+     — charged via the binding) and on `identity`'s own row with nothing
+     ever binding it (bare-var param) — the "returns it without calling it"
+     case, now uncharged. The skip keys on the callee's own tail, NOT a
+     param's: a user def whose param absorbed a tailed builtin type still
+     takes the conservative rule (no laundering through forwarding).
+   - **Surface `map`/`filter` stay untailed**: they are resolve/eval
+     builtins with no infer-side type (Unknown callee) — the conservative
+     fallback governs them byte-identically (`hof_effects_bad` cases 1–3);
+     only its `pmap` case now fails via the tail (same count, right reason).
+     The prelude's `listMap`/`listFilter` typed forms got tails but are not
+     reachable from the surface (not in resolve's BUILTINS).
+   - Residuals: other fn-taking builtins (`sortBy`, `listReduce`,
+     `streamMap`, …) keep the conservative charge until tailed (mechanical);
+     partial/over-application paths preserve the tail on the residual fn but
+     still skip effect checks (pre-existing); an aliased builtin
+     (`m = pmap`) shares one tail binding across its uses
+     (generalize doesn't re-quantify tail ids — conservative union, sound).
 4. **Out of scope for v2**: anonymous union pins (unchanged from v1), open
    rows escaping a module boundary (pins close them or error), prose tails,
    E2 user-spelled effect rows, and the eval-side mixed-arity residual

@@ -46,7 +46,7 @@ means there is a green fixture exercising it under `checker/`.
 | Inferred error rows (`Result T _`) | ✅ v1 built (S1+S2) | §2.13, `error_rows{,_match}_test`/`_bad`: `?` accumulates a ctor row with zero threading; named-ADT pins check inclusion (escapees listed); rows are directly matchable with exhaustiveness over the ACTUAL raised set ("can never match" included); recursion among `_` defs rejected; shared ctor names resolve by expected type (`ctor_shadow_test`/`_bad`) — declaration order no longer matters. v2 row variables built (S4b, `row_tails_test`/`_bad`): generic row defs with per-call-site rows; a callback's error var is a tail. |
 | User generics (`def idy(x: a): a`) | ✅ Built | §2.12, `generics_test`/`_bad`: implicit type vars in def ascriptions — quantified at call sites (each call instantiates fresh), rigid skolems inside the body. Was a silent trap: the annotation parsed but `idy(5)` errored. |
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
-| Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. Conservative (no effect rows yet). |
+| Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | `animated` modifier / `frames` clock | ❌ Not built | Track C. |
@@ -580,8 +580,8 @@ def attempt(f: (String -> Result Number e)): Result Number e
   HOF's body where an unascribed param would have absorbed them.
 - Effects on a function-type ascription are not yet spellable — the lowered
   type carries an empty effect list, and the conservative latent-argument
-  rule (§12.4) governs as before. Effect tails are S4c
-  (`docs/row-variables-design.md` §4).
+  rule (§12.4) governs user HOFs as before. Builtin HOF signatures carry
+  effect *tails* since S4c (§12.4; user-spelled tails are E2, deferred).
 
 ---
 
@@ -2199,15 +2199,12 @@ def fetchAll(urls: List(String)): Effect [io] List(String)
   map(netGet, urls)            -- ok: [io] is declared where netGet is supplied
 ```
 
-The rule is *conservative*: the checker assumes a callee may invoke any
-function it is handed (every current HOF — `map`, `filter`, `pmap`, … —
-does). Without effect rows there is no way for a HOF's signature to say "I
-don't call my argument", so a HOF that merely stores a function still charges
-its effects to the call site. Notes on the as-built shape (2026-06,
-`hof_effects_test`/`_bad`):
+The rule is *conservative* for callees whose signature says nothing: the
+checker assumes such a callee may invoke any function it is handed. Notes on
+the as-built shape (2026-06, `hof_effects_test`/`_bad`):
 
-- The rule fires whether or not the callee itself is typed — an untyped
-  builtin (`map`) and a typed one (`pmap`) charge latent argument effects the
+- The conservative rule fires whether or not the callee itself is typed — an
+  untyped builtin (`map`) and a user HOF charge latent argument effects the
   same way. Aliasing does not launder: `g = netGet` then `map(g, urls)` still
   requires `[io]`, because the alias's type carries the effects.
 - Lambdas have no latent effects of their own: a lambda body is checked
@@ -2217,10 +2214,29 @@ its effects to the call site. Notes on the as-built shape (2026-06,
 - Edition gating matches §12.3: a *pure* caller supplying an effectful
   function errors in 2026.6+ and warns in the baseline edition; a caller with
   the *wrong* declared pool errors in every edition.
-- The precise (non-conservative) story is **effect rows** — `map`'s effect
+- The precise (non-conservative) story is **effect rows** — a HOF's effect
   becomes a row variable bound to its argument's row. That is the same
-  row-inference mechanism as inferred error sets (north-star §4); when it
-  lands, this rule becomes its degenerate closed-row case.
+  row-inference mechanism as inferred error sets (north-star §4); the
+  conservative rule is its degenerate closed-row case.
+
+**Effect tails (S4c/E1, 2026-06, `effect_tails_test`/`_bad`).** The precise
+story is built for *builtin* HOF signatures: `pmap`/`pfilter` (and the typed
+`listMap`/`listFilter` forms) carry an effect **tail** — a quantified var on
+both the fn parameter and the builtin's own effect row, meaning "my effects
+are exactly my fn argument's". Fn-unify binds the tail from the argument's
+row at each call (effects themselves still never unify; a plain `effects: []`
+constrains nothing), and the per-call effect check charges the resolved row —
+so the same builtin is pure at one call (`xs |> pmap(double)`) and requires
+`[io]` at another (`urls |> pmap(netGet)`), per call site. A tailed signature
+*accounts for* its arguments' effects explicitly, so the conservative latent
+rule defers to it — which is what lets `identity` (tailed on its own row
+only: it returns its argument without invoking it) accept an effectful fn
+from a pure def with **no charge**, closing the conservative rule's one false
+positive. No laundering: the returned value still carries its row, and
+calling it remains the ordinary per-call check. Untyped builtins (`map`,
+`filter`) and user HOFs carry no tails — the conservative rule governs them
+unchanged; user-spelled effect tails are E2, deferred
+(`docs/row-variables-design.md` §4).
 
 ---
 
