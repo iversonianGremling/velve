@@ -215,6 +215,10 @@ ascription at all.*
    (function-type ascriptions — grammar/lower; the checker is already
    TRFn-ready), S4b (row tails: instantiate-time clones + the existing
    step-0.5 judging), S4c (effect tails on builtin HOF signatures).
+   **S4a + S4b ✅ BUILT 2026-06** (`fn_type_test`/`_bad`,
+   `row_tails_test`/`_bad`; SPEC §2.14 and the §2.13 v2 block): the error
+   side of v2 is shipped — generic row defs, per-call-site rows, tails. S4c
+   (effects) remains.
 
 Each slice keeps the corpus baselines untouched: `_` is additive, and no
 existing fixture uses it.

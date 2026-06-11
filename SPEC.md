@@ -43,7 +43,7 @@ means there is a green fixture exercising it under `checker/`.
 | Accessibility-as-proof (contrast) | ✅ Built (opt-in) | `accessibility_test`; **off by default, never forced** — turns on only if a project defines `OnSurface = Color where contrast(value, surface) >= Lc`, then checked at compile time against the resolved background (APCA Lc in `constEval`). |
 | Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. (`parseNumber` now resolves + runs, 2026-06.) |
 | Module-qualified resolution (`Math.sqrt`) | ✅ Built | §5.5, `qualified_test`/`_bad`: capitalized stdlib namespaces (`Math`, `String`, `Json`, …) are ambient — no import needed, members fully typed, user bindings shadow. Lowercase/path forms stay import-only. |
-| Inferred error rows (`Result T _`) | ✅ v1 built (S1+S2) | §2.13, `error_rows{,_match}_test`/`_bad`: `?` accumulates a ctor row with zero threading; named-ADT pins check inclusion (escapees listed); rows are directly matchable with exhaustiveness over the ACTUAL raised set ("can never match" included); recursion among `_` defs rejected; shared ctor names resolve by expected type (`ctor_shadow_test`/`_bad`) — declaration order no longer matters. v2 = row variables. |
+| Inferred error rows (`Result T _`) | ✅ v1 built (S1+S2) | §2.13, `error_rows{,_match}_test`/`_bad`: `?` accumulates a ctor row with zero threading; named-ADT pins check inclusion (escapees listed); rows are directly matchable with exhaustiveness over the ACTUAL raised set ("can never match" included); recursion among `_` defs rejected; shared ctor names resolve by expected type (`ctor_shadow_test`/`_bad`) — declaration order no longer matters. v2 row variables built (S4b, `row_tails_test`/`_bad`): generic row defs with per-call-site rows; a callback's error var is a tail. |
 | User generics (`def idy(x: a): a`) | ✅ Built | §2.12, `generics_test`/`_bad`: implicit type vars in def ascriptions — quantified at call sites (each call instantiates fresh), rigid skolems inside the body. Was a silent trap: the annotation parsed but `idy(5)` errored. |
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. Conservative (no effect rows yet). |
@@ -504,8 +504,46 @@ As built (2026-06, `error_rows_test`/`_bad`):
   contributable is rejected ("never resolved — annotate the callee or pin
   this def"; "resolved to 'Number', which has no named constructors"); only
   `Unknown`, the checker's explicit give-up type, stays lenient.
-- v1 residuals: guarded arms conservatively cover nothing. Row *variables*
-  (HOF error/effect polymorphism) are deliberately v2.
+- v1 residuals: guarded arms conservatively cover nothing.
+
+**Row variables (v2/S4b, 2026-06, `row_tails_test`/`_bad`;
+`docs/row-variables-design.md` §3).** A `Result T _` def now composes with
+§2.12 generics, and a type variable in a callback's error slot (§2.14) is a
+**tail**: each call site's row is the def's own raises ∪ whatever the
+argument's error type turned out to be *there*.
+
+```
+def step(f: (String -> Result Number e)): Result Number _
+  v = f("ok")?          -- row += e@site (a TAIL, resolved per call)
+  w = lookup("ok")?     -- row ⊇ row(lookup)              (as v1)
+  if v + w > 0 then Ok(v + w) else Error(Boom(v))   -- row += Boom (as v1)
+
+def viaHttp(): Result Number HttpError    -- row here: {Boom} ∪ row(lookup) ∪ ctors(HttpError)
+  v = step(fetchHttp)?
+  Ok(v)
+
+def viaDb(): Result Number DbError        -- the SAME def, pinned differently at THIS call
+  v = step(fetchDb)?
+  Ok(v)
+```
+
+- **Union and extension both work** — the two shapes plain `e`-generics
+  (§2.14's pass-through) cannot express: thread `f`'s errors AND `g`'s
+  through one row, or thread `f`'s errors AND add your own raises on top.
+- **Per-call-site precision.** Each use of a generic row def judges a clone
+  of the row: pins and row-matches see *this* call's set, so a match over
+  `step(fetchHttp)` is exhaustive over `HttpError`'s ctors plus the def's own
+  raises — no arms demanded for errors another call site would add.
+- **Generic non-HOF row defs are callable** (`def wrap(x: a): Result a _` at
+  `Number` and `String` in one module) — v1's row branch was monomorphic and
+  every such call failed with "expected a, got …".
+- **Open rows are errors at the boundary.** A tail that never resolves (e.g.
+  the argument is a multi-clause def, typed per-clause) is reported at the
+  call ("the inferred error row of 'step' is open at this call — the error
+  type 'e' of parameter 'f' never resolved"), and a match over an open row
+  requires a catch-all arm — its entry set is only a lower bound.
+- The surface is unchanged: `_` still means "infer my row"; a tail is an
+  ordinary type variable in the ascription, with nothing new to spell.
 
 ### 2.14 Function-type ascriptions
 

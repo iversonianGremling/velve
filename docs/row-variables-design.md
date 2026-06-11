@@ -1,8 +1,8 @@
 # Row variables (error rows v2 / S4) — design note
 
-*Status: design (2026-06). Not built. This is `error-rows-design.md` §6 worked
-out against the as-built v1 (S1–S3, all shipped) to the level where
-implementation can be sliced. The headline correction to §6's sketch: v2 is
+*Status: S4a + S4b built (2026-06); S4c (effect tails) remains. This is
+`error-rows-design.md` §6 worked out against the as-built v1 (S1–S3, all
+shipped) to the level where implementation can be sliced. The headline correction to §6's sketch: v2 is
 NOT full row-polymorphic HM. It is **row-polymorphic signatures over the v1
 flow core** — tails are quantified type vars judged by the machinery v1
 already has (ROW_DEPS fixpoint + `pendingRowContribs` step 0.5), and the only
@@ -192,6 +192,30 @@ shape:
    the pin (with fix-its naming it), an unresolved tail (HOF arg whose error
    type never resolves), an open-row match without catch-all. Also closes
    layer 2: a generic NON-HOF row def (`wrap(x: a)`) becomes callable.
+   **✅ BUILT 2026-06** (SPEC §2.13 v2 block, `row_tails_test`/`_bad`).
+   As-built deltas from §3's sketch:
+   - **Tail registration is deferred, not instantiate-time.** A caller can be
+     inferred BEFORE the row def's body has recorded its tails (defs check in
+     module order), so reading `base.tails` eagerly at instantiate would miss
+     them. Instead `instantiateAtUse` records `{clone, base, forall-id →
+     fresh-var map, span}` on a `pendingCloneTails` list, and a new finalize
+     step **0.4** expands it — after all bodies, before 0.5 — into ordinary
+     `pendingRowContribs` entries. Judging is step 0.5 verbatim, as designed.
+   - The skolem test is a lookup, not a `rowContribution` rewrite: a
+     module-level `ROW_TAIL_PARAMS` (row → type-param name → quantified id)
+     feeds a `tailContribution(row, t)` check tried BEFORE `rowContribution`
+     at the three contribution sites (unify's row case, Propagate regime (a),
+     and step 0.5 itself, for a deferred Var that resolves to a skolem).
+     Foreign zero-arg names keep the opaque single-ctor fallback untouched.
+   - Openness propagates with closure: a row ⊇ an open clone is itself open
+     (one extra flag in the step-2 fixpoint), and open rows suppress
+     "can never match" arm errors — the entry set is only a lower bound.
+   - Residual: a row def that FORWARDS its callback to another row def
+     without invoking it (`def outer(f) -> inner(f)?` with no direct `f()`
+     call) resolves the inner clone's tail to the outer def's skolem one
+     level deep; that lands as the v1 opaque pseudo-ctor, not a tail.
+     Two-level tail threading is out of scope (call the callback directly,
+     or pin the intermediate def).
 3. **S4c — effect tails E1 (builtins).** §4: effect-tailed signatures for
    `map`/`filter`/`pmap`, Fn-unify learns tails, conservative rule kept as
    Unknown fallback. Fixtures: green — a pure def maps a pure fn (allowed

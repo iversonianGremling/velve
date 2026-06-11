@@ -470,7 +470,20 @@ dimension machinery generalize?
   grammar + lower only. Pass-through error polymorphism proven green under
   a pin; the bad fixture pins 4 boundary errors (arity, param type, non-fn,
   wrong pin through `e`) that unascribed HOF params could never surface.
-  Effects on the ascription stay `[]` until S4c. Next: S4b row tails.
+  Effects on the ascription stay `[]` until S4c.
+  **S4b BUILT 2026-06** (SPEC §2.13 v2 block, `row_tails_test`/`_bad`): row
+  defs compose with generics (layer 2 closed — `wrap(x: a)` callable at two
+  types); a callback's error var is a TAIL recorded on the row instead of a
+  bogus pseudo-ctor (layer 3 closed); every use of a generic row def judges
+  a per-call-site CLONE (⊇ base), so the same def pins as `HttpError` at one
+  call and `DbError` at another, and a row-match is exhaustive over THIS
+  call's set. Union + extension both proven green. As-built delta: tail
+  registration defers to a new finalize step 0.4 (`pendingCloneTails`) —
+  callers can check before the def's body has recorded its tails; judging is
+  step 0.5 verbatim. Open rows (tail never resolved) error at the call and
+  demand a catch-all in matches. Residual: forwarding a callback through a
+  second row def without invoking it leaves the inner tail as an opaque
+  pseudo-ctor (two-level threading out of scope). Next: S4c effect tails.
 - [x] 🟡 **User generics** (found during the error-ADT slice, closed 2026-06;
   SPEC §2.12, `generics_test`/`_bad`): `def idy(x: a): a` parsed but the type
   var was a rigid `Named "a"` never generalized — `idy(5)` was a type error,

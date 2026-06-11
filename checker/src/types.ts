@@ -19,7 +19,7 @@ export type Type =
   | { tag: "Async";      inner: Type }                                    // Async(a) §2.10
   | { tag: "Stream";     inner: Type }                                    // Stream(a) §2.9
   | { tag: "Refinement"; base: Type; pred: string; args?: (Expr | null)[] }  // transparent to `base`; `pred` is the refinement type's name (look up predicate AST in REFINEMENTS). `args` carries dependent value-arguments aligned with the refinement's params, e.g. InBounds(listLength xs) → [listLength xs]
-  | { tag: "ErrRow";     entries: RowEntry[]; owner: string }             // inferred error row (error-rows-design v1): the ctor set a `Result T _` def raises. ONE shared instance per def — `?` accumulates entries in place; rows never unify, they are inclusion-checked at pins. Check-time only (eval never sees it).
+  | { tag: "ErrRow";     entries: RowEntry[]; owner: string; tails: number[] }  // inferred error row (error-rows-design v1, row tails v2/S4b): the ctor set a `Result T _` def raises. ONE shared instance per def — `?` accumulates entries in place; rows never unify, they are inclusion-checked at pins. `tails` are the def's quantified type vars whose bindings flow into the row (a callback's error type); each USE of a tailed def gets a per-call-site clone whose tails are judged after inference. Check-time only (eval never sees it).
   | { tag: "Unknown" }                                                    // pre-inference placeholder
 
 // One raised constructor in an inferred error row. `prose: true` marks the

@@ -130,6 +130,40 @@ function substVars(t: Type, sub: Map<number, Type>): Type {
   }
 }
 
+// Row tails (S4b): instantiation of a generic row def swaps the def's BASE
+// row for a per-call-site clone. These mirror substVars' traversal; ErrRow
+// identity is otherwise sacred (Subst.apply never rebuilds a row) —
+// instantiateAtUse is the ONE place a row is ever rebuilt.
+function findRow(t: Type): (Type & { tag: "ErrRow" }) | null {
+  switch (t.tag) {
+    case "ErrRow":     return t;
+    case "Named":      for (const a of t.args) { const r = findRow(a); if (r) return r; } return null;
+    case "Fn": case "SagaFn":
+                       for (const p of t.params) { const r = findRow(p); if (r) return r; } return findRow(t.ret);
+    case "Tuple":      for (const e of t.elems) { const r = findRow(e); if (r) return r; } return null;
+    case "Record":     for (const f of t.fields) { const r = findRow(f.type); if (r) return r; } return null;
+    case "Tainted": case "Async": case "Stream": return findRow(t.inner);
+    case "Refinement": return findRow(t.base);
+    default:           return null;
+  }
+}
+
+function replaceRow(t: Type, from: Type, to: Type): Type {
+  switch (t.tag) {
+    case "ErrRow":     return t === from ? to : t;
+    case "Named":      return { ...t, args: t.args.map(a => replaceRow(a, from, to)) };
+    case "Fn":         return { ...t, params: t.params.map(p => replaceRow(p, from, to)), ret: replaceRow(t.ret, from, to) };
+    case "SagaFn":     return { ...t, params: t.params.map(p => replaceRow(p, from, to)), ret: replaceRow(t.ret, from, to) };
+    case "Tuple":      return { ...t, elems: t.elems.map(e => replaceRow(e, from, to)) };
+    case "Record":     return { ...t, fields: t.fields.map(f => ({ ...f, type: replaceRow(f.type, from, to) })) };
+    case "Tainted":    return { ...t, inner: replaceRow(t.inner, from, to) };
+    case "Async":      return { ...t, inner: replaceRow(t.inner, from, to) };
+    case "Stream":     return { ...t, inner: replaceRow(t.inner, from, to) };
+    case "Refinement": return { ...t, base: replaceRow(t.base, from, to) };
+    default:           return t;
+  }
+}
+
 // ── Type environment ──────────────────────────────────────────────────────────
 
 class TypeEnv {
@@ -190,6 +224,13 @@ let ROW_DEPS: [ErrRowT, ErrRowT][] = [];
 // judged in finalizeRows once the substitution shows what the context demanded)
 // instead of last-declaration-wins. Cleared per module.
 let CTOR_OWNERS = new Map<string, { typeName: string; scheme: Scheme }[]>();
+// Row tails (row-variables-design S4b): a row def's declared type params
+// (name → quantified var id), so a body skolem reaching the row is recorded
+// as a TAIL instead of fabricating a bogus pseudo-ctor named after the type
+// variable. TAIL_INFO carries the diagnostic labels per quantified id.
+// Cleared per module.
+let ROW_TAIL_PARAMS = new Map<ErrRowT, Map<string, number>>();
+let TAIL_INFO = new Map<number, { owner: string; param: string; tv: string }>();
 
 // What a callee's error type contributes to a row. Null = no contribution
 // possible from this type. A Var at the `?` site is DEFERRED and re-judged in
@@ -211,6 +252,21 @@ function rowContribution(t: Type): RowEntry[] | null {
   if (t.tag === "Atom")
     return [{ name: `:${t.name}`, payload: null, prose: true }];
   return null;
+}
+
+// S4b: a zero-arg Named matching one of the row def's OWN type params is a
+// TAIL — the quantified error var of (typically) a callback parameter — not
+// an opaque single-ctor error type. Record its quantified id on the row;
+// per-call-site clones judge what each tail became once the module is
+// complete (finalizeRows steps 0.4/0.5). Returns false for any name that is
+// not a type param of this row's def, so the opaque fallback above is
+// untouched for genuinely foreign names.
+function tailContribution(row: ErrRowT, t: Type): boolean {
+  if (t.tag !== "Named" || t.args.length !== 0) return false;
+  const id = ROW_TAIL_PARAMS.get(row)?.get(t.name);
+  if (id === undefined) return false;
+  if (!row.tails.includes(id)) row.tails.push(id);
+  return true;
 }
 
 function addRowEntries(row: ErrRowT, entries: RowEntry[]): boolean {
@@ -930,6 +986,7 @@ function unify(a: Type, b: Type, ctx: Ctx, span: Span, hint?: string): void {
     }
     const row = (ta.tag === "ErrRow" ? ta : tb) as ErrRowT;
     const other = ta.tag === "ErrRow" ? tb : ta;
+    if (tailContribution(row, other)) return;  // S4b: a body skolem is a tail, not an opaque error
     const entries = rowContribution(other);
     if (entries) addRowEntries(row, entries);
     return;
@@ -1132,6 +1189,8 @@ export function infer(mod: Module, resolutions: ResolutionMap): InferResult {
   ADT_CTORS = new Map();
   ROW_DEPS = [];
   CTOR_OWNERS = new Map();
+  ROW_TAIL_PARAMS = new Map();
+  TAIL_INFO = new Map();
   // Prelude error ADT: the single-ctor pattern (ctor and type share the name).
   ADT_CTORS.set("ParseError", [{ name: "ParseError", payload: null }]);
   registerAliases(mod.decls);
@@ -1234,15 +1293,31 @@ class Inferrer {
               // `Result T _`: this def owns an error row. One shared instance —
               // `?` in the body accumulates into it; callers see it through
               // the return type and pin-check it at their own `?` sites.
-              const row: ErrRowT = { tag: "ErrRow", entries: [], owner: decl.name };
+              const row: ErrRowT = { tag: "ErrRow", entries: [], owner: decl.name, tails: [] };
               this.rowByDef.set(decl.name, row);
               this.rowSpans.set(decl.name, decl.span);
+              // S4b: compose with user generics — generalizeSig's rule, with
+              // `_` additionally bound to the row. Type params quantify here;
+              // the clause body still resolves them as rigid skolems, and a
+              // skolem reaching the row is recorded as a TAIL (its id, via
+              // ROW_TAIL_PARAMS) rather than a pseudo-ctor.
               const tp = new Map<string, Type>([["_", row]]);
+              const ids: number[] = [];
+              const byName = new Map<string, number>();
+              for (const n of refTypeVars([...clause.params.map(p => p.ascription!), clause.ret])) {
+                const v = freshVar(n);
+                tp.set(n, v);
+                ids.push(v.id);
+                byName.set(n, v.id);
+                const carrier = clause.params.find(p => refTypeVars([p.ascription!]).includes(n));
+                TAIL_INFO.set(v.id, { owner: decl.name, param: carrier ? paramName(carrier) || "_" : "_", tv: n });
+              }
+              if (byName.size) ROW_TAIL_PARAMS.set(row, byName);
               const fnT: Type = { tag: "Fn",
                 params: clause.params.map(p => resolveRef(p.ascription!, tp, this.sagaRets)),
                 ret: resolveRef(clause.ret, tp, this.sagaRets),
                 effects: clause.effects };
-              env.define(decl.name, mono(fnT));
+              env.define(decl.name, { forall: ids, type: fnT });
               break;
             }
             // If the ascriptions mention type variables, register the
@@ -1823,7 +1898,7 @@ class Inferrer {
             return allFn ? { tag: "Fn", params: [payload!], ret, effects: [] } : ret;
           }
         }
-        if (s) return instantiate(s);
+        if (s) return this.instantiateAtUse(s, expr.span);
         // Ambient stdlib namespace — `Math.sqrt(x)` with no import (SPEC §5.5).
         // Fires only when the name is unbound, so user bindings shadow modules.
         const mod = STDLIB_MODULE_NAMES.has(expr.name) ? stdlibModule(expr.name) : null;
@@ -2257,6 +2332,10 @@ class Inferrer {
           //     into this def's row instead of unifying error types.
           if (eRes.tag === "ErrRow") {
             if (eRes !== ownRow) ROW_DEPS.push([ownRow, eRes]);  // row ⊇ callee row
+          } else if (tailContribution(ownRow, eRes)) {
+            // (S4b) the callee's error is one of this def's own type params —
+            // a TAIL, resolved per call site (finalizeRows steps 0.4/0.5),
+            // not an opaque error name.
           } else {
             const entries = rowContribution(eRes);
             if (entries) addRowEntries(ownRow, entries);
@@ -2773,7 +2852,31 @@ class Inferrer {
   // when the line was checked (forward call to an unannotated def). Re-judged
   // after the module completes; a type that never becomes contributable is an
   // error — a silently under-approximated row would let escapees through pins.
-  readonly pendingRowContribs: { row: ErrRowT; errType: Type; span: Span }[] = [];
+  // S4b: a clone-tail entry carries `tail` (diagnostic labels) and gets the
+  // call-sited wording; an unresolvable tail also marks its row OPEN.
+  readonly pendingRowContribs: { row: ErrRowT; errType: Type; span: Span; tail?: { owner: string; param: string; tv: string } }[] = [];
+  // S4b: per-call-site clones of generic row defs. Which quantified ids are
+  // tails only settles once the def's BODY has been inferred (tails fill
+  // during inference, and a caller may be checked first), so each use records
+  // its forall-id → fresh-var map and the tails are expanded in step 0.4.
+  readonly pendingCloneTails: { clone: ErrRowT; base: ErrRowT; sub: Map<number, Type>; span: Span }[] = [];
+
+  // S4b: scheme instantiation at a USE site. For a generic row def the row in
+  // the scheme is the def's BASE row (identity-shared, never substituted);
+  // each use gets a CLONE — empty, ⊇ base via ROW_DEPS — so pins and matches
+  // judge the row of THIS call (base entries ∪ what the tails became here),
+  // not the union over every call. Schemes without a row take the plain path.
+  private instantiateAtUse(s: Scheme, span: Span): Type {
+    if (s.forall.length === 0) return s.type;
+    const base = findRow(s.type) as ErrRowT | null;
+    if (!base) return instantiate(s);
+    const sub = new Map<number, Type>();
+    for (const id of s.forall) sub.set(id, freshVar());
+    const clone: ErrRowT = { tag: "ErrRow", entries: [], owner: base.owner, tails: [] };
+    ROW_DEPS.push([clone, base]);
+    this.pendingCloneTails.push({ clone, base, sub, span });
+    return replaceRow(substVars(s.type, sub), base, clone);
+  }
 
   finalizeRows(): void {
     // 0. Resolve deferred shared-ctor uses (S3). Must run BEFORE row closure:
@@ -2797,6 +2900,24 @@ class Inferrer {
         unify(u.ret, ct, this.ctx, u.span, label);
       }
     }
+    // 0.4 Expand clone tails (S4b): every use of a tailed row def registered
+    //     its forall-id → fresh-var map; the fresh var for each BASE tail was
+    //     bound by that call's ordinary argument unification, so it now shows
+    //     what the tail became there. Each becomes a step-0.5 entry — judged
+    //     by the machinery below, verbatim. Runs after all bodies (tails fill
+    //     during inference) and before closure (a tail that resolved to a row
+    //     must add its ⊇-edge first). A row whose tail never resolves to an
+    //     enumerable error set is OPEN: its entry set is only a lower bound.
+    const openRows = new Set<ErrRowT>();
+    for (const c of this.pendingCloneTails) {
+      for (const tid of c.base.tails) {
+        const tv = c.sub.get(tid);
+        if (!tv) continue;
+        if (tv.tag === "Var") c.clone.tails.push(tv.id);
+        const tail = TAIL_INFO.get(tid);
+        this.pendingRowContribs.push({ row: c.clone, errType: tv, span: c.span, ...(tail ? { tail } : {}) });
+      }
+    }
     // 0.5 Re-judge deferred row contributions (S3 polish): the substitution now
     //     shows what each late callee error type became. Runs before the cycle
     //     check and closure so a Var that resolved to another row adds a real
@@ -2808,10 +2929,22 @@ class Inferrer {
         if (resolved !== c.row) ROW_DEPS.push([c.row, resolved]);
         continue;
       }
+      // S4b: a deferred Var that resolved to one of the def's own type params
+      // is a tail recorded late, not a contribution.
+      if (tailContribution(c.row, resolved)) continue;
       const entries = rowContribution(resolved);
       if (entries) { addRowEntries(c.row, entries); continue; }
-      if (resolved.tag === "Unknown") continue;  // the explicit give-up type stays lenient
-      if (resolved.tag === "Var")
+      if (resolved.tag === "Unknown") {           // the explicit give-up type stays lenient
+        if (c.tail) openRows.add(c.row);          // …but an unknowable tail leaves the row open
+        continue;
+      }
+      if (c.tail) {
+        openRows.add(c.row);
+        if (resolved.tag === "Var")
+          err(this.ctx, c.span, `the inferred error row of '${c.tail.owner}' is open at this call — the error type '${c.tail.tv}' of parameter '${c.tail.param}' never resolved; annotate the argument's error type`);
+        else
+          err(this.ctx, c.span, `the error type '${c.tail.tv}' of parameter '${c.tail.param}' resolved to '${typeToString(resolved)}' at this call, which has no named constructors; use a named error ADT`);
+      } else if (resolved.tag === "Var")
         err(this.ctx, c.span, `the inferred error row of '${c.row.owner}' cannot include this '?' — the callee's error type never resolved; annotate the callee's return type, or pin '${c.row.owner}' with a named error ADT`);
       else
         err(this.ctx, c.span, `the inferred error row of '${c.row.owner}' cannot include this '?' — the callee's error type resolved to '${typeToString(resolved)}', which has no named constructors; use a named error ADT, or pin '${c.row.owner}'`);
@@ -2836,12 +2969,14 @@ class Inferrer {
         if (span) err(this.ctx, span, `recursive inferred error set: '${row.owner}' is in a cycle of 'Result _' defs — pin one def in the cycle with a named error ADT`);
       }
     }
-    // 2. Close rows over the ⊇-edges (fixpoint union).
+    // 2. Close rows over the ⊇-edges (fixpoint union). Openness propagates
+    //    with the entries (S4b): a row ⊇ an open row is itself open.
     let changed = true;
     while (changed) {
       changed = false;
       for (const [target, source] of ROW_DEPS) {
         if (addRowEntries(target, source.entries)) changed = true;
+        if (openRows.has(source) && !openRows.has(target)) { openRows.add(target); changed = true; }
       }
     }
     // 3. Pin checks: every entry of the consumed row must be a constructor of
@@ -2890,6 +3025,13 @@ class Inferrer {
     //    ever be covered by a catch-all.
     for (const m of this.pendingRowMatches) {
       const rowStr = typeToString(m.row);
+      // S4b: an OPEN row's entry set is only a lower bound — no arm can be
+      // called unreachable, and exhaustiveness requires a catch-all arm.
+      if (openRows.has(m.row)) {
+        if (!m.catchall)
+          err(this.ctx, m.span, `match on inferred error row ${rowStr} cannot be exhaustive — the row is open (an error tail never resolved at this call); add a catch-all arm`);
+        continue;
+      }
       for (const arm of m.matched) {
         if (!m.row.entries.some(e => e.name === arm.name))
           err(this.ctx, arm.span, `'${arm.name}' is not in the inferred error row ${rowStr} — this branch can never match`);

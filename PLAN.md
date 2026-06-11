@@ -401,7 +401,18 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       checker was TRFn-ready. Green: pass-through error polymorphism under
       a pin, n-ary, thunk, return-slot closure. Bad: 4 boundary errors
       unascribed params could never surface. Zero corpus impact.
-      Next: S4b row tails.
+- [x] **Row tails (S4b)**: ✅ DONE (2026-06, SPEC §2.13 v2 block,
+      `row_tails_test`/`_bad`). The v2 core: row defs compose with generics,
+      a callback's error var is a TAIL on the row, and each use judges a
+      per-call-site clone (⊇ base) — the same def pins differently at each
+      call, row-matches are exhaustive over THIS call's set, and generic
+      non-HOF row defs are callable (layers 2+3 closed). Union + extension
+      green; bad fixture pins 4 errors (tail escapee with covering-pin
+      fix-it, unresolved tail ×2, open-row match without catch-all).
+      As-built delta: tails register via a deferred finalize step 0.4
+      (callers can check before the def's body fills its tails); judging is
+      the existing step 0.5 verbatim. Zero corpus impact.
+      Next: S4c effect tails on builtin HOF signatures.
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside

@@ -1,0 +1,110 @@
+@edition "2026.6"
+
+-- Row tails (S4b, docs/row-variables-design.md §3): a `Result T _` def whose
+-- signature mentions type variables is now GENERIC, and a type var in a
+-- callback's error slot is a TAIL — each call site's row is the def's own
+-- raises ∪ whatever the argument's error type turned out to be THERE.
+-- v1 made this unspellable twice over: row defs were monomorphic (any type
+-- var was accidentally rigid), and a skolem reaching a row fabricated a
+-- bogus pseudo-ctor named after the variable.
+
+type AppError
+  = HTimeout Number
+  | HRefused
+  | DbMissing
+  | DbLocked
+  | Boom Number
+
+type HttpError
+  = HTimeout Number
+  | HRefused
+
+type DbError
+  = DbMissing
+  | DbLocked
+
+type CalcError
+  = Boom Number
+
+def fetchA(u: String): Result Number HttpError
+  if u == "ok" then Ok(10) else Error(HRefused)
+
+def parseB(s: String): Result Number DbError
+  if s == "ok" then Ok(2) else Error(DbMissing)
+
+-- a plain v1 `_` def — a tailed def consuming it proves rows-⊇-rows composes
+def lookup(k: String): Result Number _
+  if k == "ok" then Ok(1) else Error(DbLocked)
+
+-- ONE tail: row(onlyF)@site = e@site, nothing else
+def onlyF(f: (String -> Result Number e)): Result Number _
+  v = f("ok")?
+  Ok(v + 1)
+
+-- UNION: two callbacks' error types thread through one row
+def both(f: (String -> Result Number e), g: (String -> Result Number h)): Result Number _
+  a = f("ok")?
+  b = g("ok")?
+  Ok(a + b)
+
+-- EXTENSION: the callback's errors PLUS this def's own raises
+-- row(step)@site = {Boom} ∪ row(lookup) ∪ e@site
+def step(f: (String -> Result Number e)): Result Number _
+  v = f("ok")?
+  w = lookup("ok")?
+  if v + w > 0 then Ok(v + w) else Error(Boom(v))
+
+-- the per-call-site payoff: the SAME def, pinned DIFFERENTLY at each call.
+-- v1 had one shared row per def — these two pins were mutually exclusive.
+def viaHttp(): Result Number HttpError
+  v = onlyF(fetchA)?
+  Ok(v)
+
+def viaDb(): Result Number DbError
+  v = onlyF(parseB)?
+  Ok(v)
+
+def runBoth(): Result Number AppError
+  v = both(fetchA, parseB)?
+  Ok(v)
+
+def runStep(): Result Number AppError
+  v = step(fetchA)?
+  Ok(v)
+
+-- layer 2 closed: a generic NON-HOF row def is callable at two types.
+-- v1's mono row branch made every call fail with "expected a, got <T>".
+def wrap(x: a): Result a _
+  w = lookup("ok")?
+  if w > 0 then Ok(x) else Error(Boom(w))
+
+def usePoly(): Result String AppError
+  n = wrap(5)?
+  s = wrap("hi")?
+  if n > 0 then Ok(s) else Ok("z")
+
+-- row-match over a CLOSED clone: exhaustive over {HTimeout, HRefused} only —
+-- no DbError arms demanded, because THIS call's tail resolved to HttpError.
+def describe(): String
+  match onlyF(fetchA)
+    | Ok(v) -> "ok {v}"
+    | Error(HTimeout(n)) -> "timeout {n}"
+    | Error(HRefused) -> "refused"
+
+def main(): Unit
+  match viaHttp()
+    | Ok(v) -> println("http: {v}")
+    | Error(_) -> println("http err")
+  match viaDb()
+    | Ok(v) -> println("db: {v}")
+    | Error(_) -> println("db err")
+  match runBoth()
+    | Ok(v) -> println("both: {v}")
+    | Error(_) -> println("both err")
+  match runStep()
+    | Ok(v) -> println("step: {v}")
+    | Error(_) -> println("step err")
+  match usePoly()
+    | Ok(s) -> println("poly: {s}")
+    | Error(_) -> println("poly err")
+  println(describe())

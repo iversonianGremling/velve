@@ -1,0 +1,54 @@
+@edition "2026.6"
+
+-- Row tails (S4b) guardrails — exactly 4 errors:
+--   1. an escapee arriving through the tail, listed at the pin with a fix-it
+--      naming the covering ADT (bad1)
+--   2. an unresolved tail: a callback whose error type can never resolve
+--      (a multi-clause def types as Unknown), reported at the call (bad2)
+--   3. the same unresolved tail at bad3's call (per-call-site judging)
+--   4. a match over that OPEN row without a catch-all arm (bad3) — its entry
+--      set is only a lower bound, so enumeration can never be exhaustive
+
+type HttpError
+  = HTimeout Number
+  | HRefused
+
+type DbError
+  = DbMissing
+  | DbLocked
+
+def fetchA(u: String): Result Number HttpError
+  if u == "ok" then Ok(10) else Error(HRefused)
+
+def onlyF(f: (String -> Result Number e)): Result Number _
+  v = f("ok")?
+  Ok(v + 1)
+
+-- (1) this call's row is {HTimeout, HRefused}; DbError covers neither.
+def bad1(): Result Number DbError
+  v = onlyF(fetchA)?
+  Ok(v)
+
+type Light
+  = Red
+  | Green
+
+-- multi-clause heads are typed per-clause (Unknown as a whole), so passing
+-- one as a callback leaves the tail with nothing to resolve to
+def shifty(Red): Result Number HttpError -> Ok(1)
+def shifty(c: Light): Result Number HttpError -> Ok(0)
+
+-- (2) the tail never resolves at this call
+def bad2(): Result Number HttpError
+  v = onlyF(shifty)?
+  Ok(v)
+
+-- (3) the tail never resolves here either, and (4) the match over the open
+-- row has no catch-all arm
+def bad3(): String
+  match onlyF(shifty)
+    | Ok(v) -> "ok"
+    | Error(HRefused) -> "refused"
+
+def main(): Unit
+  println("never checks clean")
