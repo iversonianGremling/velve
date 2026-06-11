@@ -507,6 +507,44 @@ As built (2026-06, `error_rows_test`/`_bad`):
 - v1 residuals: guarded arms conservatively cover nothing. Row *variables*
   (HOF error/effect polymorphism) are deliberately v2.
 
+### 2.14 Function-type ascriptions
+
+A function type is spelled in parens: `(A -> B)`, n-ary `(A, B -> C)`, thunk
+`(() -> T)`. It is legal in any ascription slot — params, returns, nested in
+other types (2026-06, `fn_type_test`/`_bad`; row-variables-design S4a):
+
+```
+def fold2(f: (Number, Number -> Number), a: Number, b: Number): Number
+  f(a, b)
+
+def applyTwice(f: (a -> a), x: a): a     -- composes with §2.12 generics
+  f(f(x))
+
+def adder(n: Number): (Number -> Number)
+  fn x -> (x + n)
+
+-- pass-through error polymorphism falls out of plain generics: `e` unifies
+-- with the argument's error ADT per call site, so a caller's pin is precise.
+def attempt(f: (String -> Result Number e)): Result Number e
+  v = f("hit")?
+  Ok(v)
+```
+
+- **Parens are mandatory.** A bare `->` after a def's return type starts the
+  single-line body (`def idy(x: a): a -> x`), so an unparenthesized arrow
+  type would be ambiguous in exactly the slot that wants it most.
+- **A lone `()` param means zero params.** Zero-param defs type as `() -> T`
+  with an empty parameter list — there is no Unit argument at call sites —
+  so `(() -> T)` is the thunk type. `()` among several params stays a
+  Unit-typed argument.
+- The ascription is a real boundary: wrong arity and wrong param types are
+  errors **at the call site that passes the function**, not deep inside the
+  HOF's body where an unascribed param would have absorbed them.
+- Effects on a function-type ascription are not yet spellable — the lowered
+  type carries an empty effect list, and the conservative latent-argument
+  rule (§12.4) governs as before. Effect tails are S4c
+  (`docs/row-variables-design.md` §4).
+
 ---
 
 ## 3. Syntax

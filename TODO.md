@@ -463,6 +463,14 @@ dimension machinery generalize?
   row tails, S4c effect tails on builtin HOF signatures (replacing §12.4's
   conservative charge where a HOF provably doesn't invoke its argument;
   Fn-unify must learn effect tails — today it skips effects entirely).
+  **S4a BUILT 2026-06** (SPEC §2.14, `fn_type_test`/`_bad`): `(A -> B)`,
+  n-ary `(A, B -> C)`, thunk `(() -> T)` (lone `()` = empty param list, the
+  zero-param def shape), return-slot fn types, and generic fn params
+  (`(a -> a)`) — the checker was already TRFn-ready, so the slice is
+  grammar + lower only. Pass-through error polymorphism proven green under
+  a pin; the bad fixture pins 4 boundary errors (arity, param type, non-fn,
+  wrong pin through `e`) that unascribed HOF params could never surface.
+  Effects on the ascription stay `[]` until S4c. Next: S4b row tails.
 - [x] 🟡 **User generics** (found during the error-ADT slice, closed 2026-06;
   SPEC §2.12, `generics_test`/`_bad`): `def idy(x: a): a` parsed but the type
   var was a rigid `Named "a"` never generalized — `idy(5)` was a type error,

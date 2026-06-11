@@ -171,6 +171,17 @@ shape:
    consumed under a pin: precise, zero rows — the case §1 notes needs no
    tails); bad — arity and param-type mismatches against the ascription,
    which unascribed HOF params can't catch today.
+   **✅ BUILT 2026-06** (SPEC §2.14, `fn_type_test`/`_bad`). As-built notes:
+   no grammar conflict declaration was needed — `function_type` shares its
+   `( type...` prefix with `tuple_type` and they diverge cleanly at `->` vs
+   `)`. One lowering decision the sketch missed: a lone `()` param lowers to
+   an EMPTY param list (zero-param defs type as `() -> T` with no Unit
+   argument at calls), so `(() -> T)` is the thunk type; `()` among several
+   params stays a Unit argument. Effects on the ascription stay unspellable
+   (`effects: []`) until S4c. Pass-through error polymorphism, n-ary params,
+   generic fn params (`(a -> a)`), and return-slot fn types all proved green;
+   the bad fixture pins 4 boundary errors including the wrong-pin case
+   ("expected OtherError, got AppError" arriving through `e`).
 2. **S4b — row tails (the core).** §3 in full: `tails` on ErrRow,
    skolem-aware `rowContribution`, row branch composing with
    `generalizeSig`, instantiate-time clone + edge + pending contrib,

@@ -199,6 +199,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "lifetime_of_type",
           "named": true
         },
@@ -464,6 +468,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "lifetime_of_type",
           "named": true
         },
@@ -559,6 +567,10 @@
         },
         {
           "type": "effect_type",
+          "named": true
+        },
+        {
+          "type": "function_type",
           "named": true
         },
         {
@@ -673,6 +685,10 @@
         },
         {
           "type": "effect_type",
+          "named": true
+        },
+        {
+          "type": "function_type",
           "named": true
         },
         {
@@ -1332,6 +1348,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "go_expr",
           "named": true
         },
@@ -1535,6 +1555,10 @@
         },
         {
           "type": "effect_type",
+          "named": true
+        },
+        {
+          "type": "function_type",
           "named": true
         },
         {
@@ -3614,6 +3638,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "lifetime_of_type",
           "named": true
         },
@@ -5107,6 +5135,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "go_expr",
           "named": true
         },
@@ -5342,6 +5374,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "lifetime_of_type",
           "named": true
         },
@@ -5351,6 +5387,81 @@
         },
         {
           "type": "lower_id",
+          "named": true
+        },
+        {
+          "type": "parameterized_type",
+          "named": true
+        },
+        {
+          "type": "pointer_type",
+          "named": true
+        },
+        {
+          "type": "record_type",
+          "named": true
+        },
+        {
+          "type": "result_type",
+          "named": true
+        },
+        {
+          "type": "simple_type",
+          "named": true
+        },
+        {
+          "type": "tainted_type",
+          "named": true
+        },
+        {
+          "type": "tuple_type",
+          "named": true
+        },
+        {
+          "type": "type_var",
+          "named": true
+        },
+        {
+          "type": "unit_type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "function_type",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "array_type",
+          "named": true
+        },
+        {
+          "type": "async_type",
+          "named": true
+        },
+        {
+          "type": "atomic_type",
+          "named": true
+        },
+        {
+          "type": "effect_type",
+          "named": true
+        },
+        {
+          "type": "function_type",
+          "named": true
+        },
+        {
+          "type": "lifetime_of_type",
+          "named": true
+        },
+        {
+          "type": "lifetime_var",
           "named": true
         },
         {
@@ -8229,6 +8340,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "lifetime_of_type",
           "named": true
         },
@@ -10020,6 +10135,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "go_expr",
           "named": true
         },
@@ -11382,6 +11501,10 @@
         },
         {
           "type": "effect_type",
+          "named": true
+        },
+        {
+          "type": "function_type",
           "named": true
         },
         {
@@ -12802,6 +12925,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "lifetime_of_type",
           "named": true
         },
@@ -13757,6 +13884,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "lifetime_of_type",
           "named": true
         },
@@ -14298,6 +14429,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "go_expr",
           "named": true
         },
@@ -14551,6 +14686,10 @@
         },
         {
           "type": "effect_type",
+          "named": true
+        },
+        {
+          "type": "function_type",
           "named": true
         },
         {
@@ -14824,6 +14963,10 @@
         },
         {
           "type": "effect_type",
+          "named": true
+        },
+        {
+          "type": "function_type",
           "named": true
         },
         {
@@ -15749,6 +15892,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "lifetime_of_type",
           "named": true
         },
@@ -15877,6 +16024,10 @@
         },
         {
           "type": "for_expr",
+          "named": true
+        },
+        {
+          "type": "function_type",
           "named": true
         },
         {
@@ -16071,6 +16222,10 @@
           "named": true
         },
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "lifetime_of_type",
           "named": true
         },
@@ -16203,6 +16358,10 @@
         },
         {
           "type": "for_expr",
+          "named": true
+        },
+        {
+          "type": "function_type",
           "named": true
         },
         {

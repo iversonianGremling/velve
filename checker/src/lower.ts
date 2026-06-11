@@ -15,7 +15,7 @@ type N = SyntaxNode;
 
 const TYPE_KINDS = new Set([
   "simple_type", "type_var", "unit_type", "parameterized_type",
-  "record_type", "tuple_type", "tainted_type", "effect_type",
+  "record_type", "tuple_type", "function_type", "tainted_type", "effect_type",
   "async_type", "array_type", "result_type", "pointer_type", "atomic_type",
 ]);
 
@@ -733,6 +733,21 @@ export class Lowerer {
       }
       case "tuple_type":
         return { tag: "TRTuple", elems: n.namedChildren.filter(isTypeKind).map(c => this.lowerTypeRef(c)) };
+      case "function_type": {
+        // `(A, B -> C)` — params in source order, the last type is the return.
+        // effects stay [] in S4a: an effect-carrying fn ascription is S4c
+        // (effect tails) — `Effect [...]` in the return slot today unpacks to
+        // its bare return type, same as everywhere else lowerTypeRef recurses.
+        const types = n.namedChildren.filter(isTypeKind).map(c => this.lowerTypeRef(c));
+        const ret = types.pop() ?? { tag: "TRNamed" as const, name: "Unknown", args: [] };
+        // `(() -> T)` is a THUNK: zero-param defs type as `() -> T` with an
+        // EMPTY param list (no Unit argument exists at calls), so a lone `()`
+        // param means zero params. `()` among several params stays a
+        // Unit-typed argument.
+        const params = types.length === 1 && types[0]!.tag === "TRNamed" && types[0]!.name === "()"
+          ? [] : types;
+        return { tag: "TRFn", params, ret, effects: [] };
+      }
       case "tainted_type": {
         const inner = n.namedChildren.find(isTypeKind);
         return { tag: "TRNamed", name: "Tainted", args: inner ? [this.lowerTypeRef(inner)] : [] };

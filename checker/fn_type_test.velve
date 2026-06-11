@@ -1,0 +1,63 @@
+@edition "2026.6"
+
+-- Function-type ascriptions (row-variables-design S4a): `(A -> B)` in any
+-- ascription slot, n-ary `(A, B -> C)`, thunk `(() -> T)`, and the return
+-- slot. Parens are MANDATORY — a bare `->` after a def's return type starts
+-- the single-line body (`def idy(x: a): a -> x`). Before this slice the
+-- grammar had no function-type ascription at all (lower never produced
+-- TRFn): every HOF param was unascribed, so a wrong callback surfaced as a
+-- confusing error inside the body — never at the boundary.
+
+type AppError
+  = Missing String
+  | Boom Number
+
+def helper(k: String): Result Number AppError
+  if k == "hit" then Ok(7) else Error(Missing(k))
+
+-- the S4a payoff: single-source PASS-THROUGH error polymorphism, no rows —
+-- `e` unifies with the argument's error ADT at each call site, so the pin
+-- in `api` sees a concrete AppError. (Union/extension need row tails: S4b.)
+def attempt(f: (String -> Result Number e)): Result Number e
+  v = f("hit")?
+  Ok(v)
+
+def api(): Result Number AppError
+  v = attempt(helper)?
+  Ok(v)
+
+-- n-ary param list: the last type after `->` is the return
+def add(x: Number, y: Number): Number
+  x + y
+
+def fold2(f: (Number, Number -> Number), a: Number, b: Number): Number
+  f(a, b)
+
+-- composes with user generics (refTypeVars already walked TRFn)
+def applyTwice(f: (a -> a), x: a): a
+  f(f(x))
+
+def double(n: Number): Number
+  n * 2
+
+-- thunk: a lone `()` param means ZERO params (zero-param defs type as
+-- `() -> T` with an empty param list — there is no Unit argument at calls)
+def force(t: (() -> String)): String
+  t()
+
+def greeting(): String
+  "hi"
+
+-- fn type in the RETURN slot: parens keep it distinct from the body arrow
+def adder(n: Number): (Number -> Number)
+  fn x -> (x + n)
+
+def main(): Unit
+  match api()
+    | Ok(v) -> println("api {v}")
+    | Error(_) -> println("api err")
+  println("fold2 {fold2(add, 3, 4)}")
+  println("twice {applyTwice(double, 5)}")
+  println("force {force(greeting)}")
+  add3 = adder(3)
+  println("add3 {add3(10)}")

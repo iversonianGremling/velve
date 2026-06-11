@@ -393,6 +393,15 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       and row defs are mono (rows × generics unusable). Sliced: S4a fn-type
       ascriptions, S4b row tails, S4c effect tails on builtin HOFs (the
       §12.4 replacement; Fn-unify must learn effect tails). Next: S4a.
+- [x] **Function-type ascriptions (S4a)**: ✅ DONE (2026-06, SPEC §2.14,
+      `fn_type_test`/`_bad`). `(A -> B)` / `(A, B -> C)` / `(() -> T)` in
+      any ascription slot; parens mandatory (bare return-slot `->` is the
+      single-line body); lone `()` = empty param list (the zero-param def
+      shape); composes with user generics. Grammar + lower only — the
+      checker was TRFn-ready. Green: pass-through error polymorphism under
+      a pin, n-ary, thunk, return-slot closure. Bad: 4 boundary errors
+      unascribed params could never surface. Zero corpus impact.
+      Next: S4b row tails.
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside

@@ -397,6 +397,7 @@ export default grammar({
       $.parameterized_type,
       $.record_type,
       $.tuple_type,
+      $.function_type,
       $.tainted_type,
       $.effect_type,
       $.async_type,
@@ -440,6 +441,20 @@ export default grammar({
     tuple_type: $ => seq(
       '(',
       commaSep1($._type),
+      ')',
+    ),
+
+    // Function-type ascription (row-variables-design S4a): `(A -> B)`,
+    // n-ary `(A, B -> C)`, thunk `(() -> T)`. Parens are MANDATORY — a bare
+    // `->` after a def's return type starts the single-line body
+    // (`def idy(x: a): a -> x`), so an unparenthesized arrow type in that
+    // slot would be ambiguous with the body arrow. Shares its `( type...`
+    // prefix with tuple_type; they diverge at `->` vs `)`.
+    function_type: $ => seq(
+      '(',
+      commaSep1($._type),
+      '->',
+      $._type,
       ')',
     ),
 

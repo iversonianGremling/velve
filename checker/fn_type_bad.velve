@@ -1,0 +1,43 @@
+@edition "2026.6"
+
+-- Function-type ascriptions, bad side (row-variables-design S4a): the
+-- ascription is a real boundary. Exactly 4 errors:
+--   (1) body misuse — the def itself violates its own param's ascription
+--   (2) pass-through `e` carries the callback's error ADT to a wrong pin
+--   (3) arity mismatch at the call boundary (unascribed params could never
+--       catch this — the fresh var just absorbed whatever was passed)
+--   (4) a non-function where a function type is ascribed
+
+type AppError
+  = Missing String
+
+type OtherError
+  = Quux Bool
+
+def helper(k: String): Result Number AppError
+  if k == "hit" then Ok(7) else Error(Missing(k))
+
+def attempt(f: (String -> Result Number e)): Result Number e
+  v = f("hit")?
+  Ok(v)
+
+def fold2(f: (Number, Number -> Number), a: Number, b: Number): Number
+  f(a, b)
+
+def double(n: Number): Number
+  n * 2
+
+-- (1) expected String, got Number
+def measure(f: (String -> Number), s: String): Number
+  f(3)
+
+-- (2) expected OtherError, got AppError — helper's errors arrive through `e`
+def api(): Result Number OtherError
+  v = attempt(helper)?
+  Ok(v)
+
+def main(): Unit
+  -- (3) expected (Number, Number) -> Number, got (Number) -> Number
+  println("a {fold2(double, 3, 4)}")
+  -- (4) expected (Number, Number) -> Number, got Number
+  println("b {fold2(5, 3, 4)}")
