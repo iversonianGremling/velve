@@ -50,7 +50,8 @@ means there is a green fixture exercising it under `checker/`.
 | Effect-typed builtin surface | ✅ Built (2026-06) | §12.5, `builtin_effects_test`/`_bad`: `setTheme`/`setViewport` charge `[ui]`, `externSource` and the network names charge `[io]` — the stdlib stops lying by omission, incl. through HOF tails. Decided ambient: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
-| Canvas free positioning + legibility proof | ✅ S0+S1 built (2026-06) | §11.1.2, `canvas_legible_test`/`_bad`: `at=(x, y)` children (Canvas-only), paint order = child order; declaring `Legible` activates text disjointness + occlusion + per-region APCA over the composited solid fills — unfoldable geometry is a could-not-prove error. Fix landed with S0: paren-form elements' indented children used to parse as siblings (silently childless trees) — bare call children (`card()`) still do; spell them `{card()}`. S2–S5 (font metrics, alpha/gradients, dynamic bounds, MaxSMT repair) deferred. |
+| Call children (`card()` composition) | ✅ Built (2026-06) | §11.1, `call_child_test`/`_bad`: a bare lowercase component call is a `child` grammar form — composed views nest for real (closes the last children-flattening residual); a call child resolves, type-checks, and effect-checks like a call anywhere. |
+| Canvas free positioning + legibility proof | ✅ S0+S1 built (2026-06) | §11.1.2, `canvas_legible_test`/`_bad`: `at=(x, y)` children (Canvas-only), paint order = child order; declaring `Legible` activates text disjointness + occlusion + per-region APCA over the composited solid fills — unfoldable geometry is a could-not-prove error. Fix landed with S0: paren-form elements' indented children used to parse as siblings (silently childless trees) — the bare-call-children residual closed by `call_child` (§11.1). S2–S5 (font metrics, alpha/gradients, dynamic bounds, MaxSMT repair) deferred. |
 | `animated` modifier / `frames` clock | ❌ Not built | Track C. |
 | Games / `@interaction` model | ❌ Not built | Track C. |
 | `inputmap` multitarget | 🟡 Core built | `inputmap{,_help,_layer,_chord}_test`/`_bad` + `keymap_test`/`_bad`; table → drain loop, typed rows, conflict check, `Inputmap` type, `help(map)` derived data, `++` layering, chord-refinement literals, `keymap` sugar (§10.5). Key-device lib/zones/rendered overlay remain. |
@@ -2099,9 +2100,25 @@ from the target, `key` from keyboard events) — so form handlers read `e.value`
 > **Children really attach (fix, 2026-06).** Paren-form elements' indented
 > children used to parse as sibling *statements* (a GLR mis-resolution), so a
 > 2026.6 view silently rendered only its last leaf; fixed alongside §11.1.2's
-> Canvas substrate. One residual: a bare component **call** child (`card()`)
-> is still not a valid `child` form and falls back to sibling parsing — embed
-> it as `{card()}` (the expression-child form).
+> Canvas substrate. The last residual — bare component **call** children —
+> closed with the `call_child` form below (2026-06).
+
+**Call children.** A bare component call is a child form:
+
+```
+def view(): Element
+  Column(gap=8)
+    header()                 -- a component call, attached as a child
+    row(item)                -- arguments flow in as anywhere else
+    {legacy()}               -- the old escape-hatch spelling still parses
+```
+
+Lowercase-headed only — capitalization splits `call_child` from a leaf element
+(`Text("hi")`) exactly as it splits a call from a constructor. A call child is a
+real call, not markup-shaped text: a typo'd name is a resolve error, arguments
+type-check against the component's signature, and a child call to an
+`Effect [ui]` component inside a pure view is the same §12.3 effect violation it
+would be in any expression position (`call_child_test` / `call_child_bad`).
 
 ### 11.1.1 Keyed lists
 

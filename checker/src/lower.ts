@@ -37,7 +37,7 @@ const EXPR_KINDS = new Set([
   "ternary_expr", "if_then_expr", "field_access", "optional_chain", "array_index",
   "deref_expr", "addr_of_expr", "propagate_expr", "range_expr",
   "if_pattern_expr", "type_test", "record_literal", "record_spread",
-  "list_literal", "for_expr", "for_child", "match_expr", "responsive_expr", "if_expr", "call",
+  "list_literal", "for_expr", "for_child", "match_expr", "responsive_expr", "if_expr", "call", "call_child",
   "lambda", "lambda_simple", "lambda_block", "send_expr",
   "ask_expr", "transaction_expr", "js_block", "unsafe_block", "comptime_block",
   "lazy_expr", "go_expr", "resume_expr", "drop_expr", "break_expr", "continue_expr", "grouped", "tuple_literal", "js_block", "send_expr",
@@ -1101,6 +1101,16 @@ export class Lowerer {
         // `element` grammar rule (lowerElement).
         if (fn.tag === "Var" && PRIMITIVE_ELEMENTS.has(fn.name))
           return this.elementFromCall(fn.name, args, named, span);
+        return { tag: "Call", fn, args, named, span };
+      }
+
+      // A bare component call as a child (`card()` under an element). The head is
+      // a bare lower_id — lowercase, so it can never name a primitive element —
+      // and lowers straight to a Call.
+      case "call_child": {
+        const head = n.namedChildren[0]!;
+        const fn: Expr = { tag: "Var", name: head.text, span: this.sp(head) };
+        const { args, named } = this.lowerArgs(n.namedChildren.slice(1));
         return { tag: "Call", fn, args, named, span };
       }
 

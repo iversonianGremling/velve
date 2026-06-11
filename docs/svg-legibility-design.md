@@ -149,7 +149,9 @@ practical at realistic n:
     baseline changes (counts and run statuses; uiModel/html outputs now
     nest, which the count-based baselines don't record). Residual: a bare
     component CALL child (`card()`) is not a `child` grammar form and still
-    falls back to siblings — spell it `{card()}`.
+    falls back to siblings — spell it `{card()}`. **Residual closed
+    (2026-06)**: `call_child` (lowercase-headed, SPEC §11.1) makes bare
+    component calls real children; `theme_root_test` un-flattened.
   - `Canvas` already existed as a primitive name (leaf, `<canvas>` tag);
     S0 makes it the free-position container: `at` is a common prop typed
     `(Number, Number)` and context-checked to Canvas parents (the

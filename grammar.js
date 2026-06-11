@@ -1731,9 +1731,28 @@ export default grammar({
     child: $ => choice(
       $.element,
       $.element_leaf,
+      $.call_child,
       $.for_child,
       $.on_handler,
       seq('{', $._expr, '}', $._newline),
+    ),
+
+    // A bare component call as a child: `card()`, `header(title="x")`. Lowercase-
+    // headed only, so it never competes with element_leaf's Upper-headed paren
+    // form (`Text("hi")`) — capitalization splits the space exactly as it does
+    // for call-vs-constructor. Before this rule, `card()` lines under an element
+    // weren't a child form at all, so the GLR quietly parsed them as SIBLING
+    // statements of the element (the same demand-driven-indent flattening the
+    // prec.dynamic on `element` fixes) and composed views rendered only their
+    // last leaf. Self-terminating like every other child. The previous escape
+    // hatch `{card()}` still parses (the brace child above).
+    call_child: $ => seq(
+      $.lower_id,
+      choice(
+        seq(token.immediate('('), optional($._arg_list), ')'),
+        token.immediate('()'),
+      ),
+      $._newline,
     ),
 
     // Keyed list rendering: `for r in rows` over an indented per-item element.

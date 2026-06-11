@@ -474,6 +474,13 @@ view rendered only its last leaf; the §14.1 nested-surface threading never real
 — a GLR mis-resolution fixed with dynamic precedence, zero corpus baseline changes. S2–S5
 (font metrics, alpha/gradients, dynamic bounds, MaxSMT repair) stay deferred.
 
+**Call children shipped 2026-06** (SPEC §11.1, `call_child_test`/`_bad`) — the flattening
+fix's last residual: a bare lowercase component call (`card()`) is now a `child` grammar
+form, so composed views nest for real (`theme_root_test` un-flattened — exposing, and
+fixing, that its `action()` had never painted the accent surface it proves against). A call
+child resolves, type-checks, and effect-checks exactly like a call in any position — which
+is why the baseline diff is empty even for the new fixtures under the old parser.
+
 ---
 
 ## 7. Closing §2.1 for UI / styling

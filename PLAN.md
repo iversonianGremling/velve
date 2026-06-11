@@ -437,6 +437,20 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       leaf) — dynamic precedence on the children-bearing element branch;
       zero corpus baseline changes. Residual: bare call children
       (`card()`) still siblings — spell `{card()}`. S2–S5 deferred.
+- [x] **Call children (`card()` composition)**: ✅ DONE (2026-06, SPEC §11.1,
+      `call_child_test`/`_bad`). The Canvas slice's last residual closed: a
+      bare lowercase component call is a `child` grammar form
+      (`call_child` — lowercase-headed, so it never competes with
+      element_leaf's Upper paren form; lowers straight to a Call). Composed
+      views nest for real; `theme_root_test` un-flattened (and its
+      `action()` now paints the accent it proves against — the flattening
+      had hidden that the proof surface was never painted). Guardrails
+      proven position-independent: a typo'd component resolves-errors, args
+      type-check, and an effectful component child in a pure view is the
+      same §12.3 violation as anywhere — which is also why the baseline
+      diff is EMPTY even for the new fixtures under the old parser
+      (statements vs children hit identical checks). `{card()}` still
+      parses.
 - [x] **Effect-typed builtin surface**: ✅ DONE (2026-06, SPEC §12.5,
       `builtin_effects_test`/`_bad`). `setTheme`/`setViewport` charge
       `[ui]`, `externSource` + the prelude network names charge `[io]` —

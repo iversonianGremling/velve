@@ -37,8 +37,14 @@ def card(): Element using surface = theme.panel
     Text("Body", size=12, color=theme.text)
 
 -- A standalone button renders onto the ambient theme ACCENT; `onAccent` proven vs it.
+-- The button PAINTS the accent it proves against (a Box background), so the
+-- runtime model composites "Go" onto #4a81eb — under both themes. (Before the
+-- call-child grammar form, `view()`'s children were silently flattened to
+-- statements and this rendered as a bare Text; the un-flattened tree exposed
+-- that the proof surface was never painted.)
 def action(): Element using surface = theme.accent
-  Text("Go", size=12, color=theme.onAccent)           -- legibleOn(accent) vs accent ✓
+  Box(background=theme.accent, padding=8)
+    Text("Go", size=12, color=theme.onAccent)         -- legibleOn(accent) vs accent ✓
 
 def view(): Element
   Column(gap=12, background=theme.panel)

@@ -1,0 +1,26 @@
+@edition "2026.6"
+
+-- Call children are REAL children, not markup-shaped strings: everything that
+-- holds for a call in expression position holds inside an element body too.
+-- Three guardrails, three errors:
+--   1. a typo'd component name is a resolve error (not a silently-empty node)
+--   2. arguments type-check (Number where String is declared)
+--   3. effects cannot hide in markup — a child call to an Effect [ui] component
+--      inside a pure view is the same §12.3 error it would be anywhere else
+
+def badge(text: String): Element
+  Text(text, size=10, color=#9ecbff)
+
+-- An effectful component: rendering it writes host state (§12.5).
+def tracker(): Effect [ui] Element
+  setViewport(#{ width: 375, height: 667, breakpoint: Mobile })
+  Text("tracked", size=10, color=#9ecbff)
+
+def view(): Element
+  Column(gap=8, background=#10141c)
+    bagde("typo")
+    badge(42)
+    tracker()
+
+def main(): ()
+  println("never typechecks")

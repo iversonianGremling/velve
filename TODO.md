@@ -629,10 +629,16 @@ best thing in the document. The same razor, applied to the surface:
   children parsed as SIBLINGS (the GLR preferred call+statements; the
   2026.6 form silently rendered childless trees) — fixed with dynamic
   precedence on the children-bearing element branch; zero corpus baseline
-  changes. Residuals: bare CALL children (`card()`) still parse as
-  siblings — spell `{card()}` (theme_root_test renders flat for this
-  reason); S2 font metrics, S3 alpha/gradients, S4 dynamic-text bounds,
-  S5 MaxSMT repair unbuilt.
+  changes. Residuals: ~~bare CALL children (`card()`) still parse as
+  siblings~~ **closed 2026-06** — `call_child` grammar form (SPEC §11.1,
+  `call_child_test`/`_bad`): a bare lowercase component call is a real
+  child; resolves/type-checks/effect-checks like a call anywhere;
+  theme_root_test un-flattened (its `action()` now also PAINTS the accent
+  it proves against — the flattening had hidden that the proof surface was
+  never painted). Zero baseline changes — even the new fixtures score
+  identically under the old parser (statements vs children hit the same
+  position-independent checks). Still unbuilt: S2 font metrics, S3
+  alpha/gradients, S4 dynamic-text bounds, S5 MaxSMT repair.
 
 ## 6. Spec/example hygiene (cheap, do soon)
 
