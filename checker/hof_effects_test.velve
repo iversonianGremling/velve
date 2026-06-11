@@ -1,0 +1,42 @@
+@edition "2026.6"
+
+-- Effect polymorphism for HOFs (SPEC §12.4): a function value carries its
+-- latent effects, and supplying it as an argument makes the call require
+-- them — the callee may invoke it. Declaring those effects makes everything
+-- here green; hof_effects_bad.velve shows each rejection.
+
+def fetchTitle(url: String): Effect [io] String -> "title of {url}"
+
+def shout(s: String): String -> "{s}!"
+
+-- pure HOF use stays pure: shout has no effects, so map(shout, _) needs none
+def shoutAll(xs: List(String)): List(String)
+  map(shout, xs)
+
+-- the latent [io] of fetchTitle is required HERE, where it is supplied
+def fetchAll(urls: List(String)): Effect [io] List(String)
+  map(fetchTitle, urls)
+
+-- aliasing does not launder: f still carries fetchTitle's latent [io]
+def fetchAllAliased(urls: List(String)): Effect [io] List(String)
+  f = fetchTitle
+  map(f, urls)
+
+-- typed-callee path (pmap is typed in the checker prelude; map is not)
+def fetchAllParallel(urls: List(String)): Effect [io] List(String)
+  urls |> pmap(fetchTitle)
+
+def main(): Effect [io] Unit
+  shouted = shoutAll(["hey", "ho"])
+  s0 = shouted[0]
+  s1 = shouted[1]
+  println("shout: {s0} {s1}")
+  titles = fetchAll(["a", "b"])
+  t0 = titles[0]
+  println("fetch: {t0}")
+  aliased = fetchAllAliased(["c"])
+  a0 = aliased[0]
+  println("alias: {a0}")
+  par = fetchAllParallel(["d"])
+  p0 = par[0]
+  println("pmap: {p0}")

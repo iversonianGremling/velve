@@ -44,7 +44,7 @@ means there is a green fixture exercising it under `checker/`.
 | Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. (`parseNumber` now resolves + runs, 2026-06.) |
 | Module-qualified resolution (`Math.sqrt`) | ❌ Not built | Track B; stdlib docs are written qualified but qualified names don't resolve. |
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
-| Effect polymorphism (HOFs) | ❌ Not built | Track B; effect of `map(f, xs)` when `f` is effectful is unspecified. |
+| Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. Conservative (no effect rows yet). |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | `animated` modifier / `frames` clock | ❌ Not built | Track C. |
@@ -1368,6 +1368,10 @@ Effects compose — capability sets merge:
 loadAndCache : Token -> Effect [network, storage] Result (List User) String
 ```
 
+A function *value* carries its effects with it (they live on its `Fn` type),
+so handing an effectful function to a higher-order function is itself an
+effectful act — see §12.4 for the rule.
+
 ### 5.2 Capability declarations
 
 ```
@@ -1945,6 +1949,55 @@ Always Tainted:                Always clean:
 - Capabilities are part of the `Effect` type
 - Compiler verifies all effectful calls at definition site
 - Raw JS blocks opt out explicitly — `Tainted Any` is the enforced boundary
+
+**As built (2026-06):** calling a function whose type carries effects is
+checked against the caller's declaration — a missing capability is an error;
+a *pure* caller (no `Effect` annotation at all) calling an effectful function
+is an error in edition 2026.6+ and a warning in the baseline edition
+(`effects_test`). The residual is coverage, not mechanism: effects are
+enforced wherever a signature *carries* them, but parts of the runtime
+builtin surface have no typed signature yet (the typed-prelude/BUILTINS
+split), and an effect that no type mentions cannot be checked.
+
+### 12.4 Effect polymorphism for higher-order functions
+
+What is the effect of `map(f, xs)` when `f` is effectful? **The effect of
+`f`, surfaced at the call that supplies it.** A function value carries its
+latent effects on its `Fn` type; passing it as an argument makes the call
+require those effects, exactly as calling it directly would:
+
+```
+def netGet(url: String): Effect [io] String
+
+def launder(urls: List(String)): List(String)
+  map(netGet, urls)            -- error: pure function passes 'netGet' (effects [io])
+
+def fetchAll(urls: List(String)): Effect [io] List(String)
+  map(netGet, urls)            -- ok: [io] is declared where netGet is supplied
+```
+
+The rule is *conservative*: the checker assumes a callee may invoke any
+function it is handed (every current HOF — `map`, `filter`, `pmap`, … —
+does). Without effect rows there is no way for a HOF's signature to say "I
+don't call my argument", so a HOF that merely stores a function still charges
+its effects to the call site. Notes on the as-built shape (2026-06,
+`hof_effects_test`/`_bad`):
+
+- The rule fires whether or not the callee itself is typed — an untyped
+  builtin (`map`) and a typed one (`pmap`) charge latent argument effects the
+  same way. Aliasing does not launder: `g = netGet` then `map(g, urls)` still
+  requires `[io]`, because the alias's type carries the effects.
+- Lambdas have no latent effects of their own: a lambda body is checked
+  against its *enclosing* function's effect declaration at the call sites
+  inside it, and (with no function-type ascription syntax) a lambda cannot
+  escape the function that created it, so the enclosing check is sufficient.
+- Edition gating matches §12.3: a *pure* caller supplying an effectful
+  function errors in 2026.6+ and warns in the baseline edition; a caller with
+  the *wrong* declared pool errors in every edition.
+- The precise (non-conservative) story is **effect rows** — `map`'s effect
+  becomes a row variable bound to its argument's row. That is the same
+  row-inference mechanism as inferred error sets (north-star §4); when it
+  lands, this rule becomes its degenerate closed-row case.
 
 ---
 

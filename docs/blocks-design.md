@@ -360,7 +360,10 @@ implemented (grammar+lower+infer+eval). Real gaps, for future work:
   stay runtime-no-ops until this lands. (§4–5 of this doc is the design.)
 - **Stream combinators** (§10.2: filter/debounce/throttle/take/merge/fold) — spec-only.
 - **`ask`** is field-read, not message-dispatch as §3.12 implies (decide: fix or document).
-- **Effect capabilities** declared but not enforced.
+- **Effect capabilities** ~~declared but not enforced~~ — enforced since 2026-06:
+  direct calls checked (pure-hole edition-gated, `effects_test`) and HOF-argument
+  laundering closed (SPEC §12.4, `hof_effects_test`/`_bad`). Residual: builtins
+  without typed signatures carry no effects to check.
 - **std/parallel, gpu, db, audio, proof, http, fs, process, web** — spec-only / aspirational.
 
 ---

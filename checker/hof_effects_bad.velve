@@ -1,0 +1,25 @@
+@edition "2026.6"
+
+-- Before the latent-argument rule (SPEC §12.4) every def below checked CLEAN:
+-- netGet is never CALLED by name here, only handed to a HOF, so the per-call
+-- effect check never fired and [io] laundered straight through pure functions.
+-- Expected: 4 errors.
+
+def netGet(url: String): Effect [io] String -> "body of {url}"
+
+-- 1. pure function passes an effectful function to an untyped builtin HOF
+def launder(urls: List(String)): List(String)
+  map(netGet, urls)
+
+-- 2. aliasing doesn't help: g still carries netGet's latent [io]
+def launderAlias(urls: List(String)): List(String)
+  g = netGet
+  map(g, urls)
+
+-- 3. declared effects must still cover the argument's latent effects
+def wrongPool(urls: List(String)): Effect [db] List(String)
+  map(netGet, urls)
+
+-- 4. typed-callee path: pmap is typed in the prelude; the same rule applies
+def launderParallel(urls: List(String)): List(String)
+  urls |> pmap(netGet)

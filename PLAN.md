@@ -334,8 +334,13 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       Stringly error use is now a check error; SPEC documents the map-at-the-boundary
       domain-ADT convention. Residual: `parseInt`/`parseFloat`/`String.toNumber` still
       stringly; inferred error rows are the separate A+ mechanism (north-star §4).
-- [ ] **Effect polymorphism** for higher-order fns (§3.6): effect of `map(f, xs)`
-      when `f` is effectful. Currently unspecified.
+- [x] **Effect polymorphism** for higher-order fns (§3.6): ✅ DONE (2026-06,
+      SPEC §12.4, `hof_effects_test`/`_bad`). The effect of `map(f, xs)` is the
+      effect of `f`, charged at the call that supplies it: a function value
+      carries latent effects on its `Fn` type, and passing it as an argument
+      requires them (conservative — the callee may invoke it). Fires for
+      untyped (`map`) and typed (`pmap`) callees; aliasing doesn't launder;
+      edition-gated like the pure-hole (1b). Effect rows subsume this later.
 - [ ] **Module-qualified resolution** (§3.6): `Math.sqrt` still doesn't resolve while
       stdlib docs are written qualified.
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).

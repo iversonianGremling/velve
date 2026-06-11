@@ -420,10 +420,23 @@ dimension machinery generalize?
   verifies all effectful calls at definition site", §12.3) — the multitarget
   doc admits effects are "declared but not enforced." Honest effects that
   aren't checked are worse than none: they train readers to trust signatures
-  that can lie.
-- [ ] 🟡 Specify effect polymorphism for higher-order functions (what is the
+  that can lie. **Mostly closed 2026-06**: direct calls checked (`effects_test`,
+  pure-hole edition-gated) and the HOF-argument laundering route closed (next
+  item). Residual is *coverage*, not mechanism: runtime builtins without typed
+  signatures (the typed-prelude/BUILTINS split) carry no effects to check —
+  stays open until the builtin surface is effect-typed.
+- [x] 🟡 Specify effect polymorphism for higher-order functions (what is the
   effect of `map(f, xs)` when `f` is effectful?) — currently absent from the
-  SPEC and it's the first wall any real program hits.
+  SPEC and it's the first wall any real program hits. **DONE 2026-06**
+  (SPEC §12.4, `hof_effects_test`/`_bad`): the effect of `f`, surfaced at the
+  call that supplies it. A function value carries latent effects on its `Fn`
+  type; passing it as an argument charges them to the call site (conservative —
+  the callee may invoke it; no effect rows yet, so a HOF can't declare it
+  doesn't). Fires for both untyped callees (`map` — the Unknown-callee path)
+  and typed ones (`pmap`); aliasing doesn't launder. Lambdas stay latent-free:
+  their bodies are checked against the enclosing declaration and can't escape
+  (no fn-type ascription syntax). Rows (north-star §4) subsume this as the
+  closed-row case when they land.
 - [ ] 🟢 Module-qualified calls (`Math.sqrt`) still don't resolve while all
   planned stdlib docs are written in qualified style. Land qualified resolution
   before the stdlib grows further.

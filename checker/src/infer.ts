@@ -1736,11 +1736,50 @@ class Inferrer {
           });
         }
 
+        // Effect polymorphism for HOFs (SPEC §12.4): a function value carries its
+        // latent effects, and SUPPLYING it as an argument makes the call require
+        // them — the callee may invoke it, and without effect rows we cannot see
+        // that it doesn't (conservative rule; map/filter/pmap all do). This is
+        // what stops `map(netGet, urls)` laundering [io] through a pure function:
+        // `netGet` is never *called* by name here, only handed over.
+        const checkLatentArgEffects = (calleeName: string) => {
+          const latent: string[] = [];
+          const sources: string[] = [];
+          for (let i = 0; i < argTs.length; i++) {
+            const at = this.ctx.subst.apply(argTs[i]!);
+            if (at.tag !== "Fn" || at.effects.length === 0) continue;
+            for (const e of at.effects) if (!latent.includes(e)) latent.push(e);
+            const ae = argExprs[i];
+            const src = ae && ae.tag === "Var" ? `'${ae.name}'` : "a function argument";
+            if (!sources.includes(src)) sources.push(src);
+          }
+          if (latent.length === 0) return;
+          const list = latent.join(", ");
+          if (this.ctx.effects !== null) {
+            const missing = latent.filter(e => !this.ctx.effects!.includes(e));
+            if (missing.length > 0) {
+              const callerEffects = this.ctx.effects.length ? `[${this.ctx.effects.join(", ")}]` : "none";
+              err(this.ctx, expr.span,
+                `effect violation: '${calleeName}' is given ${sources.join(", ")} whose effects are [${list}], but current context declares ${callerEffects} — the callee may call its argument, so its effects count here`);
+            }
+          } else {
+            const msg = `effect violation: pure function passes ${sources.join(", ")} (effects [${list}]) to '${calleeName}' — the callee may call it; declare 'Effect [${list}]' on this function or pass a pure function`;
+            if (atLeast(this.ctx.edition, "2026.6")) err(this.ctx, expr.span, msg);
+            else warn(this.ctx, expr.span, msg);
+          }
+        };
+
         // Unknown callee (an unresolved or not-yet-typed builtin): the call's
         // result is Unknown too — same discipline as a failed call below. Letting
         // the fresh `ret` var escape instead would leak a leniency var that the
         // try-soundness sweep (§12) cannot tell from a genuine polymorphic line.
-        if (resolvedFnT.tag === "Unknown") return { tag: "Unknown" };
+        // An Unknown callee is exactly the case where we can't see whether it
+        // calls its function arguments — so the latent-effect rule still applies
+        // (this is the path `map`/`filter` take: typed in resolve, not in infer).
+        if (resolvedFnT.tag === "Unknown") {
+          checkLatentArgEffects(expr.fn.tag === "Var" ? expr.fn.name : "fn");
+          return { tag: "Unknown" };
+        }
 
         const requiredEffects = resolvedFnT.tag === "Fn" ? resolvedFnT.effects : [];
 
@@ -1772,6 +1811,10 @@ class Inferrer {
             else warn(this.ctx, expr.span, msg);
           }
         }
+
+        // Typed callee (e.g. pmap): latent effects of fn-valued arguments count
+        // exactly as they do for Unknown callees above.
+        checkLatentArgEffects(expr.fn.tag === "Var" ? expr.fn.name : "fn");
 
         return this.ctx.subst.apply(ret);
       }
