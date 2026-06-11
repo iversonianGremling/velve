@@ -414,6 +414,13 @@ dimension machinery generalize?
   module boundaries** (Zig `!T` ergonomics + a reviewed contract at the edge). This is the
   *same row-polymorphic inference* as effects (§3.6) — build it once. See
   `docs/north-star-grades.md §4` for the trade table and decision.
+  **Design written 2026-06** (`docs/error-rows-design.md`): v1 is Zig-shaped
+  transitive ctor-sets (no row variables, no HM extension) — `Result T _`
+  infers, a named-ADT ascription pins via ctor-set inclusion, rows are
+  matchable with exhaustiveness over the actual raised set; recursion among
+  `_` defs rejected in v1. Row variables (the effect-A+/HOF convergence) are
+  explicitly v2. Build plan: 4 slices (S1 accumulate+pin, S2 match/exhaust,
+  S3 diagnostics/prose-interop, S4 row vars).
 - [x] 🟡 **User generics** (found during the error-ADT slice, closed 2026-06;
   SPEC §2.12, `generics_test`/`_bad`): `def idy(x: a): a` parsed but the type
   var was a rigid `Named "a"` never generalized — `idy(5)` was a type error,

@@ -346,6 +346,12 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       `Math.sqrt(x)` checks (fully typed members) and runs with no import;
       user bindings shadow; lowercase/path forms stay import-only; ambient and
       namespace-import forms share one record type.
+- [ ] **Error rows v1, S1** (north-star §4; design: `docs/error-rows-design.md`,
+      written 2026-06): `Result T _` infers a transitive ctor-set row, `?`
+      accumulates by union inside `_` defs, a named-ADT ascription pins via
+      ctor-set inclusion (escapees listed), recursion among `_` defs rejected.
+      No row variables / no HM extension in v1 — that's S4/v2. Then S2
+      (match/exhaust over rows), S3 (diagnostics + prose interop).
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside

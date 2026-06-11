@@ -312,6 +312,12 @@ truth at the edge, ergonomics inside — and resolves the no-Maybe stance's stri
 `map(f, xs)`**. One row-inference pass, three rows of the scorecard move. Foundationally
 compatible (Velve is HM); the lift is path/row tracking, shared with §3.1 catch 1.
 
+**Design written 2026-06 — `docs/error-rows-design.md`.** Key scoping call: the convergence
+above is **v2**, not v1. v1 is Zig-shaped transitive ctor-sets (`Result T _` infers, a
+named-ADT pin checks ctor-set inclusion, rows are matchable) with *no row variables and no
+HM extension* — it builds the representation, accumulation, and boundary check that v2's
+row variables ride on. Four build slices, each fixture-provable and corpus-neutral.
+
 ---
 
 ## 5. Low-level, redefined: two axes, not eight sketches
