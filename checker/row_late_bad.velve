@@ -1,0 +1,53 @@
+@edition "2026.6"
+
+-- Error rows S3 polish guardrails: a late-resolving callee error type must not
+-- silently under-approximate the row (S1 dropped it; the pin then passed
+-- VACUOUSLY and matches judged against an empty row). Exactly 5 errors.
+
+type AppError
+  = Missing String
+
+type OtherError
+  = Boom Number
+
+-- helper is declared below with an unascribed param, so at this `?` its error
+-- type is still a fresh var; the contribution arrives only at finalize.
+def step(k: String): Result Number _
+  v = helper(k)?
+  Ok(v)
+
+def helper(k): Result Number OtherError -> if k == "x" then Ok(1) else Error(Boom(5))
+
+-- (1) the LATE entry escapes the pin: row(step) = {Boom}, not covered by
+-- AppError. Under S1 this pin passed silently — the soundness hole.
+def api(k: String): Result Number AppError
+  v = step(k)?
+  Ok(v)
+
+-- (2)+(3) the late entry reaches S2 match verdicts: 'Missing' is not in the
+-- row (can never match), and 'Boom' is in the row but unmatched (not
+-- exhaustive).
+def brief(k: String): String
+  match step(k)
+    | Ok(v) -> "ok"
+    | Error(Missing(m)) -> "missing {m}"
+
+-- (4) a multi-clause callee types as Unknown — its error type NEVER resolves.
+-- Rejected, not dropped: the row cannot claim to list what escapes.
+def pick(:a): Result Number AppError -> Ok(1)
+def pick(:b): Result Number AppError -> Error(Missing("b"))
+
+def step2(k: String): Result Number _
+  v = pick(:a)?
+  Ok(v)
+
+-- (5) a late error type resolving to a non-ADT (Number) has no constructors
+-- to contribute — name it and point at the fix.
+def step3(k: String): Result Number _
+  v = helper2(k)?
+  Ok(v)
+
+def helper2(k): Result Number Number -> if k == "x" then Ok(1) else Error(42)
+
+def main(): Unit
+  println("unreachable")

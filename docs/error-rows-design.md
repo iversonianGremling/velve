@@ -144,8 +144,8 @@ until v1's representation is proven in fixtures. Do not start with v2.
    other consumers. Discovered residual: when a pin ADT re-declares a shared
    ctor name, expression-position *construction* resolves to the last
    declaration of that name — **fixed by the S3 shadowing slice (below)**.
-   Var/Unknown callee errors contribute nothing — the documented S1
-   leniency; a try-soundness-style deferred re-judge is remaining S3 polish.
+   Var/Unknown callee errors contributed nothing — the documented S1
+   leniency, **closed by the S3 late-contribution slice (below)**.
 2. **S2 — match/exhaustiveness over rows.** Green: match a row-typed value
    with exactly the raised ctors, no wrapper ADT. Bad: missing-ctor match.
    **✅ BUILT 2026-06** (`error_rows_match_test`/`_bad`). As built: arms are
@@ -169,9 +169,24 @@ until v1's representation is proven in fixtures. Do not start with v2.
    outcome/Async prelude pre-cases already did), and a ctor pattern against
    a row prefers the **row entry's payload** (the contributing ADT) over the
    env's last declaration. Declaration order of sharing ADTs no longer
-   matters. Remaining S3: mixed-arity shared names and never-resolving
-   contexts keep last-declaration-wins; Var/Unknown contribution leniency;
-   fix-its naming the smallest covering ADT edit.
+   matters.
+   **Late-contribution slice ✅ BUILT 2026-06** (`row_late_test`/`_bad`):
+   the S1 Var leniency is closed with the same defer-then-judge shape — a
+   `?` site whose callee error type is still a Var (a forward call to a def
+   with unascribed params, or an unannotated module-level `let` lambda) is
+   recorded in `pendingRowContribs` and re-judged in finalizeRows step 0.5
+   (after shared-ctor uses bind their vars, before the cycle check and
+   closure, so a Var that resolved to another row adds a real ⊇-edge and
+   resolved entries propagate). A type that never becomes contributable is
+   REJECTED, not dropped — still-a-Var ("never resolved — annotate the
+   callee or pin this def", e.g. a multi-clause callee whose Unknown type
+   binds nothing) and concrete non-ADTs ("resolved to 'Number', which has no
+   named constructors") are check errors; only `Unknown` itself, the
+   checker's explicit give-up type, stays lenient. Under S1 all of these
+   silently under-approximated the row and pins passed vacuously.
+   Remaining S3: mixed-arity shared names and never-resolving ctor-use
+   contexts keep last-declaration-wins; fix-its naming the smallest covering
+   ADT edit.
 4. **S4 (v2) — row variables** for HOF error/effect polymorphism; replaces
    SPEC §12.4's conservative rule with precision.
 

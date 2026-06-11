@@ -1,0 +1,42 @@
+@edition "2026.6"
+
+-- Error rows S3 polish (SPEC §2.13, docs/error-rows-design.md §7.3): a `?`
+-- whose callee error type is still a VAR when the line is checked — here, a
+-- forward call to an UNANNOTATED def — is deferred and re-judged once the
+-- module completes. Under S1 this contribution was silently dropped: row(step)
+-- came out EMPTY, the pin passed vacuously, and the row-match below reported
+-- every arm as "can never match". Now the late entry lands in the row like any
+-- other (full-ADT over-approximation, same as the accumulate rule).
+
+type AppError
+  = Missing String
+  | Failed String
+
+-- `helper` is declared BELOW with an unascribed param, so its pre-declared
+-- type is a fresh var (defs with unascribed params are pinned only when their
+-- own clause is inferred): at this `?` the error type is still that var.
+-- Deferred; once helper's clause pins it to AppError, row(step) =
+-- {Missing | Failed}.
+def step(k: String): Result Number _
+  v = helper(k)?
+  Ok(v)
+
+def helper(k): Result Number AppError -> if k == "hit" then Ok(7) else Error(Missing(k))
+
+-- the pin sees the late entries
+def api(k: String): Result Number AppError
+  v = step(k)?
+  Ok(v)
+
+-- the row-match sees the late entries (S2 verdicts compose with the re-judge)
+def describe(k: String): String
+  match step(k)
+    | Ok(v) -> "ok {v}"
+    | Error(Missing(m)) -> "missing {m}"
+    | Error(Failed(m)) -> "failed {m}"
+
+def main(): Unit
+  match api("hit")
+    | Ok(v) -> println("api ok {v}")
+    | Error(_) -> println("api err")
+  println(describe("nope"))

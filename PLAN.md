@@ -363,8 +363,17 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       finalizeRows step 0 once the substitution shows the demanded ADT) and
       by scrutinee type in patterns; a row-entry match types the payload from
       the contributing ADT. Declaration order of sharing ADTs no longer
-      matters. Remaining S3: Var/Unknown leniency, mixed-arity shared names,
-      fix-its. Then S4/v2 (row variables).
+      matters. Remaining S3: mixed-arity shared names, fix-its. Then S4/v2
+      (row variables).
+- [x] **Error rows S3, late-contribution slice**: ✅ DONE (2026-06,
+      `row_late_test`/`_bad`). The S1 Var leniency closed — a `?` whose callee
+      error type is still a Var when the line is checked (forward call to an
+      unascribed-param def or `let` lambda) is deferred and re-judged in
+      finalizeRows step 0.5; the late contribution reaches the row, its pins,
+      and its match verdicts. Never-contributable types are rejected (still
+      polymorphic → "annotate or pin"; concrete non-ADT → named); only
+      `Unknown` stays lenient. S1 dropped these silently — pins passed
+      vacuously over under-approximated rows.
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside

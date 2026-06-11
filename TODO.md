@@ -434,10 +434,17 @@ dimension machinery generalize?
   ctor names resolve by EXPECTED type in expression position (deferred behind
   fresh vars, judged in finalizeRows step 0) and by scrutinee type in
   patterns; a row-entry match types the payload from the contributing ADT.
-  Declaration order of sharing ADTs no longer matters. Remaining: S3 polish
-  (mixed-arity shared names + never-resolving contexts keep last-decl-wins;
-  Var/Unknown contribution leniency; guarded arms cover nothing; fix-its),
-  S4/v2 row variables (→ effect-A+).
+  Declaration order of sharing ADTs no longer matters.
+  **S3 late-contribution slice BUILT 2026-06** (`row_late_test`/`_bad`): the
+  S1 Var leniency closed — a `?` whose callee error type is still a Var
+  (forward call to an unascribed-param def / `let` lambda) is deferred to
+  finalizeRows step 0.5 and re-judged once the substitution resolves; never-
+  contributable types are REJECTED (still-polymorphic → "annotate or pin";
+  concrete non-ADT → named in the diagnostic), only `Unknown` stays lenient.
+  S1 silently dropped these and pins passed vacuously. Remaining: S3 polish
+  (mixed-arity shared names + never-resolving ctor-use contexts keep
+  last-decl-wins; guarded arms cover nothing; fix-its), S4/v2 row variables
+  (→ effect-A+).
 - [x] 🟡 **User generics** (found during the error-ADT slice, closed 2026-06;
   SPEC §2.12, `generics_test`/`_bad`): `def idy(x: a): a` parsed but the type
   var was a rigid `Named "a"` never generalized — `idy(5)` was a type error,

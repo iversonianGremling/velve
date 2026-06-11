@@ -192,8 +192,10 @@ let ROW_DEPS: [ErrRowT, ErrRowT][] = [];
 let CTOR_OWNERS = new Map<string, { typeName: string; scheme: Scheme }[]>();
 
 // What a callee's error type contributes to a row. Null = no contribution
-// (Var/Unknown — the documented S1 leniency; a late-resolving error type is
-// not re-judged, the try-soundness-style deferred sweep is S3 polish).
+// possible from this type. A Var at the `?` site is DEFERRED and re-judged in
+// finalizeRows once the module is complete (S3 polish — the try-soundness
+// sweep shape); a type that never resolves to something contributable is
+// rejected there, not silently dropped.
 function rowContribution(t: Type): RowEntry[] | null {
   if (t.tag === "Refinement") return rowContribution(t.base);
   if (t.tag === "Named") {
@@ -2258,7 +2260,12 @@ class Inferrer {
           } else {
             const entries = rowContribution(eRes);
             if (entries) addRowEntries(ownRow, entries);
-            // Var/Unknown contribute nothing — documented S1 leniency.
+            // A late-resolving error type (a Var — e.g. a forward call to an
+            // unannotated def) is deferred and re-judged in finalizeRows;
+            // S1 silently dropped it and the row under-approximated.
+            else if (eRes.tag === "Var")
+              this.pendingRowContribs.push({ row: ownRow, errType: eRes, span: expr.span });
+            // Unknown stays lenient — it is the checker's explicit give-up type.
           }
           return this.ctx.subst.apply(ok);
         }
@@ -2762,6 +2769,11 @@ class Inferrer {
   // S3: expression-position uses of SHARED ctor names, resolved by what the
   // substitution shows the context demanded (see the Var case).
   readonly pendingCtorUses: { name: string; span: Span; ret: Type; payload: Type | null }[] = [];
+  // S3 polish: `?` sites in a `_` def whose callee error type was still a Var
+  // when the line was checked (forward call to an unannotated def). Re-judged
+  // after the module completes; a type that never becomes contributable is an
+  // error — a silently under-approximated row would let escapees through pins.
+  readonly pendingRowContribs: { row: ErrRowT; errType: Type; span: Span }[] = [];
 
   finalizeRows(): void {
     // 0. Resolve deferred shared-ctor uses (S3). Must run BEFORE row closure:
@@ -2784,6 +2796,25 @@ class Inferrer {
       } else {
         unify(u.ret, ct, this.ctx, u.span, label);
       }
+    }
+    // 0.5 Re-judge deferred row contributions (S3 polish): the substitution now
+    //     shows what each late callee error type became. Runs before the cycle
+    //     check and closure so a Var that resolved to another row adds a real
+    //     ⊇-edge, and resolved entries propagate. Still-polymorphic or non-ADT
+    //     types are rejected, not dropped.
+    for (const c of this.pendingRowContribs) {
+      const resolved = this.ctx.subst.apply(c.errType);
+      if (resolved.tag === "ErrRow") {
+        if (resolved !== c.row) ROW_DEPS.push([c.row, resolved]);
+        continue;
+      }
+      const entries = rowContribution(resolved);
+      if (entries) { addRowEntries(c.row, entries); continue; }
+      if (resolved.tag === "Unknown") continue;  // the explicit give-up type stays lenient
+      if (resolved.tag === "Var")
+        err(this.ctx, c.span, `the inferred error row of '${c.row.owner}' cannot include this '?' — the callee's error type never resolved; annotate the callee's return type, or pin '${c.row.owner}' with a named error ADT`);
+      else
+        err(this.ctx, c.span, `the inferred error row of '${c.row.owner}' cannot include this '?' — the callee's error type resolved to '${typeToString(resolved)}', which has no named constructors; use a named error ADT, or pin '${c.row.owner}'`);
     }
     // 1. Cycle check — recursion among `_` defs is rejected in v1 (Zig's rule).
     //    DFS over the ⊇-edges; report each row that can reach itself.

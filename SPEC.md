@@ -484,9 +484,18 @@ As built (2026-06, `error_rows_test`/`_bad`):
   sharing ADTs no longer matters. Residual: a shared name whose owners
   disagree on *arity* (payload vs nullary), and contexts that never resolve
   (an ErrRow or free var), keep last-declaration-wins.
-- v1 residuals: Var/Unknown-typed callee errors contribute nothing
-  (documented leniency); guarded arms conservatively cover nothing. Row
-  *variables* (HOF error/effect polymorphism) are deliberately v2.
+- **Late-resolving callee error types are re-judged, not dropped (S3 polish,
+  2026-06, `row_late_test`/`_bad`)** — a `?` whose callee error type is still
+  a type var when the line is checked (a forward call to a def with
+  unascribed params, or a module-level `let` lambda) is deferred and judged
+  once the module completes, so the late contribution lands in the row and
+  reaches pins and match verdicts. Under S1 it was silently dropped: the row
+  under-approximated and pins passed vacuously. A type that *never* becomes
+  contributable is rejected ("never resolved — annotate the callee or pin
+  this def"; "resolved to 'Number', which has no named constructors"); only
+  `Unknown`, the checker's explicit give-up type, stays lenient.
+- v1 residuals: guarded arms conservatively cover nothing. Row *variables*
+  (HOF error/effect polymorphism) are deliberately v2.
 
 ---
 
