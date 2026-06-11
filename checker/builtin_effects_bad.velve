@@ -1,0 +1,25 @@
+@edition "2026.6"
+
+-- Effect-typed builtin surface (SPEC §12.5) guardrails.
+-- Expected: 4 errors.
+
+def wire(push: (Number -> ()), done: (() -> ())): ()
+  push(1)
+  done()
+
+-- 1. pure def writes host state
+def sneakTheme(): ()
+  setViewport(#{ width: 100, height: 100, breakpoint: Mobile })
+
+-- 2. the declared pool must cover the builtin's row
+def wrongPool(): Effect [io] ()
+  setViewport(#{ width: 100, height: 100, breakpoint: Mobile })
+
+-- 3. the input FFI charges [io]
+def sneakInput(): Number
+  externSource(wire) |> streamFold(0, fn (acc x) -> acc + x)
+
+-- 4. the S4c convergence: HANDING an effect-typed builtin to a tailed HOF
+--    charges its row through the tail — no laundering via pmap
+def sneakLaunder(): List(())
+  [#{ width: 100, height: 100, breakpoint: Mobile }] |> pmap(setViewport)

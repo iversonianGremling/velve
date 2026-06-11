@@ -46,7 +46,9 @@ def view(): Element
     action()
     Text("status", size=12, color=theme.text)         -- vs ambient theme.panel ✓
 
-def main(): Unit
+-- `setTheme` is a host-state write: it charges [ui] (the builtin surface is
+-- effect-typed, SPEC §12.5), so the swapping main declares it.
+def main(): Effect [ui] Unit
   println("dark  panel={theme.panel} text={theme.text} accent={theme.accent} onAccent={theme.onAccent}")
   println(uiModel(view()))
   -- Swap the read-only root mid-session; the SAME view re-renders against new roles.

@@ -21,7 +21,9 @@ def view(): Element
   Column(gap=8, width=sidebarWidth, padding=16)   -- a Responsive(Length), collapsed here
     Text("sidebar", size=12)
 
-def main(): Unit
+-- `setViewport` is a host-state write: it charges [ui] (the builtin surface
+-- is effect-typed, SPEC §12.5), so the swapping main declares it.
+def main(): Effect [ui] Unit
   -- default viewport is Desktop → sidebarWidth collapses to Px 320 (width:320px)
   println("desktop:")
   println(uiModel(view()))

@@ -47,6 +47,7 @@ means there is a green fixture exercising it under `checker/`.
 | User generics (`def idy(x: a): a`) | ✅ Built | §2.12, `generics_test`/`_bad`: implicit type vars in def ascriptions — quantified at call sites (each call instantiates fresh), rigid skolems inside the body. Was a silent trap: the annotation parsed but `idy(5)` errored. |
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. |
+| Effect-typed builtin surface | ✅ Built (2026-06) | §12.5, `builtin_effects_test`/`_bad`: `setTheme`/`setViewport` charge `[ui]`, `externSource` and the network names charge `[io]` — the stdlib stops lying by omission, incl. through HOF tails. Decided ambient: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | Canvas free positioning + legibility proof | ✅ S0+S1 built (2026-06) | §11.1.2, `canvas_legible_test`/`_bad`: `at=(x, y)` children (Canvas-only), paint order = child order; declaring `Legible` activates text disjointness + occlusion + per-region APCA over the composited solid fills — unfoldable geometry is a could-not-prove error. Fix landed with S0: paren-form elements' indented children used to parse as siblings (silently childless trees) — bare call children (`card()`) still do; spell them `{card()}`. S2–S5 (font metrics, alpha/gradients, dynamic bounds, MaxSMT repair) deferred. |
@@ -2290,9 +2291,38 @@ calling it remains the ordinary per-call check. Untyped builtins (`map`,
 unchanged; user-spelled effect tails are E2, deferred
 (`docs/row-variables-design.md` §4).
 
----
+### 12.5 The builtin surface is effect-typed
 
-## 13. Tooling
+(2026-06, `builtin_effects_test`/`_bad`.) Capability enforcement is only as
+honest as the signatures it checks against — a runtime builtin typed with an
+empty effect row lets the stdlib lie by omission. The effectful builtins now
+charge their capability:
+
+| Builtin | Effects | Why |
+|---|---|---|
+| `setTheme`, `setViewport` | `[ui]` | host-state writes — the single mutation channels for the read-only reactive roots |
+| `externSource` | `[io]` | the input FFI: the door external data walks through |
+| `netGet`/`netPost`/`netDelete`, `httpGet`/`httpPost`/`httpPut`/`httpPatch` | `[io]` | network (typed in the prelude; not yet runtime-resolvable — fixtures shadow them with user defs — but the signature stops lying the day they land) |
+
+The checks are the existing §12.3/§12.4 machinery — nothing new fires; the
+signatures stopped lying. That includes the S4c convergence: *handing*
+`setViewport` to a tailed HOF (`… |> pmap(setViewport)`) charges `[ui]`
+through the effect tail, so builtin effects cannot be laundered through HOFs
+either.
+
+**Decided ambient (the ergonomics line, 2026-06):**
+
+- `print`/`println` charge **nothing**. Stdout is the language's observation
+  channel — every example and fixture reports through it, and charging `[io]`
+  would put `Effect [io]` on every `main` while guarding nothing
+  host-mutable. A pure def may report.
+- `sleep` charges **nothing**. It is virtual time on the deterministic
+  scheduler — a scheduling primitive, not a clock capability (nothing
+  external observes it).
+
+Deterministic renders/introspection (`html`, `uiModel`, `analyze`,
+`sandbox`, `interactive`, `domHost`, `journalOf`) stay pure: same input,
+same string, no host mutation.
 
 ```
 velve new my-app    -- scaffold new project

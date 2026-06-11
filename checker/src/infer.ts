@@ -756,6 +756,14 @@ function buildPrelude(): TypeEnv {
   const listB:   Type = { tag: "Named", name: "List",   args: [b] };
 
   const fn = (params: Type[], ret: Type): Type => ({ tag: "Fn", params, ret, effects: [] });
+  // Effect-typed builtins (TODO §3.6 — the runtime surface must not lie by
+  // omission): host-state writes charge [ui]; the network/input-FFI names
+  // charge [io]. DECIDED ambient (2026-06): `print`/`println` charge nothing —
+  // stdout is the language's observation channel (charging [io] would put
+  // `Effect [io]` on every main while guarding nothing host-mutable) — and
+  // `sleep` charges nothing: it is virtual time on the deterministic
+  // scheduler, not a clock capability.
+  const fnFx = (params: Type[], ret: Type, effects: string[]): Type => ({ tag: "Fn", params, ret, effects });
 
   // Result constructors
   env.define("Ok",    { forall: [a.id, e.id], type: fn([a], resultA) });
@@ -775,6 +783,8 @@ function buildPrelude(): TypeEnv {
 
   // I/O — typed (`forall a. a -> Unit`) so a print line inside `try` has a
   // concrete type instead of a leniency var (see inferTryBody / the §12 sweep).
+  // Deliberately effect-FREE (the ambient decision above): observation, not
+  // capability.
   env.define("print",   { forall: [a.id], type: fn([a], { tag: "Prim", kind: "Unit" }) });
   env.define("println", { forall: [a.id], type: fn([a], { tag: "Prim", kind: "Unit" }) });
 
@@ -824,7 +834,7 @@ function buildPrelude(): TypeEnv {
   // parallel of `setTheme`. A resize / orientation change overwrites this global slot
   // and the next `view()` re-collapses every `Responsive(Length)` prop (§9.3) against
   // the new `viewport.breakpoint`. Source-only otherwise (no view writes back).
-  env.define("setViewport", { forall: [], type: fn([viewportT], { tag: "Prim", kind: "Unit" }) });
+  env.define("setViewport", { forall: [], type: fnFx([viewportT], { tag: "Prim", kind: "Unit" }, ["ui"]) });
   // `theme` — the second read-only reactive root (§9.1, theme-design Slice 4).
   // Like `viewport`, anything may read `theme.*`; nothing writes back from a view,
   // so a theme-driven layout is acyclic by construction. Roles are hex `String`s in
@@ -835,7 +845,7 @@ function buildPrelude(): TypeEnv {
   const themeT: Type = { tag: "Record", fields:
     Object.keys(DEFAULT_THEME).map(name => ({ name, type: str, optional: false })) };
   env.define("theme", { forall: [], type: themeT });
-  env.define("setTheme", { forall: [], type: fn([themeT], { tag: "Prim", kind: "Unit" }) });
+  env.define("setTheme", { forall: [], type: fnFx([themeT], { tag: "Prim", kind: "Unit" }, ["ui"]) });
   // Convergence vocabulary (§6): cross-element prop references. Typed loosely
   // (Unknown) — `scope.prop` resolves to a fresh var via the Field rule, so it
   // unifies with whatever the prop expects; the real (element,prop) graph is
@@ -918,7 +928,7 @@ function buildPrelude(): TypeEnv {
   env.define("streamMerge",    { forall: [a.id],     type: fn([streamA, streamA], streamA) });
   // externSource(setup) — the input FFI: setup gets `push: a -> Unit` and `done: () -> Unit`.
   const unitT: Type = { tag: "Prim", kind: "Unit" };
-  env.define("externSource", { forall: [a.id], type: fn([fn([fn([a], unitT), fn([], unitT)], unitT)], streamA) });
+  env.define("externSource", { forall: [a.id], type: fnFx([fn([fn([a], unitT), fn([], unitT)], unitT)], streamA, ["io"]) });
   // help(map) — the inputmap's labelled rows as derived data (SPEC §10.5): the
   // substrate of the auto-generated help overlay. Only labelled rows appear —
   // a label is the row's opt-in to user-facing help.
@@ -992,10 +1002,12 @@ function buildPrelude(): TypeEnv {
   env.define("crash",       { forall: [b.id],  type: fn([{ tag: "Prim", kind: "String" }], b) });
   env.define("timeout",     { forall: [a.id], type: fn([num, { tag: "Named", name: "Async", args: [a] }], { tag: "Named", name: "Result", args: [a, { tag: "Atom", name: "timeout" }] }) });
 
-  // Network (effect-typed, simplified)
+  // Network — now genuinely effect-typed ([io]); these names are not yet in
+  // resolve's BUILTINS (no runtime implementation — fixtures shadow them with
+  // user defs), but the signatures stop lying the day they land.
   const asyncResultStr: Type = { tag: "Named", name: "Async", args: [{ tag: "Named", name: "Result", args: [str, str] }] };
   for (const name of ["netGet", "netPost", "netDelete", "httpGet", "httpPost", "httpPut", "httpPatch"]) {
-    env.defineMono(name, fn([str], asyncResultStr));
+    env.defineMono(name, fnFx([str], asyncResultStr, ["io"]));
   }
 
   return env;

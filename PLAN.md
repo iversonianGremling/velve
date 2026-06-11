@@ -437,6 +437,14 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       leaf) — dynamic precedence on the children-bearing element branch;
       zero corpus baseline changes. Residual: bare call children
       (`card()`) still siblings — spell `{card()}`. S2–S5 deferred.
+- [x] **Effect-typed builtin surface**: ✅ DONE (2026-06, SPEC §12.5,
+      `builtin_effects_test`/`_bad`). `setTheme`/`setViewport` charge
+      `[ui]`, `externSource` + the prelude network names charge `[io]` —
+      the stdlib stops lying by omission, including through S4c tails
+      (`pmap(setViewport)` charges `[ui]` in a pure def). Decided ambient:
+      `print`/`println` (observation channel) and `sleep` (virtual time).
+      `theme_root_test`/`responsive_prop_test` mains now honestly declare
+      `Effect [ui]`. Security re-graded A− → A (the named coverage gap).
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside

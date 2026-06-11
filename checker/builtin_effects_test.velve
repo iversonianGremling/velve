@@ -1,0 +1,33 @@
+@edition "2026.6"
+
+-- The builtin surface is effect-typed (SPEC §12.5, TODO §3.6): host-state
+-- writes (`setTheme`/`setViewport`) charge [ui], the input FFI
+-- (`externSource`) charges [io] — the stdlib can no longer lie by omission.
+-- The DECIDED ambient exceptions: `print`/`println` charge nothing (stdout is
+-- the language's observation channel — a pure def may report), and `sleep`
+-- charges nothing (virtual time on the deterministic scheduler, not a clock
+-- capability).
+-- Expected: 0 errors. Runs.
+
+-- a PURE def may print: observation, not capability
+def report(label: String, n: Number): ()
+  print("{label}: {n}")
+
+-- host-state write, honestly declared
+def shrink(): Effect [ui] ()
+  setViewport(#{ width: 375, height: 667, breakpoint: Mobile })
+
+-- input FFI, honestly declared
+def wire(push: (Number -> ()), done: (() -> ())): ()
+  push(7)
+  push(35)
+  done()
+
+def total(): Effect [io] Number
+  externSource(wire) |> streamFold(0, fn (acc x) -> acc + x)
+
+-- the caller's pool covers both callees' rows
+def main(): Effect [ui, io] ()
+  shrink()
+  report("viewport", viewport.width)
+  report("total", total())

@@ -21,7 +21,7 @@ Legend: 🔴 load-bearing (fix before the surface freezes) · 🟡 important · 
 | Low-level | **B−** | Rust, Zig | Ptr/regions/outlives/move tracking are real and end-to-end. But unified `Number` vs. planned sized types vs. `Duration` dimensions vs. `Px` units = four numeric stories that haven't met each other (§3.4). `std/low`/gpu/audio are sketches. |
 | Games / intensive interactive | **C+** (today) / **A−** (as designed) | Unity C#, Bevy ECS, Pony | `docs/interaction-model-design.md` (footprint = `mut` params, capability-keyed dispatch, `@interaction`/`@confined`) is a credible, novel answer to ECS — but nothing of it is implemented, there is no frame clock, and a tree-walking interpreter can't hold 60fps. The claim depends on the compiled target. |
 | Animation | **C** (today) / **A** (as designed) | CSS, Framer Motion, SwiftUI | The `animated` modifier + mandatory motion-policy chokepoint ("motion you can't write inaccessibly") is a real differentiator no shipping system has. Entirely unimplemented; depends on `frames` + reconciler work. |
-| Security model | **A−** | everything mainstream | Taint-at-parse (not at transport) is the right boundary and well-argued. `Effect` capability *enforcement* must match the spec's promise (§3.6). |
+| Security model | **A** *(2026-06)* | everything mainstream | Taint-at-parse (not at transport) is the right boundary and well-argued. `Effect` capability enforcement is real end-to-end (§3.6 closed): direct calls + HOF laundering + effect tails + the effect-typed builtin surface (SPEC §12.5 — `setTheme`/`setViewport` `[ui]`, `externSource`/network `[io]`; `print`/`sleep` decided-ambient). A→A+ = E2 user-spelled effect rows + §3 proof-gradient integration. |
 
 **Overall:** the semantic layer is unusually coherent — the state primitives, the
 refusal discipline (§4.0 of the SPEC), and the design-note honesty ("evidence
@@ -512,15 +512,24 @@ dimension machinery generalize?
   never sprung because it never worked).
 
 ### 3.6 Effects
-- [ ] 🔴 Capability *enforcement* must match the spec's promise ("compiler
+- [x] 🔴 Capability *enforcement* must match the spec's promise ("compiler
   verifies all effectful calls at definition site", §12.3) — the multitarget
   doc admits effects are "declared but not enforced." Honest effects that
   aren't checked are worse than none: they train readers to trust signatures
   that can lie. **Mostly closed 2026-06**: direct calls checked (`effects_test`,
   pure-hole edition-gated) and the HOF-argument laundering route closed (next
-  item). Residual is *coverage*, not mechanism: runtime builtins without typed
-  signatures (the typed-prelude/BUILTINS split) carry no effects to check —
-  stays open until the builtin surface is effect-typed.
+  item). Residual was *coverage*, not mechanism — **CLOSED 2026-06**
+  (SPEC §12.5, `builtin_effects_test`/`_bad`): the effectful runtime builtins
+  charge their capability — `setTheme`/`setViewport` `[ui]` (host-state
+  writes), `externSource` `[io]` (the input FFI), the prelude network names
+  `[io]` (not yet runtime-resolvable; honest when they land). The S4c tails
+  carry builtin rows through HOFs (`pmap(setViewport)` charges `[ui]` in a
+  pure def). DECIDED ambient: `print`/`println` (stdout is the observation
+  channel — charging [io] would put `Effect [io]` on every main while
+  guarding nothing host-mutable) and `sleep` (virtual time, deterministic).
+  Corpus updated honestly: `theme_root_test`/`responsive_prop_test` mains
+  now declare `Effect [ui]`; the baseline-edition externSource fixtures get
+  the designed deprecation warnings.
 - [x] 🟡 Specify effect polymorphism for higher-order functions (what is the
   effect of `map(f, xs)` when `f` is effectful?) — currently absent from the
   SPEC and it's the first wall any real program hits. **DONE 2026-06**
