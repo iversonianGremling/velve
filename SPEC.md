@@ -43,6 +43,7 @@ means there is a green fixture exercising it under `checker/`.
 | Accessibility-as-proof (contrast) | ✅ Built (opt-in) | `accessibility_test`; **off by default, never forced** — turns on only if a project defines `OnSurface = Color where contrast(value, surface) >= Lc`, then checked at compile time against the resolved background (APCA Lc in `constEval`). |
 | Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. (`parseNumber` now resolves + runs, 2026-06.) |
 | Module-qualified resolution (`Math.sqrt`) | ✅ Built | §5.5, `qualified_test`/`_bad`: capitalized stdlib namespaces (`Math`, `String`, `Json`, …) are ambient — no import needed, members fully typed, user bindings shadow. Lowercase/path forms stay import-only. |
+| User generics (`def idy(x: a): a`) | ✅ Built | §2.12, `generics_test`/`_bad`: implicit type vars in def ascriptions — quantified at call sites (each call instantiates fresh), rigid skolems inside the body. Was a silent trap: the annotation parsed but `idy(5)` errored. |
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. Conservative (no effect rows yet). |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
@@ -389,6 +390,39 @@ def firstHalf(buf: Ptr ~a List(Number)): Ptr ~a List(Number)
 This was the last notional piece of the ownership system; it is now end-to-end. (Pointers
 here are modelled as `Ptr List(T)` — a pointer to a buffer — rather than C-style
 array-pointers with `Ptr T`/`buf.length` arithmetic, which the runtime does not model.)
+
+### 2.12 User generics
+
+A lowercase nullary name in a def's type ascriptions is an **implicit type
+variable** — there is no explicit binder on `def`; the set is collected from
+the signature itself:
+
+```
+def idy(x: a): a -> x
+
+def headOr(xs: List(a), fallback: a): a
+  match listHead(xs)
+    | Ok(v)    -> v
+    | Error(_) -> fallback
+
+idy(5)          -- a := Number
+idy("velve")    -- a := String, independently
+```
+
+The two halves of the rule (2026-06, `generics_test`/`_bad`):
+
+- **Polymorphic at call sites.** The def is registered as a quantified
+  scheme; every call instantiates fresh variables, exactly like the typed
+  prelude's own generics (`pmap`, `listHead`).
+- **Rigid inside the body.** Within the implementation, `a` is a skolem
+  constant — the caller's choice, not the body's. `def sneaky(x: a): a ->
+  x + 1` is a check error (the body pins `a` to `Number`), as is returning a
+  concrete `String` where `a` was promised, or conflating two distinct
+  variables.
+
+Capitalized names are never type variables, and a lowercase name applied to
+arguments (`box(a)`) isn't either — only bare lowercase names. Effects on the
+signature ride through the scheme unchanged (§5).
 
 ---
 

@@ -1,0 +1,32 @@
+@edition "2026.6"
+
+-- User generics (SPEC §2.12): a lowercase nullary name in a def's type
+-- ascriptions is an implicit type variable — polymorphic at call sites
+-- (each call instantiates fresh), RIGID inside the body (the implementation
+-- cannot pin it; generics_bad.velve proves that half). Before this slice the
+-- annotation parsed but was useless: `idy(5)` was already a type error.
+
+def idy(x: a): a -> x
+
+def firstOf(x: a, y: a): a -> x
+
+def secondOf(x: a, y: b): b -> y
+
+def headOr(xs: List(a), fallback: a): a
+  match listHead(xs)
+    | Ok(v) -> v
+    | Error(_) -> fallback
+
+def main(): Unit
+  n = idy(5)
+  println("idy num: {n}")
+  s = idy("velve")
+  println("idy str: {s}")
+  f = firstOf(1, 2)
+  println("firstOf: {f}")
+  t = secondOf("ignored", 42)
+  println("secondOf: {t}")
+  h = headOr([7, 8, 9], 0)
+  println("headOr: {h}")
+  e = headOr([], "empty")
+  println("headOr empty: {e}")

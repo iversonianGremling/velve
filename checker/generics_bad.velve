@@ -1,0 +1,21 @@
+@edition "2026.6"
+
+-- The rigid half of user generics: a type variable is the CALLER's choice,
+-- so the body cannot pin it to anything concrete. Inside the body `a` is a
+-- rigid skolem; only the call-site scheme is quantified.
+-- Expected: 5 errors.
+
+-- 1. body pins `a` to Number (2 errors: the '+' and the return)
+def sneaky(x: a): a -> x + 1
+
+-- 2. body returns a concrete String where `a` was promised
+def lying(x: a): a -> "nope"
+
+-- 3. distinct type variables cannot be conflated by the body
+def conflate(x: a, y: b): a -> y
+
+-- 4. the caller's instantiation is still checked: both args share `a`
+def firstOf(x: a, y: a): a -> x
+
+def mixedCall(): Number
+  firstOf(1, "two")

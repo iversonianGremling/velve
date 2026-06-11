@@ -489,6 +489,34 @@ function sigToFnType(sig: FnSig, tp: Map<string, Type>): Type {
   return { tag: "Fn", params: sig.params.map(p => resolveRef(p, tp)), ret: resolveRef(sig.ret, tp), effects: sig.effects };
 }
 
+// USER GENERICS: a lowercase nullary name in a def's type ascriptions
+// (`def idy(x: a): a`) is an implicit type variable. There is no explicit
+// binder on `def`, so the set is collected from the refs themselves. NOTE:
+// ordinary defs carry their types on the CLAUSE (param ascriptions +
+// clause.ret), not on decl.sig — collect from whichever is present.
+// Lowercase aliases/refinements can't collide — type decls are upper_id in
+// the grammar — but guard anyway.
+function refTypeVars(refs: (TypeRef | null)[]): string[] {
+  const out: string[] = [];
+  const walk = (r: TypeRef): void => {
+    switch (r.tag) {
+      case "TRNamed":
+        if (r.args.length === 0 && /^[a-z]/.test(r.name)
+            && !TYPE_ALIASES.has(r.name) && !REFINEMENTS.has(r.name)
+            && !out.includes(r.name)) out.push(r.name);
+        r.args.forEach(walk);
+        break;
+      case "TRFn":     r.params.forEach(walk); walk(r.ret); break;
+      case "TRTuple":  r.elems.forEach(walk); break;
+      case "TRRecord": r.fields.forEach(f => walk(f.type)); break;
+      case "TRPtr":    walk(r.inner); break;
+      case "TRAtom": case "TRExpr": break;
+    }
+  };
+  for (const r of refs) if (r) walk(r);
+  return out;
+}
+
 // ── Outcome(T) / TxResult(T) — the transaction-outcome ADT ────────────────────
 // A `transaction` yields a distinctly-typed outcome ADT, NOT a plain Result.
 // **Renamed in edition 2026.6:** the type `TxResult`→`Outcome` and its commit/abort
@@ -1090,9 +1118,20 @@ class Inferrer {
             // don't unify against just the first clause's signature.
             env.defineMono(decl.name, { tag: "Unknown" });
           } else if (decl.sig) {
-            env.define(decl.name, mono(sigToFnType(decl.sig, new Map())));
+            env.define(decl.name, this.generalizeSig(
+              decl.sig.params, decl.sig.ret, decl.sig.effects)
+              ?? mono(sigToFnType(decl.sig, new Map())));
           } else {
-            env.defineMono(decl.name, freshVar(decl.name));
+            // Ordinary defs carry their types on the clause, not decl.sig.
+            // If the ascriptions mention type variables, register the
+            // generalized scheme now; otherwise keep the existing shape (a
+            // fresh var pinned by the post-clause unify in inferClause).
+            const clause = decl.clauses[0];
+            const scheme = clause && clause.ret && clause.params.every(p => p.ascription)
+              ? this.generalizeSig(clause.params.map(p => p.ascription!), clause.ret, clause.effects)
+              : null;
+            if (scheme) env.define(decl.name, scheme);
+            else env.defineMono(decl.name, freshVar(decl.name));
           }
           break;
         case "DType":
@@ -1177,6 +1216,29 @@ class Inferrer {
         }
       }
     }
+  }
+
+  // User generics: if the given refs mention implicit type variables, build the
+  // generalized scheme — quantified HERE so call sites instantiate fresh vars
+  // (`idy(5)` and `idy("s")` both work). Returns null when there are none (the
+  // caller keeps its existing mono path). The clause BODY is unaffected: it
+  // resolves the same refs with an empty tp map, i.e. as RIGID `Named "a"`
+  // skolems, so an implementation that pins `a` (e.g. `-> x + 1`) still errors;
+  // the post-clause declared-vs-inferred unify just binds fresh vars to those
+  // skolems.
+  private generalizeSig(params: TypeRef[], ret: TypeRef, effects: string[]): Scheme | null {
+    const tvNames = refTypeVars([...params, ret]);
+    if (tvNames.length === 0) return null;
+    const tp = new Map<string, Type>();
+    const ids: number[] = [];
+    for (const n of tvNames) {
+      const v = freshVar(n);
+      tp.set(n, v);
+      ids.push(v.id);
+    }
+    return { forall: ids, type: { tag: "Fn",
+      params: params.map(p => resolveRef(p, tp, this.sagaRets)),
+      ret: resolveRef(ret, tp, this.sagaRets), effects } };
   }
 
   private collectType(decl: Extract<Decl, { tag: "DType" }>, env: TypeEnv): void {

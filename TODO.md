@@ -414,6 +414,17 @@ dimension machinery generalize?
   module boundaries** (Zig `!T` ergonomics + a reviewed contract at the edge). This is the
   *same row-polymorphic inference* as effects (§3.6) — build it once. See
   `docs/north-star-grades.md §4` for the trade table and decision.
+- [x] 🟡 **User generics** (found during the error-ADT slice, closed 2026-06;
+  SPEC §2.12, `generics_test`/`_bad`): `def idy(x: a): a` parsed but the type
+  var was a rigid `Named "a"` never generalized — `idy(5)` was a type error,
+  making the annotation a silent trap. Now: lowercase nullary ascription names
+  are implicit type variables, quantified at collect time (each call site
+  instantiates fresh — same mechanism as typed-prelude generics) while the
+  body keeps resolving them as rigid skolems, so an implementation that pins
+  `a` (`-> x + 1`) still errors. NOTE: ordinary defs carry types on the
+  *clause* (decl.sig is null) — the scheme is built from param ascriptions +
+  clause ret. Zero corpus impact (nothing used the broken form — the trap
+  never sprung because it never worked).
 
 ### 3.6 Effects
 - [ ] 🔴 Capability *enforcement* must match the spec's promise ("compiler
