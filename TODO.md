@@ -461,9 +461,13 @@ best thing in the document. The same razor, applied to the surface:
   application form (value-level), grammar-removed in phase 1, docs reconciled this turn.
 - [ ] 🔴 **C-style ternary** `c ? a : b` — covered above (§2.2). Its removal is
   what makes `?` unambiguous.
-- [ ] 🟡 **`pipe` block** — it is literally documented as "the point-free `|>`
+- [x] 🟡 **`pipe` block** — it is literally documented as "the point-free `|>`
   chain as a block," i.e. a second spelling of an existing feature, plus a new
-  magic identifier (`ret`). Delete; multiline `|>` already works.
+  magic identifier (`ret`). Delete; multiline `|>` already works. **Already
+  DONE** (stale checkbox, reconciled 2026-06): removed in edition 2026.6 with
+  a fix-it ("use a multiline `|>` chain"), deprecation warning in the baseline
+  edition — `pipe_block_2026_1` / `pipe_chain_2026_6` fixtures prove both
+  halves of the lifecycle.
 - [ ] 🟡 **The `%` sigil** in `for` — covered above (§2.5).
 - [ ] 🟡 **Binding-form triplication**: bare `x = 5`, `const x = 5`, `let x = 5`
   are three spellings of "immutable binding" with a scoping nuance most users
