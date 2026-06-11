@@ -747,7 +747,13 @@ export class Lowerer {
         return { tag: "TRNamed", name: "Async", args: inner ? [this.lowerTypeRef(inner)] : [] };
       }
       case "result_type": {
-        const types = n.namedChildren.filter(isTypeKind).map(t => this.lowerTypeRef(t));
+        // The error slot admits `_` (grammar-restricted to that slot) — the
+        // inferred-row marker (error-rows-design S1). Lowered as the name "_";
+        // infer resolves it to the def's ErrRow (and rejects it off-slot).
+        const types = n.namedChildren.filter(c => isTypeKind(c) || c.type === "wildcard")
+          .map(t => t.type === "wildcard"
+            ? { tag: "TRNamed" as const, name: "_", args: [] }
+            : this.lowerTypeRef(t));
         return { tag: "TRNamed", name: "Result", args: types };
       }
       case "array_type": {

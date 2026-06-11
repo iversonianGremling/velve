@@ -12844,6 +12844,10 @@
         {
           "type": "unit_type",
           "named": true
+        },
+        {
+          "type": "wildcard",
+          "named": true
         }
       ]
     }

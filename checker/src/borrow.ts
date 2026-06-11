@@ -53,6 +53,7 @@ function isCopy(t: Type | undefined): boolean {
     case "Fn":         return true;
     case "SagaFn":     return true;
     case "Inputmap":   return true;                  // a callable handle, not a heap buffer — copies like Fn
+    case "ErrRow":     return true;                  // check-time-only marker; never a runtime value
     case "Tuple":      return t.elems.every(isCopy);
     case "Record":     return t.fields.every(f => isCopy(f.type));
     case "Tainted":    return isCopy(t.inner);

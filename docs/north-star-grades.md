@@ -318,6 +318,12 @@ named-ADT pin checks ctor-set inclusion, rows are matchable) with *no row variab
 HM extension* — it builds the representation, accumulation, and boundary check that v2's
 row variables ride on. Four build slices, each fixture-provable and corpus-neutral.
 
+**S1 shipped 2026-06** (SPEC §2.13, `error_rows_test`/`_bad`): infer + accumulate + pin are
+real — two unrelated error ADTs and the prelude `ParseError` compose under one `?` chain
+with zero threading, and the pin lists escaping ctors by name. The error-handling row stays
+**A** until S2 (match/exhaustiveness over the actual raised set) lands — that's the half of
+the A+ claim rows still owe.
+
 ---
 
 ## 5. Low-level, redefined: two axes, not eight sketches

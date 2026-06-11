@@ -2,7 +2,7 @@ import type { Span } from "./span.js";
 import { freshVar, typeToString } from "./types.js";
 import { stdlibLookup, stdlibModule, STDLIB_MODULE_NAMES } from "./stdlib.js";
 import { PRIMITIVE_MODE } from "./elements.js";
-import type { Type, Field } from "./types.js";
+import type { Type, Field, RowEntry } from "./types.js";
 import type {
   Module, Decl, Expr, Stmt, Pat, FnClause, FnSig, SagaStmt,
   TypeRef, Lit, Param,
@@ -64,7 +64,8 @@ class Subst {
   apply(t: Type): Type {
     switch (t.tag) {
       case "Var":        return this.map.get(t.id) ?? t;
-      case "Prim": case "Atom": case "Unknown": case "Inputmap": return t;
+      // ErrRow is identity-shared per def (entries mutate in place) — never rebuild.
+      case "Prim": case "Atom": case "Unknown": case "Inputmap": case "ErrRow": return t;
       case "Named":      return { ...t, args: t.args.map(a => this.apply(a)) };
       case "Fn":         return { ...t, params: t.params.map(p => this.apply(p)), ret: this.apply(t.ret) };
       case "SagaFn":     return { ...t, params: t.params.map(p => this.apply(p)), ret: this.apply(t.ret) };
@@ -81,7 +82,7 @@ class Subst {
 function applyOne(t: Type, id: number, rep: Type): Type {
   switch (t.tag) {
     case "Var":        return t.id === id ? rep : t;
-    case "Prim": case "Atom": case "Unknown": case "Inputmap": return t;
+    case "Prim": case "Atom": case "Unknown": case "Inputmap": case "ErrRow": return t;
     case "Named":      return { ...t, args: t.args.map(a => applyOne(a, id, rep)) };
     case "Fn":         return { ...t, params: t.params.map(p => applyOne(p, id, rep)), ret: applyOne(t.ret, id, rep) };
     case "SagaFn":     return { ...t, params: t.params.map(p => applyOne(p, id, rep)), ret: applyOne(t.ret, id, rep) };
@@ -173,6 +174,45 @@ class TypeEnv {
 }
 
 // ── TypeRef → Type ────────────────────────────────────────────────────────────
+
+// ── Error rows (error-rows-design v1, S1) ─────────────────────────────────────
+// A `Result T _` def owns ONE ErrRow instance; `?` inside it accumulates the
+// ctor contributions of what it propagates. Rows never unify — generic unify
+// treats them as accumulate-or-skip — and are inclusion-checked at pins after
+// the whole module is inferred (rows referencing other rows close by fixpoint).
+type ErrRowT = Type & { tag: "ErrRow" };
+// type name → its constructors (for contributions and pin coverage). Cleared per module.
+let ADT_CTORS = new Map<string, RowEntry[]>();
+// target ⊇ source edges between rows (a `_` def consuming a `_` def).
+let ROW_DEPS: [ErrRowT, ErrRowT][] = [];
+
+// What a callee's error type contributes to a row. Null = no contribution
+// (Var/Unknown — the documented S1 leniency; a late-resolving error type is
+// not re-judged, the try-soundness-style deferred sweep is S3 polish).
+function rowContribution(t: Type): RowEntry[] | null {
+  if (t.tag === "Refinement") return rowContribution(t.base);
+  if (t.tag === "Named") {
+    const ctors = ADT_CTORS.get(t.name);
+    if (ctors) return ctors;
+    // opaque named error with no known ctor list — treat the type name as the
+    // ctor (the single-ctor `ParseError` pattern: ctor and type share a name)
+    if (t.args.length === 0) return [{ name: t.name, payload: null }];
+    return null;
+  }
+  if (t.tag === "Prim" && t.kind === "String")
+    return [{ name: "String", payload: null, prose: true }];
+  if (t.tag === "Atom")
+    return [{ name: `:${t.name}`, payload: null, prose: true }];
+  return null;
+}
+
+function addRowEntries(row: ErrRowT, entries: RowEntry[]): boolean {
+  let added = false;
+  for (const e of entries) {
+    if (!row.entries.some(x => x.name === e.name)) { row.entries.push(e); added = true; }
+  }
+  return added;
+}
 
 // Registry of declared type aliases (and refinements), populated once per `infer`
 // run before any body is type-checked. A refinement (`type T = Base where p`) is
@@ -501,7 +541,7 @@ function refTypeVars(refs: (TypeRef | null)[]): string[] {
   const walk = (r: TypeRef): void => {
     switch (r.tag) {
       case "TRNamed":
-        if (r.args.length === 0 && /^[a-z]/.test(r.name)
+        if (r.args.length === 0 && /^[a-z]/.test(r.name) && r.name !== "_"
             && !TYPE_ALIASES.has(r.name) && !REFINEMENTS.has(r.name)
             && !out.includes(r.name)) out.push(r.name);
         r.args.forEach(walk);
@@ -515,6 +555,30 @@ function refTypeVars(refs: (TypeRef | null)[]): string[] {
   };
   for (const r of refs) if (r) walk(r);
   return out;
+}
+
+// `_` — the inferred-error-row marker (error-rows-design S1). The grammar
+// admits it only in a Result error slot; these helpers enforce the v1 rule
+// that the slot must be the TOP-LEVEL error of a def's RETURN ascription.
+function isRowMarker(r: TypeRef): boolean {
+  return r.tag === "TRNamed" && r.name === "_" && r.args.length === 0;
+}
+function refHasMarker(r: TypeRef | null): boolean {
+  if (!r) return false;
+  switch (r.tag) {
+    case "TRNamed":  return isRowMarker(r) || r.args.some(refHasMarker);
+    case "TRFn":     return r.params.some(refHasMarker) || refHasMarker(r.ret);
+    case "TRTuple":  return r.elems.some(refHasMarker);
+    case "TRRecord": return r.fields.some(f => refHasMarker(f.type));
+    case "TRPtr":    return refHasMarker(r.inner);
+    case "TRAtom": case "TRExpr": return false;
+  }
+}
+// The one legal shape: `Result T _` at the top of a return ascription, with
+// no further marker anywhere (not in T, not nested deeper).
+function isRowRet(ret: TypeRef): boolean {
+  return ret.tag === "TRNamed" && ret.name === "Result" && ret.args.length === 2
+    && isRowMarker(ret.args[1]!) && !refHasMarker(ret.args[0]!);
 }
 
 // ── Outcome(T) / TxResult(T) — the transaction-outcome ADT ────────────────────
@@ -846,6 +910,24 @@ function unify(a: Type, b: Type, ctx: Ctx, span: Span, hint?: string): void {
   if (tb.tag === "Var") { ctx.subst.extend(tb.id, ta); return; }
   if (ta.tag === "Unknown" || tb.tag === "Unknown") return;
 
+  // Error rows never unify — they accumulate. Row-vs-named-error means a `_`
+  // def raises that error (e.g. a direct `Error(NotFound(x))` return unifying
+  // body type against the row-carrying return type): add the ctors to the row.
+  // Row-vs-row records a ⊇-edge each way (closed by fixpoint at finalize).
+  // Over-approximation is sound for error sets; anything unrecognized is a
+  // no-op (Unknown discipline). The directional pin check lives in Propagate.
+  if (ta.tag === "ErrRow" || tb.tag === "ErrRow") {
+    if (ta.tag === "ErrRow" && tb.tag === "ErrRow") {
+      if (ta !== tb) ROW_DEPS.push([ta, tb], [tb, ta]);
+      return;
+    }
+    const row = (ta.tag === "ErrRow" ? ta : tb) as ErrRowT;
+    const other = ta.tag === "ErrRow" ? tb : ta;
+    const entries = rowContribution(other);
+    if (entries) addRowEntries(row, entries);
+    return;
+  }
+
   // Refinement types are transparent to their base: `type Age = Number where …`
   // unifies with `Number` (and with other refinements over `Number`). The
   // predicate is enforced separately — at runtime via `.parse`, and at compile
@@ -1040,11 +1122,16 @@ export function infer(mod: Module, resolutions: ResolutionMap): InferResult {
   FN_PARAMS = new Map();
   FN_SIGS = new Map();
   ALIAS_RESOLVING.clear();
+  ADT_CTORS = new Map();
+  ROW_DEPS = [];
+  // Prelude error ADT: the single-ctor pattern (ctor and type share the name).
+  ADT_CTORS.set("ParseError", [{ name: "ParseError", payload: null }]);
   registerAliases(mod.decls);
   const inferrer = new Inferrer(ctx, types);
   inferrer.collectDecls(mod.decls, env);
   inferrer.inferDecls(mod.decls, env);
   inferrer.checkPendingTryVars();
+  inferrer.finalizeRows();
   const nameToTypeString = new Map<string, string>();
   for (const [name, scheme] of env.allSchemes()) {
     nameToTypeString.set(name, typeToString(ctx.subst.apply(instantiate(scheme))));
@@ -1110,8 +1197,18 @@ class Inferrer {
         case "DModule":
           this.collectDecls(decl.decls, env);
           break;
-        case "DFn":
+        case "DFn": {
+          // Inferred error rows (S1): `_` is legal only as the top-level error
+          // of a single-clause def's return Result. Reject every other spelling
+          // here, where the decl span is at hand.
+          const markerMisuse = decl.clauses.some(c =>
+            c.params.some(p => refHasMarker(p.ascription)) ||
+            (c.ret && refHasMarker(c.ret) && !isRowRet(c.ret)));
+          if (markerMisuse)
+            err(this.ctx, decl.span, "the inferred-row `_` is only legal as the error of a def's return `Result` (e.g. `Result Number _`)");
           if (decl.clauses.length > 1) {
+            if (decl.clauses.some(c => c.ret && isRowRet(c.ret)))
+              err(this.ctx, decl.span, "an inferred error row needs a single-clause def — multi-clause heads are typed per-clause");
             // Multi-clause (ad-hoc polymorphic) functions can't be represented
             // by a single HM type — each clause may have distinct param types
             // (e.g. different atom literals). Type it as Unknown so call sites
@@ -1123,10 +1220,26 @@ class Inferrer {
               ?? mono(sigToFnType(decl.sig, new Map())));
           } else {
             // Ordinary defs carry their types on the clause, not decl.sig.
+            const clause = decl.clauses[0];
+            if (clause && clause.ret && isRowRet(clause.ret) && !markerMisuse
+                && clause.params.every(p => p.ascription)) {
+              // `Result T _`: this def owns an error row. One shared instance —
+              // `?` in the body accumulates into it; callers see it through
+              // the return type and pin-check it at their own `?` sites.
+              const row: ErrRowT = { tag: "ErrRow", entries: [], owner: decl.name };
+              this.rowByDef.set(decl.name, row);
+              this.rowSpans.set(decl.name, decl.span);
+              const tp = new Map<string, Type>([["_", row]]);
+              const fnT: Type = { tag: "Fn",
+                params: clause.params.map(p => resolveRef(p.ascription!, tp, this.sagaRets)),
+                ret: resolveRef(clause.ret, tp, this.sagaRets),
+                effects: clause.effects };
+              env.define(decl.name, mono(fnT));
+              break;
+            }
             // If the ascriptions mention type variables, register the
             // generalized scheme now; otherwise keep the existing shape (a
             // fresh var pinned by the post-clause unify in inferClause).
-            const clause = decl.clauses[0];
             const scheme = clause && clause.ret && clause.params.every(p => p.ascription)
               ? this.generalizeSig(clause.params.map(p => p.ascription!), clause.ret, clause.effects)
               : null;
@@ -1134,6 +1247,7 @@ class Inferrer {
             else env.defineMono(decl.name, freshVar(decl.name));
           }
           break;
+        }
         case "DType":
           this.collectType(decl, env);
           break;
@@ -1283,12 +1397,16 @@ class Inferrer {
 
   private collectCtor(v: { name: string; payload: TypeRef | null; span: Span }, typeName: string, tp: Map<string, Type>, env: TypeEnv): void {
     const resultType: Type = { tag: "Named", name: typeName, args: [...tp.values()] };
+    const ctorList = ADT_CTORS.get(typeName) ?? [];
     if (v.payload) {
       const pType = resolveRef(v.payload, tp);
       env.define(v.name, generalize(env, this.ctx.subst, { tag: "Fn", params: [pType], ret: resultType, effects: [] }));
+      ctorList.push({ name: v.name, payload: pType });
     } else {
       env.define(v.name, generalize(env, this.ctx.subst, resultType));
+      ctorList.push({ name: v.name, payload: null });
     }
+    ADT_CTORS.set(typeName, ctorList);
   }
 
   // ── Pass 2: infer function bodies ───────────────────────────────────────────
@@ -1335,6 +1453,10 @@ class Inferrer {
   private inferClause(name: string, clause: FnClause, sig: FnSig | null, parent: TypeEnv, multiClause = false): void {
     const env = parent.child();
     const tp = new Map<string, Type>();
+    // A `Result T _` def resolves `_` to its OWN row instance (registered at
+    // collect), so ctx.returnType carries the row and `?` accumulates into it.
+    const ownRow = this.rowByDef.get(name);
+    if (ownRow) tp.set("_", ownRow);
     const paramTypes = clause.params.map((p, i) => {
       if (sig?.params[i]) return resolveRef(sig.params[i]!, tp, this.sagaRets);
       if (p.ascription)   return resolveRef(p.ascription, tp, this.sagaRets);
@@ -2067,7 +2189,34 @@ class Inferrer {
         const t   = this.inferExpr(expr.expr, env);
         const ok  = freshVar(), e = freshVar();
         unify(t, { tag: "Named", name: "Result", args: [ok, e] }, this.ctx, expr.span);
-        // Propagate error type to enclosing return type
+        // Error rows (S1): three regimes for the error side.
+        const eRes = this.ctx.subst.apply(e);
+        const rt = this.ctx.returnType ? this.ctx.subst.apply(this.ctx.returnType) : null;
+        const ownRow = rt && rt.tag === "Named" && rt.name === "Result"
+          && rt.args[1]?.tag === "ErrRow" ? rt.args[1] as ErrRowT : null;
+        if (ownRow) {
+          // (a) inside a `Result T _` def: accumulate the callee's contribution
+          //     into this def's row instead of unifying error types.
+          if (eRes.tag === "ErrRow") {
+            if (eRes !== ownRow) ROW_DEPS.push([ownRow, eRes]);  // row ⊇ callee row
+          } else {
+            const entries = rowContribution(eRes);
+            if (entries) addRowEntries(ownRow, entries);
+            // Var/Unknown contribute nothing — documented S1 leniency.
+          }
+          return this.ctx.subst.apply(ok);
+        }
+        if (eRes.tag === "ErrRow") {
+          // (b) a PINNED def consuming a row-typed callee: defer the inclusion
+          //     check to finalizeRows (the row may still be filling), and skip
+          //     the error-side unify — unifying would pour the declared ADT's
+          //     ctors into the callee's row and pollute its other consumers.
+          const declared = rt && rt.tag === "Named" && rt.name === "Result" && rt.args[1]
+            ? rt.args[1] : { tag: "Unknown" as const };
+          this.pendingPins.push({ row: eRes, declared, span: expr.span });
+          return this.ctx.subst.apply(ok);
+        }
+        // (c) today's behavior: propagate the error type to the enclosing return.
         if (this.ctx.returnType) {
           unify(this.ctx.returnType, { tag: "Named", name: "Result", args: [freshVar(), e] }, this.ctx, expr.span);
         }
@@ -2540,6 +2689,66 @@ class Inferrer {
         err(this.ctx, p.span, `this try line's type resolved to '${typeToString(rt)}' only after the line was checked, so it was not unwrapped — give the expression a concrete Result type at this line (e.g. annotate the value it comes from), or match on it outside the try`);
       } else if (rt.tag === "Var") {
         err(this.ctx, p.span, "a try line cannot stay polymorphic — whether it unwraps depends on the value that arrives at runtime; give it a concrete type or match on it outside the try");
+      }
+    }
+  }
+
+  // ── Error rows (error-rows-design v1, S1) ───────────────────────────────────
+  // rowByDef: each `Result T _` def's owned row. pendingPins: a pinned def
+  // consumed a row-typed callee at `?` — checked after rows close. Both are
+  // evaluated in finalizeRows(), after the whole module is inferred, because a
+  // consumed row may still be filling (defs check in module order).
+  readonly rowByDef = new Map<string, ErrRowT>();
+  readonly rowSpans = new Map<string, Span>();
+  readonly pendingPins: { row: ErrRowT; declared: Type; span: Span }[] = [];
+
+  finalizeRows(): void {
+    // 1. Cycle check — recursion among `_` defs is rejected in v1 (Zig's rule).
+    //    DFS over the ⊇-edges; report each row that can reach itself.
+    const adj = new Map<ErrRowT, ErrRowT[]>();
+    for (const [target, source] of ROW_DEPS) {
+      if (!adj.has(target)) adj.set(target, []);
+      adj.get(target)!.push(source);
+    }
+    const reported = new Set<string>();
+    const reaches = (from: ErrRowT, goal: ErrRowT, seen: Set<ErrRowT>): boolean => {
+      if (seen.has(from)) return false;
+      seen.add(from);
+      return (adj.get(from) ?? []).some(s => s === goal || reaches(s, goal, seen));
+    };
+    for (const row of this.rowByDef.values()) {
+      if (!reported.has(row.owner) && reaches(row, row, new Set())) {
+        reported.add(row.owner);
+        const span = this.rowSpans.get(row.owner);
+        if (span) err(this.ctx, span, `recursive inferred error set: '${row.owner}' is in a cycle of 'Result _' defs — pin one def in the cycle with a named error ADT`);
+      }
+    }
+    // 2. Close rows over the ⊇-edges (fixpoint union).
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const [target, source] of ROW_DEPS) {
+        if (addRowEntries(target, source.entries)) changed = true;
+      }
+    }
+    // 3. Pin checks: every entry of the consumed row must be a constructor of
+    //    the declared (pinned) error ADT. Prose entries are never coverable.
+    for (const pin of this.pendingPins) {
+      const declared = this.ctx.subst.apply(pin.declared);
+      const rowStr = typeToString(pin.row);
+      if (declared.tag !== "Named" || !ADT_CTORS.has(declared.name)) {
+        err(this.ctx, pin.span, `cannot pin the inferred error row ${rowStr} to '${typeToString(declared)}' — the pin must be a named error ADT`);
+        continue;
+      }
+      const ctors = ADT_CTORS.get(declared.name)!;
+      const escapees = pin.row.entries.filter(e => e.prose || !ctors.some(c => c.name === e.name));
+      if (escapees.length > 0) {
+        const prose = escapees.filter(e => e.prose).map(e => e.name);
+        const named = escapees.filter(e => !e.prose).map(e => e.name);
+        const parts: string[] = [];
+        if (named.length) parts.push(`missing: ${named.join(", ")}`);
+        if (prose.length) parts.push(`${prose.join(", ")} is prose — match it out or use a structured error`);
+        err(this.ctx, pin.span, `error row ${rowStr} is not covered by '${declared.name}' — ${parts.join("; ")}`);
       }
     }
   }

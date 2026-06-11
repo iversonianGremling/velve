@@ -1,0 +1,60 @@
+@edition "2026.6"
+
+-- Inferred error rows, S1 (SPEC §2.13, docs/error-rows-design.md): a def may
+-- declare `Result T _` — its error set is INFERRED as the union of what its
+-- `?` lines raise (a row of constructors), with zero threading. An explicit
+-- named-ADT ascription is a PIN: the contract at the edge, checked by
+-- ctor-set inclusion. This composition was impossible before this slice:
+-- two unrelated error ADTs plus the prelude ParseError under one def meant
+-- "expected X, got Y" at the second `?`.
+--
+-- The pin ADT is declared FIRST: ctor names are shared with the source ADTs,
+-- and expression-position ctor construction resolves to the LAST declaration
+-- of a name (S3 residual: make it expected-type-driven like patterns).
+
+type AppError
+  = ParseError { expected: String, got: String, detail: String }
+  | Missing String
+  | Denied String
+  | TooBig Number
+  | Negative Number
+
+type LookupError
+  = Missing String
+  | Denied String
+
+type LimitError
+  = TooBig Number
+  | Negative Number
+
+def lookup(k: String): Result Number LookupError
+  if k == "small" then Ok(1) else Error(Missing(k))
+
+def checkLimit(n: Number): Result Number LimitError
+  if n < 100 then Ok(n) else Error(TooBig(n))
+
+-- three unrelated error sources, one `?` chain, no mapErr, no threading:
+-- row(step) = {ParseError | Missing | Denied | TooBig | Negative}
+def step(raw: String, k: String): Result Number _
+  n = parseNumber(raw)?
+  v = lookup(k)?
+  w = checkLimit(n + v)?
+  Ok(w)
+
+-- a `_` def consuming a `_` def: rows flow transitively (step's row ⊆ this row)
+def stepTwice(raw: String): Result Number _
+  a = step(raw, "small")?
+  Ok(a)
+
+-- the pin: explicit ascription = reviewed contract; inclusion checked
+def api(raw: String): Result Number AppError
+  v = stepTwice(raw)?
+  Ok(v)
+
+def main(): Unit
+  match api("3")
+    | Ok(v) -> println("ok: {v}")
+    | Error(_) -> println("err")
+  match api("nope")
+    | Ok(v) -> println("ok2: {v}")
+    | Error(_) -> println("err2")

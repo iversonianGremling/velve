@@ -421,6 +421,12 @@ dimension machinery generalize?
   `_` defs rejected in v1. Row variables (the effect-A+/HOF convergence) are
   explicitly v2. Build plan: 4 slices (S1 accumulate+pin, S2 match/exhaust,
   S3 diagnostics/prose-interop, S4 row vars).
+  **S1 BUILT 2026-06** (SPEC §2.13, `error_rows_test`/`_bad`): grammar `_` in
+  the Result-error slot (slot-exact), ErrRow type, `?` accumulation, transitive
+  closure by end-of-module fixpoint, pins deferred to finalize with escapees
+  listed, cycles rejected, prose uncoverable. Zero corpus impact. Residuals →
+  S2 (match over rows), S3 (ctor-construction shadowing when a pin re-declares
+  a shared name; Var/Unknown contribution leniency).
 - [x] 🟡 **User generics** (found during the error-ADT slice, closed 2026-06;
   SPEC §2.12, `generics_test`/`_bad`): `def idy(x: a): a` parsed but the type
   var was a rigid `Named "a"` never generalized — `idy(5)` was a type error,

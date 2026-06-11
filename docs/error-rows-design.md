@@ -133,6 +133,20 @@ until v1's representation is proven in fixtures. Do not start with v2.
    rejected. Fixtures: green (two unrelated error ADTs composing under one
    `_` def, consumed by a pinned def), bad (escaping ctor listed; recursive
    `_` cycle; `_` outside the Result-error slot is a parse/check error).
+   **✅ BUILT 2026-06** (SPEC §2.13, `error_rows_test`/`_bad`). As-built
+   deltas from the sketch above: no dependency-order walk — defs check in
+   module order and rows close by **end-of-module fixpoint** over recorded
+   ⊇-edges (the same defer-then-judge shape as the try-soundness sweep), with
+   pins also deferred to finalize; cycle detection is DFS over the edge graph.
+   Generic unify treats a row vs a named error as accumulate-into-row (sound
+   over-approximation; covers direct `Error(ctor)` returns), and the pin path
+   skips the error-side unify so a pin never pollutes the callee's row for its
+   other consumers. Discovered residual: when a pin ADT re-declares a shared
+   ctor name, expression-position *construction* resolves to the last
+   declaration of that name — declare the pin ADT first; the proper fix
+   (expected-type-driven ctor resolution, as match patterns already do) goes
+   to S3. Var/Unknown callee errors contribute nothing — the documented S1
+   leniency; a try-soundness-style deferred re-judge is S3 polish.
 2. **S2 — match/exhaustiveness over rows.** Green: match a row-typed value
    with exactly the raised ctors, no wrapper ADT. Bad: missing-ctor match.
 3. **S3 — diagnostics + prose interop.** Row pretty-printing, the `String`

@@ -487,8 +487,10 @@ export default grammar({
         // distinct from juxtaposition `Result ok err`. Without this, `Result(A, B)`
         // parsed as `Result` applied to the tuple `(A, B)` and then hungrily ate the
         // following expression as the error type (turning a def into a signature).
-        seq(token.immediate('('), $._type, ',', $._type, ')'),
-        seq($._type, $._type),
+        // The error slot (and ONLY that slot) admits `_` — the inferred error
+        // row marker (error-rows-design S1): `Result Number _`.
+        seq(token.immediate('('), $._type, ',', choice($._type, $.wildcard), ')'),
+        seq($._type, choice($._type, $.wildcard)),
       ),
     ),
 

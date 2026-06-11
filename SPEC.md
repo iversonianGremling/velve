@@ -43,6 +43,7 @@ means there is a green fixture exercising it under `checker/`.
 | Accessibility-as-proof (contrast) | ✅ Built (opt-in) | `accessibility_test`; **off by default, never forced** — turns on only if a project defines `OnSurface = Color where contrast(value, surface) >= Lc`, then checked at compile time against the resolved background (APCA Lc in `constEval`). |
 | Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. (`parseNumber` now resolves + runs, 2026-06.) |
 | Module-qualified resolution (`Math.sqrt`) | ✅ Built | §5.5, `qualified_test`/`_bad`: capitalized stdlib namespaces (`Math`, `String`, `Json`, …) are ambient — no import needed, members fully typed, user bindings shadow. Lowercase/path forms stay import-only. |
+| Inferred error rows (`Result T _`) | 🟡 S1 built | §2.13, `error_rows_test`/`_bad`: `?` accumulates a ctor row with zero threading; a named-ADT ascription pins by inclusion (escapees listed); recursion among `_` defs rejected. S2 = match/exhaust over rows; v2 = row variables. |
 | User generics (`def idy(x: a): a`) | ✅ Built | §2.12, `generics_test`/`_bad`: implicit type vars in def ascriptions — quantified at call sites (each call instantiates fresh), rigid skolems inside the body. Was a silent trap: the annotation parsed but `idy(5)` errored. |
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. Conservative (no effect rows yet). |
@@ -423,6 +424,45 @@ The two halves of the rule (2026-06, `generics_test`/`_bad`):
 Capitalized names are never type variables, and a lowercase name applied to
 arguments (`box(a)`) isn't either — only bare lowercase names. Effects on the
 signature ride through the scheme unchanged (§5).
+
+### 2.13 Inferred error rows (v1, S1)
+
+A def may elide its error type: `Result T _`. Its error set — a **row** of
+constructors — is inferred as the union of everything its `?` lines raise,
+with zero threading. An explicit named-ADT ascription is a **pin**: the
+reviewed contract at the edge, checked by constructor-set inclusion. (Design:
+`docs/error-rows-design.md`; the trade table is north-star §4.)
+
+```
+def step(raw: String, k: String): Result Number _
+  n = parseNumber(raw)?     -- row += ParseError
+  v = lookup(k)?            -- row += Missing | Denied   (LookupError's ctors)
+  w = checkLimit(n + v)?    -- row += TooBig | Negative  (LimitError's ctors)
+  Ok(w)
+
+def api(raw: String): Result Number AppError   -- the pin
+  v = step(raw, "small")?   -- check: row(step) ⊆ ctors(AppError), escapees listed
+  Ok(v)
+```
+
+As built (2026-06, `error_rows_test`/`_bad`):
+
+- `_` is grammar-legal **only in a Result error slot**, and checker-legal only
+  as the top level of a single-clause def's *return* ascription. Rows flow
+  transitively through `_` defs consuming `_` defs (closed by fixpoint after
+  the whole module is inferred). **Recursion among `_` defs is rejected**
+  (Zig's rule: pin one def in the cycle).
+- A pin must be a **named ADT** — prose `String` cannot cover a row, and a
+  callee whose error type *is* prose enters the row as an uncoverable
+  pseudo-entry. Diagnostics list the escaping constructors by name.
+- Rows are check-time only — eval is untouched (`?` already unwraps by value).
+- v1 residuals: matching directly on a row-typed `Result` is S2
+  (exhaustiveness over the actual raised set); Var/Unknown-typed callee errors
+  contribute nothing (documented leniency, S3 tightens); when a pin ADT
+  re-declares a shared ctor name, *expression-position construction* resolves
+  to the last declaration — declare the pin ADT first (S3: expected-type-driven
+  ctor resolution, as patterns already do). Row *variables* (HOF error/effect
+  polymorphism) are deliberately v2.
 
 ---
 

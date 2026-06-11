@@ -1,0 +1,38 @@
+@edition "2026.6"
+
+-- The guardrails of inferred error rows (S1). Expected: 5 errors.
+
+type LimitError
+  = TooBig Number
+  | Negative Number
+
+type SmallError
+  = Tiny String
+
+def checkLimit(n: Number): Result Number LimitError
+  if n < 100 then Ok(n) else Error(TooBig(n))
+
+def step(raw: String): Result Number _
+  n = parseNumber(raw)?
+  w = checkLimit(n)?
+  Ok(w)
+
+-- 1. escaping constructors are LISTED: SmallError covers none of the row
+def narrow(raw: String): Result Number SmallError
+  v = step(raw)?
+  Ok(v)
+
+-- 2+3. recursion among `_` defs is rejected (v1, Zig's rule): pin one def
+def ping(n: Number): Result Number _
+  if n <= 0 then Ok(0) else Ok(pong(n - 1)?)
+
+def pong(n: Number): Result Number _
+  if n <= 0 then Ok(0) else Ok(ping(n - 1)?)
+
+-- 4. `_` is only legal as the error of a def's RETURN Result
+def bad(x: Result Number _): Number -> 7
+
+-- 5. a pin must be a named error ADT — prose `String` cannot cover a row
+def prosey(raw: String): Result Number String
+  v = step(raw)?
+  Ok(v)

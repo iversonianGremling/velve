@@ -19,7 +19,17 @@ export type Type =
   | { tag: "Async";      inner: Type }                                    // Async(a) §2.10
   | { tag: "Stream";     inner: Type }                                    // Stream(a) §2.9
   | { tag: "Refinement"; base: Type; pred: string; args?: (Expr | null)[] }  // transparent to `base`; `pred` is the refinement type's name (look up predicate AST in REFINEMENTS). `args` carries dependent value-arguments aligned with the refinement's params, e.g. InBounds(listLength xs) → [listLength xs]
+  | { tag: "ErrRow";     entries: RowEntry[]; owner: string }             // inferred error row (error-rows-design v1): the ctor set a `Result T _` def raises. ONE shared instance per def — `?` accumulates entries in place; rows never unify, they are inclusion-checked at pins. Check-time only (eval never sees it).
   | { tag: "Unknown" }                                                    // pre-inference placeholder
+
+// One raised constructor in an inferred error row. `prose: true` marks the
+// `String` pseudo-entry — a callee whose error type is prose; uncoverable by
+// any pin (rows must not launder prose back into names).
+export interface RowEntry {
+  name: string;
+  payload: Type | null;
+  prose?: boolean;
+}
 
 export interface Field {
   name: string;
@@ -42,7 +52,7 @@ export function resetVarCounter(): void {
 export function isMono(t: Type): boolean {
   switch (t.tag) {
     case "Var": return false;
-    case "Prim": case "Atom": case "Unknown": case "Inputmap": return true;
+    case "Prim": case "Atom": case "Unknown": case "Inputmap": case "ErrRow": return true;
     case "Named": return t.args.every(isMono);
     case "Fn": return t.params.every(isMono) && isMono(t.ret);
     case "SagaFn": return t.params.every(isMono) && isMono(t.ret);
@@ -73,6 +83,9 @@ export function typeToString(t: Type): string {
     case "Async": return `Async(${typeToString(t.inner)})`;
     case "Stream": return `Stream(${typeToString(t.inner)})`;
     case "Refinement": return t.pred;   // the refinement type's name (e.g. `Age`)
+    case "ErrRow":
+      return t.entries.length === 0 ? "{}" :
+        `{${t.entries.map(e => e.prose ? `prose ${e.name}` : e.payload ? `${e.name}(${typeToString(e.payload)})` : e.name).join(" | ")}}`;
     case "Unknown": return "?";
   }
 }
