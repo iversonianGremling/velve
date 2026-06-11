@@ -1,0 +1,42 @@
+@edition "2026.6"
+
+-- Error rows S2 (SPEC §2.13, docs/error-rows-design.md): a row-typed Result
+-- is directly MATCHABLE, and exhaustiveness is checked over the ACTUAL
+-- raised set — the thing a declared error type can never give you. No
+-- wrapper ADT exists anywhere in this file: the match arms below are
+-- checked against the row {ParseError | Missing | Denied} that inference
+-- computed for `step`, and payloads are typed from each ctor's own scheme
+-- (`p.got` is a real String).
+
+type LookupError
+  = Missing String
+  | Denied String
+
+def lookup(k: String): Result Number LookupError
+  if k == "small" then Ok(1) else Error(Missing(k))
+
+def step(raw: String, k: String): Result Number _
+  n = parseNumber(raw)?
+  v = lookup(k)?
+  Ok(n + v)
+
+-- exhaustive over the actual raised set
+def classify(raw: String, k: String): String
+  match step(raw, k)
+    | Ok(v) -> "ok {v}"
+    | Error(ParseError(p)) -> "bad number: {p.got}"
+    | Error(Missing(s)) -> "missing {s}"
+    | Error(Denied(s)) -> "denied {s}"
+
+-- partial + catch-all is fine too
+def brief(raw: String): String
+  match step(raw, "small")
+    | Ok(v) -> "ok {v}"
+    | Error(ParseError(_)) -> "unparseable"
+    | Error(_) -> "lookup trouble"
+
+def main(): Unit
+  println(classify("3", "small"))
+  println(classify("nope", "small"))
+  println(classify("3", "big"))
+  println(brief("xyz"))

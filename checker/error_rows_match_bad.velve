@@ -1,0 +1,44 @@
+@edition "2026.6"
+
+-- The guardrails of matching on inferred error rows (S2).
+-- Expected: 4 errors.
+
+type LookupError
+  = Missing String
+  | Denied String
+
+type SmallError
+  = Tiny String
+
+def lookup(k: String): Result Number LookupError
+  if k == "small" then Ok(1) else Error(Missing(k))
+
+def step(raw: String, k: String): Result Number _
+  n = parseNumber(raw)?
+  v = lookup(k)?
+  Ok(n + v)
+
+-- 1. missing a raised ctor (no catch-all): the row says Denied can arrive
+def partial(raw: String): String
+  match step(raw, "small")
+    | Ok(v) -> "ok {v}"
+    | Error(ParseError(_)) -> "parse"
+    | Error(Missing(s)) -> "missing {s}"
+
+-- 2. an arm for a ctor the row proves is NEVER raised here
+def wishful(raw: String): String
+  match step(raw, "small")
+    | Ok(v) -> "ok {v}"
+    | Error(Tiny(s)) -> "tiny {s}"
+    | Error(_) -> "other"
+
+-- 3+4. prose in the row: listHead's String error can't be named by an arm
+-- ('ParseError' never matches → 1 error) and needs a catch-all (→ 1 error)
+def first(xs: List(Number)): Result Number _
+  v = listHead(xs)?
+  Ok(v)
+
+def describe(xs: List(Number)): String
+  match first(xs)
+    | Ok(v) -> "head {v}"
+    | Error(ParseError(_)) -> "parse"

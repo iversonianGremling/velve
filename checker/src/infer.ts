@@ -2108,6 +2108,35 @@ class Inferrer {
           if (b.guard) unify(this.inferExpr(b.guard, bs), { tag: "Prim", kind: "Bool" }, this.ctx, b.span, "match guard");
           unify(this.inferExpr(b.body, bs), retVar, this.ctx, b.span, "match branches must agree");
         }
+        // Error rows S2 — exhaustiveness over the ACTUAL raised set. A match
+        // whose subject carries a row (Result(T, row) or the bare row) has its
+        // arms recorded here and judged in finalizeRows, after the row closes:
+        // missing ctors and can-never-match ctors are both errors; prose
+        // entries need a catch-all. (exhaust.ts checks the Result level only —
+        // it never descends into the error payload, so no double report.)
+        const subjApplied = this.ctx.subst.apply(subjT);
+        const wrapped = subjApplied.tag === "Named" && subjApplied.name === "Result"
+          && subjApplied.args[1]?.tag === "ErrRow";
+        const rowErr = wrapped ? subjApplied.args[1] as ErrRowT
+          : subjApplied.tag === "ErrRow" ? subjApplied as ErrRowT : null;
+        if (rowErr) {
+          const matched: { name: string; span: Span }[] = [];
+          let catchall = false;
+          for (const b of expr.branches) {
+            if (b.guard) continue;  // a guarded arm covers nothing for sure
+            const p = b.pat;
+            if (p.tag === "PWild" || p.tag === "PVar") { catchall = true; continue; }
+            const inner = wrapped
+              ? (p.tag === "PCtor" && p.name === "Error" ? (p.inner ?? { tag: "PWild" as const, span: p.span }) : null)
+              : p;
+            if (!inner) continue;  // Ok arms etc. — not about the error side
+            if (inner.tag === "PWild" || inner.tag === "PVar") catchall = true;
+            else if (inner.tag === "PCtor") matched.push({ name: inner.name, span: inner.span });
+            // other payload shapes (literals, records) are conservatively
+            // treated as covering nothing — a catch-all is still required
+          }
+          this.pendingRowMatches.push({ row: rowErr, matched, catchall, span: expr.span });
+        }
         return this.ctx.subst.apply(retVar);
       }
 
@@ -2701,6 +2730,8 @@ class Inferrer {
   readonly rowByDef = new Map<string, ErrRowT>();
   readonly rowSpans = new Map<string, Span>();
   readonly pendingPins: { row: ErrRowT; declared: Type; span: Span }[] = [];
+  // S2: matches over row-typed subjects, judged after rows close.
+  readonly pendingRowMatches: { row: ErrRowT; matched: { name: string; span: Span }[]; catchall: boolean; span: Span }[] = [];
 
   finalizeRows(): void {
     // 1. Cycle check — recursion among `_` defs is rejected in v1 (Zig's rule).
@@ -2749,6 +2780,28 @@ class Inferrer {
         if (named.length) parts.push(`missing: ${named.join(", ")}`);
         if (prose.length) parts.push(`${prose.join(", ")} is prose — match it out or use a structured error`);
         err(this.ctx, pin.span, `error row ${rowStr} is not covered by '${declared.name}' — ${parts.join("; ")}`);
+      }
+    }
+    // 4. Row-match exhaustiveness (S2): over the ACTUAL raised set. An arm
+    //    naming a ctor outside the row can never match; a row entry no arm
+    //    names (and no catch-all) is a missing case; prose entries can only
+    //    ever be covered by a catch-all.
+    for (const m of this.pendingRowMatches) {
+      const rowStr = typeToString(m.row);
+      for (const arm of m.matched) {
+        if (!m.row.entries.some(e => e.name === arm.name))
+          err(this.ctx, arm.span, `'${arm.name}' is not in the inferred error row ${rowStr} — this branch can never match`);
+      }
+      if (!m.catchall) {
+        const missing = m.row.entries.filter(e => !m.matched.some(a => a.name === e.name));
+        const named = missing.filter(e => !e.prose).map(e => e.name);
+        const prose = missing.filter(e => e.prose).map(e => e.name);
+        if (named.length || prose.length) {
+          const parts: string[] = [];
+          if (named.length) parts.push(`missing: ${named.join(", ")}`);
+          if (prose.length) parts.push(`${prose.join(", ")} is prose and needs a catch-all arm`);
+          err(this.ctx, m.span, `match on inferred error row ${rowStr} is not exhaustive — ${parts.join("; ")}`);
+        }
       }
     }
   }
@@ -2803,6 +2856,18 @@ class Inferrer {
         break;
 
       case "PCtor": {
+        // Matching a ROW-typed error (error rows S2): the arm's ctor is judged
+        // for row MEMBERSHIP after rows close (the Match case records the arm,
+        // finalizeRows judges it) — never unified with the row, because a
+        // match must not widen what a def is recorded as raising. The payload
+        // is typed from the ctor's own scheme.
+        if (at.tag === "ErrRow") {
+          const rs = env.lookup(pat.name);
+          const rct = rs ? instantiate(rs) : null;
+          if (rct && rct.tag === "Fn" && pat.inner)
+            this.checkPat(pat.inner, rct.params[0] ?? { tag: "Unknown" }, env);
+          break;
+        }
         // Expected-type-directed constructor resolution for the outcome ADT
         // (`Outcome` 2026.6 / `TxResult` 2026.1). Under 2026.1 its commit/abort ctors
         // share names with Result, so the EXPECTED type disambiguates them; under

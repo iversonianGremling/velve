@@ -351,9 +351,13 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       infers a transitive ctor-set row, `?` accumulates by union inside `_`
       defs, a named-ADT ascription pins via ctor-set inclusion (escapees
       listed), recursion among `_` defs rejected; rows close by end-of-module
-      fixpoint; prose `String` is uncoverable. Zero corpus impact. Next: S2
-      (match/exhaust over rows), S3 (diagnostics + ctor-construction
-      shadowing + Var leniency), S4/v2 (row variables).
+      fixpoint; prose `String` is uncoverable. Zero corpus impact.
+- [x] **Error rows v1, S2**: ✅ DONE (2026-06, `error_rows_match_test`/`_bad`).
+      Rows directly matchable — payloads from ctor schemes, match never widens
+      the row, exhaustiveness over the ACTUAL raised set: missing ctors named,
+      never-raised arms rejected, prose needs catch-all; judged post-closure.
+      Error handling re-graded **A → A+**. Next: S3 (diagnostics +
+      ctor-construction shadowing + Var leniency), S4/v2 (row variables).
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside

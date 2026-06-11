@@ -149,6 +149,15 @@ until v1's representation is proven in fixtures. Do not start with v2.
    leniency; a try-soundness-style deferred re-judge is S3 polish.
 2. **S2 — match/exhaustiveness over rows.** Green: match a row-typed value
    with exactly the raised ctors, no wrapper ADT. Bad: missing-ctor match.
+   **✅ BUILT 2026-06** (`error_rows_match_test`/`_bad`). As built: arms are
+   recorded at the Match site and judged in finalizeRows after rows close
+   (same defer as pins); a ctor pattern against a row types its payload from
+   the ctor's own scheme and **never unifies with the row** (a match must not
+   widen what a def raises). Three verdicts: row entry unmatched without
+   catch-all → missing; arm ctor outside the row → "can never match"; prose
+   entries are coverable only by catch-all. Guarded arms conservatively cover
+   nothing. exhaust.ts needed no changes — it judges the Result level only
+   and never descends into the error payload, so the two passes compose.
 3. **S3 — diagnostics + prose interop.** Row pretty-printing, the `String`
    pseudo-entry story, fix-its naming the smallest covering ADT edit.
 4. **S4 (v2) — row variables** for HOF error/effect polymorphism; replaces

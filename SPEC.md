@@ -43,7 +43,7 @@ means there is a green fixture exercising it under `checker/`.
 | Accessibility-as-proof (contrast) | ✅ Built (opt-in) | `accessibility_test`; **off by default, never forced** — turns on only if a project defines `OnSurface = Color where contrast(value, surface) >= Lc`, then checked at compile time against the resolved background (APCA Lc in `constEval`). |
 | Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. (`parseNumber` now resolves + runs, 2026-06.) |
 | Module-qualified resolution (`Math.sqrt`) | ✅ Built | §5.5, `qualified_test`/`_bad`: capitalized stdlib namespaces (`Math`, `String`, `Json`, …) are ambient — no import needed, members fully typed, user bindings shadow. Lowercase/path forms stay import-only. |
-| Inferred error rows (`Result T _`) | 🟡 S1 built | §2.13, `error_rows_test`/`_bad`: `?` accumulates a ctor row with zero threading; a named-ADT ascription pins by inclusion (escapees listed); recursion among `_` defs rejected. S2 = match/exhaust over rows; v2 = row variables. |
+| Inferred error rows (`Result T _`) | ✅ v1 built (S1+S2) | §2.13, `error_rows{,_match}_test`/`_bad`: `?` accumulates a ctor row with zero threading; named-ADT pins check inclusion (escapees listed); rows are directly matchable with exhaustiveness over the ACTUAL raised set ("can never match" included); recursion among `_` defs rejected. S3 = diagnostics polish; v2 = row variables. |
 | User generics (`def idy(x: a): a`) | ✅ Built | §2.12, `generics_test`/`_bad`: implicit type vars in def ascriptions — quantified at call sites (each call instantiates fresh), rigid skolems inside the body. Was a silent trap: the annotation parsed but `idy(5)` errored. |
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. Conservative (no effect rows yet). |
@@ -456,13 +456,29 @@ As built (2026-06, `error_rows_test`/`_bad`):
   callee whose error type *is* prose enters the row as an uncoverable
   pseudo-entry. Diagnostics list the escaping constructors by name.
 - Rows are check-time only — eval is untouched (`?` already unwraps by value).
-- v1 residuals: matching directly on a row-typed `Result` is S2
-  (exhaustiveness over the actual raised set); Var/Unknown-typed callee errors
-  contribute nothing (documented leniency, S3 tightens); when a pin ADT
-  re-declares a shared ctor name, *expression-position construction* resolves
-  to the last declaration — declare the pin ADT first (S3: expected-type-driven
-  ctor resolution, as patterns already do). Row *variables* (HOF error/effect
-  polymorphism) are deliberately v2.
+- **Rows are directly matchable (S2, 2026-06, `error_rows_match_test`/`_bad`)**
+  — no wrapper ADT needed, and exhaustiveness is checked over the **actual
+  raised set**, which a declared error type can never give you:
+
+  ```
+  match step(raw, k)
+    | Ok(v) -> "ok {v}"
+    | Error(ParseError(p)) -> "bad number: {p.got}"   -- payload typed from the ctor's scheme
+    | Error(Missing(s))    -> "missing {s}"
+    | Error(Denied(s))     -> "denied {s}"            -- omit it: "missing: Denied"
+  ```
+
+  An arm naming a ctor **outside** the row is "can never match" (a check
+  error, not a dead branch); a row entry no arm names needs a catch-all;
+  prose entries can *only* be covered by a catch-all. Judged after rows
+  close (end-of-module), like pins; a match never widens the row.
+- v1 residuals: Var/Unknown-typed callee errors contribute nothing
+  (documented leniency, S3 tightens); when a pin ADT re-declares a shared
+  ctor name, *expression-position construction* resolves to the last
+  declaration — declare the pin ADT first (S3: expected-type-driven ctor
+  resolution, as patterns already do); guarded arms conservatively cover
+  nothing. Row *variables* (HOF error/effect polymorphism) are deliberately
+  v2.
 
 ---
 
