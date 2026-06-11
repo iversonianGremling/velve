@@ -424,6 +424,19 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       untailed callees (surface `map`/`filter`, user HOFs) unchanged.
       Zero corpus impact (`hof_effects_bad` stays 4 — its pmap case now
       fails via the tail). S4/v2 complete; E2 user-spelled tails deferred.
+- [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
+      ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
+      `at=(x, y)` children (Canvas-parent-only; paint order = child order →
+      position:relative/absolute html) + the static proof, opt-in via the
+      `Legible` refinement: text disjointness, occlusion-from-above, and
+      per-region APCA over composited solid fills (exact box bisection —
+      a half-dark/half-light label is judged per region); unfoldable
+      geometry is a could-not-prove error when the proof is active. The S0
+      dig fixed a substrate bug: paren-form elements' indented children
+      parsed as SIBLINGS (2026.6 views silently rendered only their last
+      leaf) — dynamic precedence on the children-bearing element branch;
+      zero corpus baseline changes. Residual: bare call children
+      (`card()`) still siblings — spell `{card()}`. S2–S5 deferred.
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside

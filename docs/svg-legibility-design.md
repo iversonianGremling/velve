@@ -1,6 +1,7 @@
 # SVG / free-position legibility as proof — design note
 
-*Status: design (2026-06). Not built. The question this answers: can rendered
+*Status: S0+S1 built (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`);
+S2–S5 remain. The question this answers: can rendered
 text that is unreadable — because it overlaps other text/elements, or lacks
 contrast against what is actually painted behind it — be made impossible by
 construction, with the system finding satisfying layouts on its own? Short
@@ -134,6 +135,42 @@ practical at realistic n:
   overlapping labels; text over a too-close fill; text half-over a dark and
   half-over a light rect where only one region fails — proving per-region
   resolution).
+  **S0+S1 ✅ BUILT 2026-06** (SPEC §11.1.2, `canvas_legible_test`/`_bad` —
+  the bad fixture pins all three sketched cases plus occlusion-from-above,
+  a could-not-prove, and `at` outside Canvas). As-built deltas:
+  - **The substrate dig found the element DSL itself broken**: paren-form
+    elements' indented children parsed as sibling STATEMENTS — the GLR
+    resolved the `[call, element]` conflict toward call-plus-statements
+    (the demand-driven indent scanner never gets asked for the indent on
+    that path), so every 2026.6 view silently rendered only its last leaf
+    (`theme_root_test` rendered flat; §14.1's nested-ancestor contrast
+    threading never actually engaged for paren-form). Fixed with
+    `prec.dynamic` on the children-bearing element branch. Zero corpus
+    baseline changes (counts and run statuses; uiModel/html outputs now
+    nest, which the count-based baselines don't record). Residual: a bare
+    component CALL child (`card()`) is not a `child` grammar form and still
+    falls back to siblings — spell it `{card()}`.
+  - `Canvas` already existed as a primitive name (leaf, `<canvas>` tag);
+    S0 makes it the free-position container: `at` is a common prop typed
+    `(Number, Number)` and context-checked to Canvas parents (the
+    FLEX_ITEM_PROPS pattern), html emits `position:relative`/`absolute`,
+    and `constEval` learned tuples. Canvas keeps layout mode "leaf" so
+    container/flex-item props stay invalid around it.
+  - **Extents reuse `width`/`height`** (bare numbers, which fold) instead
+    of the sketch's `w=`/`h=` — no new prop names.
+  - **Opt-in spelling**: declaring a refinement named `Legible` (the
+    OnSurface pattern; its predicate is the threshold, `surface` binds per
+    region). Texts = `Text`/`Label`/`Heading`; fills = `Box`/`Card`;
+    direct children only. With the proof active, unfoldable geometry and
+    unsupported child kinds are could-not-prove ERRORS (the §3 "must not
+    be a lie" rule); non-constant text colours and an unknown canvas
+    background stay silent (the OnSurface law).
+  - Region decomposition is coordinate bisection of the text box on
+    covering fill edges; each cell's background is the topmost solid fill
+    (paint order), else the canvas background; identical failing colours
+    report once per text. `uiModel`/`uiJson`/`analyze` suppress their
+    naive ancestor-bg contrast notes (and the empty-container note) for
+    free-positioned children — geometry, not the tree, decides there.
 - **S2 — bundled font metrics**: constant-string extents fold; `w=` becomes
   optional for constants.
 - **S3 — alpha + gradient intervals**: composited backgrounds; worst-case

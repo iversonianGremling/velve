@@ -16,8 +16,11 @@ const TAG: Record<string, string> = {
   Spacer: "div", Divider: "hr", Grid: "div", Scroll: "div",
   Text: "span", Heading: "h2", Label: "label",
   Button: "button", Input: "input", Slider: "input",
-  Image: "img", Canvas: "canvas", Link: "a", List: "ul", Item: "li",
+  Image: "img", Canvas: "div", Link: "a", List: "ul", Item: "li",
 };
+// Canvas (svg-legibility-design S0) is the free-position container: it emits a
+// relatively-positioned div, and a child's `at=(x, y)` prop becomes absolute
+// left/top. Paint order = child order = DOM order (later children stack above).
 
 // Props that map to CSS declarations (with a unit/transform). Everything else
 // becomes a plain HTML attribute. Numeric layout props get `px`.
@@ -107,12 +110,21 @@ function renderNode(v: Value, indent: number): string {
   const styles: string[] = [];
   const attrs: string[] = [];
   if (FLEX[v.name]) { styles.push("display:flex", `flex-direction:${FLEX[v.name]}`); }
+  if (v.name === "Canvas") styles.push("position:relative");
   if (!(v.name in TAG)) attrs.push(`data-component="${ESC(v.name)}"`);
 
   for (const [k, val] of v.props) {
     // `key` is the reconciliation identity (read by keyOf in runtime.ts), not a DOM
     // attribute — stripped from the rendered markup, as in React.
     if (k === "key") continue;
+    // `at=(x, y)` — absolute placement inside a Canvas parent.
+    if (k === "at" && val.tag === "VTuple" && val.elems.length === 2) {
+      const [x, y] = val.elems;
+      if (x?.tag === "VNum" && y?.tag === "VNum") {
+        styles.push("position:absolute", `left:${x.v}px`, `top:${y.v}px`);
+        continue;
+      }
+    }
     const s = unitToCss(val) ?? asText(val);
     const css = CSS[k];
     if (css) { const [prop, out] = css(s); styles.push(`${prop}:${out}`); }
@@ -159,6 +171,7 @@ export function renderHtml(v: Value): string {
 const MODEL_MODE: Record<string, string> = {
   Row: "flex", Column: "flex", Stack: "flex", Grid: "flex",
   Box: "block", Card: "block", Scroll: "block", List: "block", Item: "block",
+  Canvas: "canvas",   // free-position container (children carry at=(x, y))
 };
 const INTERACTIVE = new Set(["Button", "Link", "Input", "Slider"]);
 const LABEL_PROPS = ["label", "ariaLabel", "title", "alt"];
@@ -203,13 +216,18 @@ function modelNode(v: Value, indent: number, bg: string | null): string {
     (parts.length ? "  " + parts.join(" ") : "");
 
   const notes: string[] = [];
-  if (color && myBg) {
+  // Free-positioned children (`at=` inside Canvas) sit over GEOMETRY, not their
+  // tree ancestor: the naive ancestor-bg contrast note would be wrong (the
+  // compile-time Canvas legibility proof judges the composited regions instead),
+  // and an empty Box is the idiomatic fill rect.
+  const freePositioned = v.props.has("at");
+  if (color && myBg && !freePositioned) {
     const r = contrast(color, myBg);
     if (r != null) notes.push(`· contrast ${r.toFixed(1)}:1 vs ${myBg}${r < 4.5 ? " ⚠ below AA (4.5)" : " ✓"}`);
   }
   if (INTERACTIVE.has(v.name) && !text && !LABEL_PROPS.some(p => v.props.has(p)))
     notes.push("⚠ interactive element has no label/text (a11y)");
-  if (mode !== "leaf" && v.children.length === 0 && !text)
+  if (mode !== "leaf" && v.children.length === 0 && !text && !freePositioned)
     notes.push("⚠ empty container");
 
   const lines = [head, ...notes.map(n => `${pad}  ${n}`)];
@@ -245,7 +263,7 @@ function jsonNode(v: Value, bg: string | null): JsonNode | null {
   }
   if (v.text) node.text = asText(v.text);
   if (Object.keys(props).length) node.props = props;
-  if (color && myBg) {
+  if (color && myBg && !v.props.has("at")) {   // free-positioned: geometry decides, not the tree
     const r = contrast(color, myBg);
     if (r != null) node.contrast = { ratio: Number(r.toFixed(1)), against: myBg, passesAA: r >= 4.5 };
   }
@@ -329,6 +347,7 @@ export function analyzeModel(v: Value): string {
   if (labelless.length)
     a11y.push(`  ⚠ ${labelless.length} interactive element(s) without label: ${labelless.map(e => e.name).join(", ")}`);
   for (const el of els) {
+    if (el.props.has("at")) continue;   // free-positioned: the Canvas proof judges geometry
     const color = el.props.get("color");
     if (color && el.bg) {
       const r = contrast(color, el.bg);

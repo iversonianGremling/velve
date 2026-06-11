@@ -49,6 +49,7 @@ means there is a green fixture exercising it under `checker/`.
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
+| Canvas free positioning + legibility proof | ✅ S0+S1 built (2026-06) | §11.1.2, `canvas_legible_test`/`_bad`: `at=(x, y)` children (Canvas-only), paint order = child order; declaring `Legible` activates text disjointness + occlusion + per-region APCA over the composited solid fills — unfoldable geometry is a could-not-prove error. Fix landed with S0: paren-form elements' indented children used to parse as siblings (silently childless trees) — bare call children (`card()`) still do; spell them `{card()}`. S2–S5 (font metrics, alpha/gradients, dynamic bounds, MaxSMT repair) deferred. |
 | `animated` modifier / `frames` clock | ❌ Not built | Track C. |
 | Games / `@interaction` model | ❌ Not built | Track C. |
 | `inputmap` multitarget | 🟡 Core built | `inputmap{,_help,_layer,_chord}_test`/`_bad` + `keymap_test`/`_bad`; table → drain loop, typed rows, conflict check, `Inputmap` type, `help(map)` derived data, `++` layering, chord-refinement literals, `keymap` sugar (§10.5). Key-device lib/zones/rendered overlay remain. |
@@ -2094,6 +2095,13 @@ An `on <event> [param] -> …` child wires a handler. The optional param binds t
 event as `Event { value: String, key: String, checked: Bool }` (`value`/`checked`
 from the target, `key` from keyboard events) — so form handlers read `e.value`.
 
+> **Children really attach (fix, 2026-06).** Paren-form elements' indented
+> children used to parse as sibling *statements* (a GLR mis-resolution), so a
+> 2026.6 view silently rendered only its last leaf; fixed alongside §11.1.2's
+> Canvas substrate. One residual: a bare component **call** child (`card()`)
+> is still not a valid `child` form and falls back to sibling parsing — embed
+> it as `{card()}` (the expression-child form).
+
 ### 11.1.1 Keyed lists
 
 ```
@@ -2108,6 +2116,50 @@ an explicit `id`/`key` prop on the element to override. An item type with no `id
 field is a compile error (it cannot be keyed) — so a keyless dynamic list is not
 expressible this way. The key is identity only; it is stripped from rendered markup.
 Distinct from the `for ( … ) ->` comprehension (§3), which produces a plain list.
+
+### 11.1.2 Canvas — free positioning, shipped with its proof
+
+Flow layouts (`Column`/`Row`/gaps) cannot express overlap — that is the
+*structural* half of "unreadable text is impossible by construction".
+`Canvas` is the opt-in escape into geometry (svg-legibility-design,
+2026-06, `canvas_legible_test`/`_bad`): children carry `at=(x, y)` (legal
+only under a Canvas parent), paint order is child order, and the html emit
+is `position:relative` on the Canvas with `absolute` children. Because free
+positioning is exactly the door unreadability walks through, the substrate
+ships **with** its proof obligation:
+
+```
+type Color = String
+type Legible = Color where contrast(value, surface) >= 60   -- the opt-in
+
+Canvas(width=320, height=200, background=#101418)
+  Box(at=(20, 20), width=120, height=80, background=#f5f7fa)
+  Text("on panel", at=(30, 40), width=80, height=16, color=#101418)
+```
+
+Declaring the `Legible` refinement (the `OnSurface` opt-in pattern — its
+predicate supplies the threshold; `surface` binds per *region*, not per
+nominal ancestor) activates two static obligations over a Canvas's direct
+children, both check errors:
+
+- **(A) Disjointness** — no two texts (`Text`/`Label`/`Heading`) intersect,
+  and no fill (`Box`/`Card`) painted *above* a text occludes it.
+- **(B) Geometric contrast** — each text's box is decomposed exactly on the
+  edges of the fills beneath it; every region's composited colour (topmost
+  solid fill, else the canvas background) must satisfy the predicate. A
+  label half on a dark and half on a light region is judged in both — the
+  binding constraint is the minimum.
+
+S1 is the all-constant tier: when the proof is active, every Canvas child
+needs `constEval`-foldable geometry (`at`+`width`+`height`, plus
+`background` for fills) — what doesn't fold is a precise *could-not-prove*
+error, never a silent pass ("impossible by construction" must not be a
+lie; a dynamic label needs a declared extent). Non-constant colours and an
+unknown canvas background stay silent, the same law as `OnSurface`.
+`uiModel`/`analyze` suppress their naive ancestor-background contrast notes
+for free-positioned children — geometry, not the tree, decides there.
+Deferred per the design note: bundled font metrics (S2), alpha/gradient
+compositing (S3), dynamic-text bounds (S4), MaxSMT placement repair (S5).
 
 ### 11.2 Primitives
 

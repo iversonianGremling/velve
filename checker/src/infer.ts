@@ -487,7 +487,8 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
       return undefined;
     case "Var":
       return env.has(e.name) ? env.get(e.name)! : undefined;
-    case "List": {
+    case "List":
+    case "Tuple": {
       const out: ConstVal[] = [];
       for (const el of e.elems) {
         const v = constEval(el, env);
@@ -1150,6 +1151,10 @@ const ELEMENT_PROP_TYPES: Record<string, Type> = (() => {
     size: num, weight: num, opacity: num, grow: num, shrink: num,
     background: str, color: str, font: str, align: str, justify: str,
     alignSelf: str,
+    // Canvas free positioning (svg-legibility-design S0): `at=(x, y)` places a
+    // child absolutely inside a Canvas; paint order = child order. Legal only
+    // under a Canvas parent (context-checked in case "Element").
+    at: { tag: "Tuple", elems: [num, num] },
   };
 })();
 
@@ -2678,9 +2683,20 @@ class Inferrer {
               if (FLEX_ITEM_PROPS.has(cp.name))
                 err(this.ctx, cp.value.span,
                   `prop '${cp.name}' requires a flex parent (Row/Column/Stack/Grid); parent ${expr.name} is a ${mode}`);
+          // Free positioning lives only inside Canvas (svg-legibility-design S0):
+          // `at` on a flow child would silently absolute-position it out of flow.
+          if (c.tag === "Element" && expr.name !== "Canvas")
+            for (const cp of c.props)
+              if (cp.name === "at")
+                err(this.ctx, cp.value.span,
+                  `prop 'at' requires a Canvas parent — free positioning lives only inside Canvas; parent ${expr.name} is flow-layouted`);
           this.inferExpr(c, env);
         }
         this.surfaceBg = prevSurface;
+        // Canvas legibility proof (svg-legibility-design S1): free positioning is
+        // the door unreadability walks through, so Canvas ships WITH its proof
+        // obligation — opt-in like OnSurface, activated by declaring `Legible`.
+        if (expr.name === "Canvas") this.checkCanvasLegibility(expr, typeof myBg === "string" ? myBg : null);
         return { tag: "Named", name: "Element", args: [] };
       }
 
@@ -2709,6 +2725,114 @@ class Inferrer {
         return { tag: "Unknown" };
 
       default: return { tag: "Unknown" };
+    }
+  }
+
+  // ── Canvas legibility proof (svg-legibility-design S0+S1) ───────────────────
+  // Two obligations over a Canvas's direct children, both checked statically on
+  // all-constant scenes (no solver, no font metrics — S1):
+  //   (A) disjointness — no two texts intersect; no fill painted ABOVE a text
+  //       (paint order = child order) intersects it;
+  //   (B) geometric contrast — for every region a text sits over, the topmost
+  //       solid fill beneath it (else the canvas background) must satisfy the
+  //       `Legible` refinement; the text box is decomposed exactly on the
+  //       covering fills' edges, so the binding constraint is the minimum.
+  // Opt-in, never forced (the decided constraint): the proof activates only
+  // when the project declares `Legible` (e.g. `type Legible = Color where
+  // contrast(value, surface) >= 60`) — the refinement-style stand-in until the
+  // §3.4 `Proof [legible]` syntax lands. When it IS active, every child needs
+  // foldable geometry: "impossible by construction" must not be a lie, so what
+  // doesn't fold is a precise could-not-prove error, not a silent skip.
+  private checkCanvasLegibility(expr: Extract<Expr, { tag: "Element" }>, canvasBg: string | null): void {
+    const ref = REFINEMENTS.get("Legible");
+    if (!ref) return;
+    interface CBox { x: number; y: number; w: number; h: number; idx: number; span: Span; }
+    interface CText extends CBox { label: string; color: string | null; }
+    interface CFill extends CBox { color: string; name: string; }
+    const TEXTY = new Set(["Text", "Label", "Heading"]);
+    const FILLY = new Set(["Box", "Card"]);
+    const texts: CText[] = [];
+    const fills: CFill[] = [];
+    let idx = 0;
+    for (const c of expr.children) {
+      if (c.tag !== "Element") continue;
+      const i = idx++;
+      const fold = (n: string) => {
+        const p = c.props.find(pp => pp.name === n);
+        return p ? constEval(p.value, this.moduleConsts) : undefined;
+      };
+      const at = fold("at"), w = fold("width"), h = fold("height");
+      const box = Array.isArray(at) && at.length === 2
+        && typeof at[0] === "number" && typeof at[1] === "number"
+        && typeof w === "number" && typeof h === "number"
+        ? { x: at[0], y: at[1], w, h, idx: i, span: c.span } : null;
+      if (TEXTY.has(c.name)) {
+        if (!box) {
+          err(this.ctx, c.span,
+            `could not prove legibility: Canvas text needs constant 'at', 'width' and 'height' — a declared extent is the S1 bound (dynamic text on Canvas is unprovable)`);
+          continue;
+        }
+        const label = c.content ? constEval(c.content, this.moduleConsts) : undefined;
+        const colorV = fold("color");
+        texts.push({ ...box, label: typeof label === "string" ? label : c.name,
+                     color: typeof colorV === "string" ? colorV : null });
+      } else if (FILLY.has(c.name)) {
+        const bg = fold("background");
+        if (!box || typeof bg !== "string") {
+          err(this.ctx, c.span,
+            `could not prove legibility: Canvas ${c.name} needs constant 'at', 'width', 'height' and 'background' — an unprovable fill could hide or recolour the scene behind a text`);
+          continue;
+        }
+        fills.push({ ...box, color: bg, name: c.name });
+      } else {
+        err(this.ctx, c.span,
+          `could not prove legibility: S1 proves direct Text/Label/Heading and Box/Card children only; ${c.name} is unsupported on a checked Canvas`);
+      }
+    }
+    const overlap = (a: CBox, b: CBox) =>
+      a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    // (A) disjointness: text pairs, then fills painted above a text.
+    for (let i = 0; i < texts.length; i++)
+      for (let j = i + 1; j < texts.length; j++)
+        if (overlap(texts[i]!, texts[j]!))
+          err(this.ctx, texts[j]!.span,
+            `Canvas text "${texts[j]!.label}" overlaps text "${texts[i]!.label}" — free-positioned labels must be disjoint`);
+    for (const t of texts)
+      for (const f of fills)
+        if (f.idx > t.idx && overlap(t, f))
+          err(this.ctx, t.span,
+            `Canvas text "${t.label}" is covered by a ${f.name} painted above it (paint order is child order) — paint the text later or move it aside`);
+    // (B) per-region composited contrast. Cut the text box on every covering
+    // fill edge; each cell's background is the topmost fill containing it
+    // (fills iterate in paint order, so the last hit wins), else the canvas
+    // background. An unknown canvas background stays silent, the same law as
+    // OnSurface's unknown-surface case; identical failing colours report once.
+    for (const t of texts) {
+      if (!t.color) continue;   // non-constant colour: the OnSurface skip
+      const under = fills.filter(f => f.idx < t.idx && overlap(t, f));
+      const xs = [t.x, t.x + t.w], ys = [t.y, t.y + t.h];
+      for (const f of under) {
+        for (const v of [f.x, f.x + f.w]) if (v > t.x && v < t.x + t.w) xs.push(v);
+        for (const v of [f.y, f.y + f.h]) if (v > t.y && v < t.y + t.h) ys.push(v);
+      }
+      xs.sort((a, b) => a - b); ys.sort((a, b) => a - b);
+      const reported = new Set<string>();
+      for (let xi = 0; xi + 1 < xs.length; xi++) {
+        for (let yi = 0; yi + 1 < ys.length; yi++) {
+          const cx = (xs[xi]! + xs[xi + 1]!) / 2, cy = (ys[yi]! + ys[yi + 1]!) / 2;
+          let bg = canvasBg;
+          for (const f of under)
+            if (cx > f.x && cx < f.x + f.w && cy > f.y && cy < f.y + f.h) bg = f.color;
+          if (bg === null || reported.has(bg)) continue;
+          const penv = new Map<string, ConstVal>([["value", t.color], ["surface", bg]]);
+          if (constEval(ref.pred, penv) === false) {
+            reported.add(bg);
+            const lc = apcaLc(t.color, bg);
+            err(this.ctx, t.span,
+              `Canvas text "${t.label}" colour ${t.color} fails 'Legible'${lc === null ? "" : ` — APCA Lc ${Math.round(lc)}`} against the composited region ${bg} beneath it`);
+          }
+        }
+      }
     }
   }
 

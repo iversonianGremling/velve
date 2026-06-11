@@ -462,6 +462,18 @@ MaxSMT placement repair as the opt-in synthesis tier (the §3 Z3 floor's first c
 client). Free positioning ships only together with its obligation — the door and the guard
 arrive as one slice.
 
+**S0+S1 shipped 2026-06** (SPEC §11.1.2, `canvas_legible_test`/`_bad`): the door and the
+guard did arrive as one slice — `Canvas` + `at=(x, y)` (paint order = child order) plus the
+static proof, opt-in by declaring `Legible` (the OnSurface pattern, `surface` bound per
+region): text disjointness, occlusion-from-above, and per-region APCA over composited solid
+fills via exact box bisection — a label half on dark, half on light is judged in both
+regions. Where the proof is active, unfoldable geometry is a could-not-prove ERROR (the
+boundary-honesty rule, applied). The substrate dig also found and fixed the element DSL's
+silent flattening: paren-form indented children parsed as sibling statements (every 2026.6
+view rendered only its last leaf; the §14.1 nested-surface threading never really engaged)
+— a GLR mis-resolution fixed with dynamic precedence, zero corpus baseline changes. S2–S5
+(font metrics, alpha/gradients, dynamic bounds, MaxSMT repair) stay deferred.
+
 ---
 
 ## 7. Closing §2.1 for UI / styling

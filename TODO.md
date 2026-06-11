@@ -598,7 +598,7 @@ best thing in the document. The same razor, applied to the surface:
 - [ ] 🟢 **`@debug` causal tracing** (§16) — keep on the roadmap; the
   deterministic scheduler + journals make it cheap, and it compounds the
   debuggability story that `@interaction` starts.
-- [ ] 🟡 **Free-positioned legibility as proof** (`Canvas`/SVG; design written
+- [x] 🟡 **Free-positioned legibility as proof** (`Canvas`/SVG; design written
   2026-06, `docs/svg-legibility-design.md`): text unreadable by overlap or by
   contrast-against-what's-actually-behind-it becomes a *check error* —
   disjointness + per-region APCA over the composited scene, constEval-folded
@@ -608,6 +608,22 @@ best thing in the document. The same razor, applied to the surface:
   its obligation (S0+S1 as one slice) — flow layouts stay the structural
   default where overlap is inexpressible. Dynamic text requires a declared
   bound in v1 ("impossible by construction" must not be a lie).
+  **S0+S1 BUILT 2026-06** (SPEC §11.1.2, `canvas_legible_test`/`_bad`):
+  Canvas + `at=(x, y)` (Canvas-parent-only, paint order = child order →
+  position:relative/absolute in html), and the static proof — opt-in by
+  declaring the `Legible` refinement (the OnSurface pattern; its predicate
+  is the threshold, `surface` binds per region): (A) text-pair disjointness
+  + fill-above-text occlusion, (B) per-region APCA via exact box bisection
+  on covering fill edges, topmost-solid-fill compositing. When the proof is
+  active, unfoldable geometry is a could-not-prove ERROR, not a skip. The
+  S0 dig found and fixed a substrate bug: paren-form elements' indented
+  children parsed as SIBLINGS (the GLR preferred call+statements; the
+  2026.6 form silently rendered childless trees) — fixed with dynamic
+  precedence on the children-bearing element branch; zero corpus baseline
+  changes. Residuals: bare CALL children (`card()`) still parse as
+  siblings — spell `{card()}` (theme_root_test renders flat for this
+  reason); S2 font metrics, S3 alpha/gradients, S4 dynamic-text bounds,
+  S5 MaxSMT repair unbuilt.
 
 ## 6. Spec/example hygiene (cheap, do soon)
 

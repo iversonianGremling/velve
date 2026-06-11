@@ -1664,8 +1664,14 @@ export default grammar({
         // Content is the first positional, props are `name=value`. Childless paren
         // elements (`Text("hi")`) parse as `call` and lower to an Element by
         // primitive-name — only the children-bearing form needs the block attached
-        // here, where `call` (which has no children block) cannot reach.
-        seq($.element_args, $._newline, $.children_block),
+        // here. `call` cannot consume the indented block, but the GLR still had a
+        // rival parse — call STATEMENT + deeper-indented siblings (the indent
+        // scanner is demand-driven, so the statement path simply never asks for
+        // the indent) — and it won by default, silently flattening every
+        // paren-form element's children into siblings (the 2026.6 form rendered
+        // childless trees). The dynamic precedence makes the children-bearing
+        // element win whenever both parses survive.
+        prec.dynamic(2, seq($.element_args, $._newline, $.children_block)),
       ),
     ),
 

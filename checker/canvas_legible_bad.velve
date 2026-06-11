@@ -1,0 +1,33 @@
+@edition "2026.6"
+
+-- Canvas legibility guardrails (svg-legibility-design S0+S1).
+-- Expected: 6 errors.
+
+type Color = String
+type Legible = Color where contrast(value, surface) >= 60
+
+def collisions(): Element
+  Canvas(width=320, height=200, background=#101418)
+    -- 1. two overlapping labels (disjointness)
+    Text("alpha", at=(20, 20), width=100, height=16, color=#e8edf2)
+    Text("beta", at=(60, 24), width=100, height=16, color=#e8edf2)
+    -- 2. text over a too-close fill (composited contrast)
+    Box(at=(20, 60), width=140, height=40, background=#3a4654)
+    Text("muddy", at=(30, 70), width=80, height=16, color=#566270)
+    -- 3. half over the dark canvas, half over a light box: dark text fails
+    --    ONLY in the dark region — proving per-region resolution
+    Box(at=(160, 120), width=80, height=40, background=#f5f7fa)
+    Text("split", at=(120, 130), width=100, height=16, color=#101418)
+    -- 4. a fill painted ABOVE the text occludes it (paint order = child order)
+    Text("hidden", at=(20, 160), width=80, height=16, color=#e8edf2)
+    Box(at=(10, 150), width=120, height=40, background=#f5f7fa)
+
+def unprovable(): Element
+  Canvas(width=200, height=100, background=#101418)
+    -- 5. no declared extent: dynamic/unbounded text is unprovable in S1
+    Text("free", at=(10, 10), color=#e8edf2)
+
+def stray(): Element
+  Column(gap=4)
+    -- 6. free positioning lives only inside Canvas
+    Text("nope", at=(5, 5))

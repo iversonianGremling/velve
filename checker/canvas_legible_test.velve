@@ -1,0 +1,25 @@
+@edition "2026.6"
+
+-- Canvas legibility proof (svg-legibility-design S0+S1). `Canvas` is the
+-- opt-in escape from flow layout into free positioning: children carry
+-- `at=(x, y)`, paint order = child order. Free positioning is exactly how
+-- unreadable text becomes expressible, so the substrate ships WITH its proof:
+-- declaring the `Legible` refinement activates (A) text disjointness +
+-- occlusion checks and (B) per-region APCA contrast against the composited
+-- scene — the OnSurface proof with the nominal surface chain replaced by
+-- geometry. Every label here is disjoint and clears Lc >= 60 in every region
+-- it spans.
+-- Expected: 0 errors. Runs.
+
+type Color = String
+type Legible = Color where contrast(value, surface) >= 60
+
+def diagram(): Element
+  Canvas(width=320, height=200, background=#101418)
+    Box(at=(20, 20), width=120, height=80, background=#f5f7fa)
+    Text("on panel", at=(30, 40), width=80, height=16, color=#101418)
+    Text("on dark", at=(180, 60), width=90, height=16, color=#e8edf2)
+    Text("footnote", at=(30, 140), width=100, height=16, color=#dfe6ee)
+
+def main(): ()
+  print(uiModel(diagram()))
