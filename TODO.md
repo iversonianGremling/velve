@@ -429,10 +429,15 @@ dimension machinery generalize?
   matchable — payloads typed from ctor schemes, match never widens the row,
   exhaustiveness over the ACTUAL raised set (missing named; never-raised arms
   rejected; prose needs catch-all), judged post-closure like pins. **Error
-  row re-graded A → A+** (north-star §1/§4). Remaining: S3 polish
-  (ctor-construction shadowing when a pin re-declares a shared name;
-  Var/Unknown contribution leniency; guarded arms cover nothing), S4/v2 row
-  variables (→ effect-A+).
+  row re-graded A → A+** (north-star §1/§4).
+  **S3 shadowing slice BUILT 2026-06** (`ctor_shadow_test`/`_bad`): shared
+  ctor names resolve by EXPECTED type in expression position (deferred behind
+  fresh vars, judged in finalizeRows step 0) and by scrutinee type in
+  patterns; a row-entry match types the payload from the contributing ADT.
+  Declaration order of sharing ADTs no longer matters. Remaining: S3 polish
+  (mixed-arity shared names + never-resolving contexts keep last-decl-wins;
+  Var/Unknown contribution leniency; guarded arms cover nothing; fix-its),
+  S4/v2 row variables (→ effect-A+).
 - [x] 🟡 **User generics** (found during the error-ADT slice, closed 2026-06;
   SPEC §2.12, `generics_test`/`_bad`): `def idy(x: a): a` parsed but the type
   var was a rigid `Named "a"` never generalized — `idy(5)` was a type error,

@@ -143,10 +143,9 @@ until v1's representation is proven in fixtures. Do not start with v2.
    skips the error-side unify so a pin never pollutes the callee's row for its
    other consumers. Discovered residual: when a pin ADT re-declares a shared
    ctor name, expression-position *construction* resolves to the last
-   declaration of that name — declare the pin ADT first; the proper fix
-   (expected-type-driven ctor resolution, as match patterns already do) goes
-   to S3. Var/Unknown callee errors contribute nothing — the documented S1
-   leniency; a try-soundness-style deferred re-judge is S3 polish.
+   declaration of that name — **fixed by the S3 shadowing slice (below)**.
+   Var/Unknown callee errors contribute nothing — the documented S1
+   leniency; a try-soundness-style deferred re-judge is remaining S3 polish.
 2. **S2 — match/exhaustiveness over rows.** Green: match a row-typed value
    with exactly the raised ctors, no wrapper ADT. Bad: missing-ctor match.
    **✅ BUILT 2026-06** (`error_rows_match_test`/`_bad`). As built: arms are
@@ -160,6 +159,19 @@ until v1's representation is proven in fixtures. Do not start with v2.
    and never descends into the error payload, so the two passes compose.
 3. **S3 — diagnostics + prose interop.** Row pretty-printing, the `String`
    pseudo-entry story, fix-its naming the smallest covering ADT edit.
+   **Shadowing slice ✅ BUILT 2026-06** (`ctor_shadow_test`/`_bad`):
+   expected-type-driven resolution of shared ctor names. Expression-position
+   uses of a name with ≥2 owner ADTs are deferred behind fresh vars (the
+   same defer-then-judge shape as pins/row-matches) and judged in
+   finalizeRows step 0 — the substitution shows which ADT the context
+   demanded; a use whose context turned out to be a row contributes via the
+   generic accumulate rule for free. Patterns pick by scrutinee type (as the
+   outcome/Async prelude pre-cases already did), and a ctor pattern against
+   a row prefers the **row entry's payload** (the contributing ADT) over the
+   env's last declaration. Declaration order of sharing ADTs no longer
+   matters. Remaining S3: mixed-arity shared names and never-resolving
+   contexts keep last-declaration-wins; Var/Unknown contribution leniency;
+   fix-its naming the smallest covering ADT edit.
 4. **S4 (v2) — row variables** for HOF error/effect polymorphism; replaces
    SPEC §12.4's conservative rule with precision.
 

@@ -43,7 +43,7 @@ means there is a green fixture exercising it under `checker/`.
 | Accessibility-as-proof (contrast) | ✅ Built (opt-in) | `accessibility_test`; **off by default, never forced** — turns on only if a project defines `OnSurface = Color where contrast(value, surface) >= Lc`, then checked at compile time against the resolved background (APCA Lc in `constEval`). |
 | Standard library | ⚠ Partial | Core builtins resolve; many app helpers (`httpGet`, `listGet`, …) are not yet provided — this is why `examples/` don't fully check. (`parseNumber` now resolves + runs, 2026-06.) |
 | Module-qualified resolution (`Math.sqrt`) | ✅ Built | §5.5, `qualified_test`/`_bad`: capitalized stdlib namespaces (`Math`, `String`, `Json`, …) are ambient — no import needed, members fully typed, user bindings shadow. Lowercase/path forms stay import-only. |
-| Inferred error rows (`Result T _`) | ✅ v1 built (S1+S2) | §2.13, `error_rows{,_match}_test`/`_bad`: `?` accumulates a ctor row with zero threading; named-ADT pins check inclusion (escapees listed); rows are directly matchable with exhaustiveness over the ACTUAL raised set ("can never match" included); recursion among `_` defs rejected. S3 = diagnostics polish; v2 = row variables. |
+| Inferred error rows (`Result T _`) | ✅ v1 built (S1+S2) | §2.13, `error_rows{,_match}_test`/`_bad`: `?` accumulates a ctor row with zero threading; named-ADT pins check inclusion (escapees listed); rows are directly matchable with exhaustiveness over the ACTUAL raised set ("can never match" included); recursion among `_` defs rejected; shared ctor names resolve by expected type (`ctor_shadow_test`/`_bad`) — declaration order no longer matters. v2 = row variables. |
 | User generics (`def idy(x: a): a`) | ✅ Built | §2.12, `generics_test`/`_bad`: implicit type vars in def ascriptions — quantified at call sites (each call instantiates fresh), rigid skolems inside the body. Was a silent trap: the annotation parsed but `idy(5)` errored. |
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. Conservative (no effect rows yet). |
@@ -472,13 +472,21 @@ As built (2026-06, `error_rows_test`/`_bad`):
   error, not a dead branch); a row entry no arm names needs a catch-all;
   prose entries can *only* be covered by a catch-all. Judged after rows
   close (end-of-module), like pins; a match never widens the row.
+- **Shared ctor names resolve by expected type (S3, 2026-06,
+  `ctor_shadow_test`/`_bad`)** — a ctor name declared by ≥2 ADTs no longer
+  resolves to its *last* declaration in expression position. The use is
+  deferred behind fresh type vars and judged once inference shows which ADT
+  the context demands (`Error(Missing(k))` in a def pinned to `AppError`
+  picks `AppError.Missing` even when another ADT re-declares `Missing`
+  later). Patterns pick by scrutinee type the same way, and matching a row
+  entry types the payload from the **row entry** (the ADT that actually
+  contributed it), not the env's last declaration. Declaration order of
+  sharing ADTs no longer matters. Residual: a shared name whose owners
+  disagree on *arity* (payload vs nullary), and contexts that never resolve
+  (an ErrRow or free var), keep last-declaration-wins.
 - v1 residuals: Var/Unknown-typed callee errors contribute nothing
-  (documented leniency, S3 tightens); when a pin ADT re-declares a shared
-  ctor name, *expression-position construction* resolves to the last
-  declaration — declare the pin ADT first (S3: expected-type-driven ctor
-  resolution, as patterns already do); guarded arms conservatively cover
-  nothing. Row *variables* (HOF error/effect polymorphism) are deliberately
-  v2.
+  (documented leniency); guarded arms conservatively cover nothing. Row
+  *variables* (HOF error/effect polymorphism) are deliberately v2.
 
 ---
 
@@ -1731,6 +1739,11 @@ decided by the **expected type** at the match site, the one name-overloaded corn
 of the language. In 2026.6 `Committed`/`Aborted` are unique, so that ambiguity is
 gone: a match resolves purely by name. (The checker still uses the expected type to
 assign the typed payloads, but there is no longer a collision to break.)
+
+**User ADTs that share ctor names** resolve the same way (2026-06, SPEC §2.13,
+`ctor_shadow_test`): the expected type picks the owner in both expression and
+pattern position, so two ADTs may declare `Missing String` and a def pinned to
+either constructs the right one regardless of declaration order.
 
 Because `Conflict`/`Timeout` carry typed records, `c.retries` and `t.after` are
 `Number`s (a wrong field is a type error), and a match over the outcome ADT is

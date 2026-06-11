@@ -8,9 +8,11 @@
 -- two unrelated error ADTs plus the prelude ParseError under one def meant
 -- "expected X, got Y" at the second `?`.
 --
--- The pin ADT is declared FIRST: ctor names are shared with the source ADTs,
--- and expression-position ctor construction resolves to the LAST declaration
--- of a name (S3 residual: make it expected-type-driven like patterns).
+-- The pin ADT is declared FIRST. This ordering USED to be load-bearing
+-- (expression-position ctors resolved to the last declaration of a name);
+-- since the S3 shadowing slice (ctor_shadow_test) resolution is
+-- expected-type-driven and order no longer matters — kept as-is for baseline
+-- stability.
 
 type AppError
   = ParseError { expected: String, got: String, detail: String }

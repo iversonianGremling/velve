@@ -1,0 +1,50 @@
+@edition "2026.6"
+
+-- Error rows S3 (SPEC §2.13, docs/error-rows-design.md): EXPECTED-TYPE-driven
+-- resolution of SHARED ctor names in expression position. `Missing` below is
+-- declared by BOTH AppError and LookupError; before S3, constructing
+-- `Error(Missing(k))` resolved to the LAST declaration of the name, so one of
+-- `toApp`/`toLookup` was always a type error depending on declaration order.
+-- Now the def's declared error type picks the owner — both directions check.
+
+type AppError
+  = Missing String
+  | Failed String
+
+type LookupError
+  = Missing String
+  | Denied String
+
+-- expected type AppError: `Missing` is NOT the last declaration of the name
+def toApp(k: String): Result Number AppError
+  Error(Missing(k))
+
+-- expected type LookupError: the last declaration — worked before, still works
+def toLookup(k: String): Result Number LookupError
+  if k == "x" then Ok(42) else Error(Missing(k))
+
+-- patterns pick by scrutinee type too (as outcome/Async prelude ctors already did)
+def describe(r: Result Number AppError): String
+  match r
+    | Ok(v) -> "ok {v}"
+    | Error(Missing(k)) -> "app missing {k}"
+    | Error(Failed(m)) -> "app failed {m}"
+
+-- rows compose with sharing: the row records LookupError's contribution, and
+-- matching `Missing` against the row types the payload from the row ENTRY
+-- (the contributing ADT), not from the env's last declaration of the name.
+def step(k: String): Result Number _
+  v = toLookup(k)?
+  Ok(v)
+
+def brief(k: String): String
+  match step(k)
+    | Ok(v) -> "ok {v}"
+    | Error(Missing(s)) -> "missing {s}"
+    | Error(_) -> "other"
+
+def main(): Unit
+  println(describe(toApp("a")))
+  println(describe(Ok(7)))
+  println(brief("x"))
+  println(brief("nope"))

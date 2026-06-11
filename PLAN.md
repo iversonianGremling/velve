@@ -356,8 +356,15 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       Rows directly matchable — payloads from ctor schemes, match never widens
       the row, exhaustiveness over the ACTUAL raised set: missing ctors named,
       never-raised arms rejected, prose needs catch-all; judged post-closure.
-      Error handling re-graded **A → A+**. Next: S3 (diagnostics +
-      ctor-construction shadowing + Var leniency), S4/v2 (row variables).
+      Error handling re-graded **A → A+**.
+- [x] **Error rows S3, shadowing slice**: ✅ DONE (2026-06,
+      `ctor_shadow_test`/`_bad`). Shared ctor names resolve by EXPECTED type
+      in expression position (deferred behind fresh vars, judged in
+      finalizeRows step 0 once the substitution shows the demanded ADT) and
+      by scrutinee type in patterns; a row-entry match types the payload from
+      the contributing ADT. Declaration order of sharing ADTs no longer
+      matters. Remaining S3: Var/Unknown leniency, mixed-arity shared names,
+      fix-its. Then S4/v2 (row variables).
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside

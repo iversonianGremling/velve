@@ -1,0 +1,48 @@
+@edition "2026.6"
+
+-- Error rows S3 guardrails: expected-type-driven shared-ctor resolution still
+-- CHECKS everything it resolves. Expect exactly 4 errors:
+--   1. payload mismatch under the expected-type pick (AppError.Missing takes
+--      String, given a Number)
+--   2. pattern arm naming a ctor of a different ADT than the scrutinee
+--   3. shared ctor in a context that is neither owner (String error type)
+--   4. row-match payload is typed from the row ENTRY for real — misusing the
+--      String payload as a Number is caught
+
+type AppError
+  = Missing String
+  | Failed String
+
+type LookupError
+  = Missing String
+  | Denied String
+
+-- 1: pick succeeds (AppError), payload check still fires
+def badPayload(): Result Number AppError
+  Error(Missing(42))
+
+-- 2: `Denied` is LookupError-only; scrutinee is AppError
+def badArm(r: Result Number AppError): String
+  match r
+    | Ok(v) -> "ok {v}"
+    | Error(Missing(k)) -> "missing {k}"
+    | Error(Denied(s)) -> "denied {s}"
+    | Error(_) -> "other"
+
+-- 3: expected error type is String — neither owner of `Missing` fits
+def badContext(k: String): Result Number String
+  Error(Missing(k))
+
+def toLookup(k: String): Result Number LookupError
+  if k == "x" then Ok(42) else Error(Missing(k))
+
+def step(k: String): Result Number _
+  v = toLookup(k)?
+  Ok(v)
+
+-- 4: the row entry types `s` as String; `s + 1` cannot check
+def badRowPayload(k: String): Number
+  match step(k)
+    | Ok(v) -> v
+    | Error(Missing(s)) -> s + 1
+    | Error(_) -> 0

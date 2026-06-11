@@ -185,6 +185,11 @@ type ErrRowT = Type & { tag: "ErrRow" };
 let ADT_CTORS = new Map<string, RowEntry[]>();
 // target ⊇ source edges between rows (a `_` def consuming a `_` def).
 let ROW_DEPS: [ErrRowT, ErrRowT][] = [];
+// ctor name → every ADT that declares it (constructor sharing). For a name with
+// ≥2 owners, expression-position uses are EXPECTED-TYPE-driven (deferred and
+// judged in finalizeRows once the substitution shows what the context demanded)
+// instead of last-declaration-wins. Cleared per module.
+let CTOR_OWNERS = new Map<string, { typeName: string; scheme: Scheme }[]>();
 
 // What a callee's error type contributes to a row. Null = no contribution
 // (Var/Unknown — the documented S1 leniency; a late-resolving error type is
@@ -1124,6 +1129,7 @@ export function infer(mod: Module, resolutions: ResolutionMap): InferResult {
   ALIAS_RESOLVING.clear();
   ADT_CTORS = new Map();
   ROW_DEPS = [];
+  CTOR_OWNERS = new Map();
   // Prelude error ADT: the single-ctor pattern (ctor and type share the name).
   ADT_CTORS.set("ParseError", [{ name: "ParseError", payload: null }]);
   registerAliases(mod.decls);
@@ -1398,15 +1404,20 @@ class Inferrer {
   private collectCtor(v: { name: string; payload: TypeRef | null; span: Span }, typeName: string, tp: Map<string, Type>, env: TypeEnv): void {
     const resultType: Type = { tag: "Named", name: typeName, args: [...tp.values()] };
     const ctorList = ADT_CTORS.get(typeName) ?? [];
+    let scheme: Scheme;
     if (v.payload) {
       const pType = resolveRef(v.payload, tp);
-      env.define(v.name, generalize(env, this.ctx.subst, { tag: "Fn", params: [pType], ret: resultType, effects: [] }));
+      scheme = generalize(env, this.ctx.subst, { tag: "Fn", params: [pType], ret: resultType, effects: [] });
       ctorList.push({ name: v.name, payload: pType });
     } else {
-      env.define(v.name, generalize(env, this.ctx.subst, resultType));
+      scheme = generalize(env, this.ctx.subst, resultType);
       ctorList.push({ name: v.name, payload: null });
     }
+    env.define(v.name, scheme);
     ADT_CTORS.set(typeName, ctorList);
+    const owners = CTOR_OWNERS.get(v.name) ?? [];
+    owners.push({ typeName, scheme });
+    CTOR_OWNERS.set(v.name, owners);
   }
 
   // ── Pass 2: infer function bodies ───────────────────────────────────────────
@@ -1794,6 +1805,22 @@ class Inferrer {
 
       case "Var": {
         const s = env.lookup(expr.name);
+        // Expected-type-driven constructor resolution for SHARED ctor names
+        // (error rows S3): a name declared by ≥2 ADTs must not resolve to the
+        // last declaration — defer behind fresh vars and judge in finalizeRows
+        // once unification has revealed which ADT the context demands.
+        const owners = CTOR_OWNERS.get(expr.name);
+        if (s && owners && owners.length >= 2) {
+          const allFn  = owners.every(o => o.scheme.type.tag === "Fn");
+          const allVal = owners.every(o => o.scheme.type.tag !== "Fn");
+          // Mixed arity across owners stays last-declaration-wins (residual).
+          if (allFn || allVal) {
+            const ret = freshVar();
+            const payload = allFn ? freshVar() : null;
+            this.pendingCtorUses.push({ name: expr.name, span: expr.span, ret, payload });
+            return allFn ? { tag: "Fn", params: [payload!], ret, effects: [] } : ret;
+          }
+        }
         if (s) return instantiate(s);
         // Ambient stdlib namespace — `Math.sqrt(x)` with no import (SPEC §5.5).
         // Fires only when the name is unbound, so user bindings shadow modules.
@@ -2732,8 +2759,32 @@ class Inferrer {
   readonly pendingPins: { row: ErrRowT; declared: Type; span: Span }[] = [];
   // S2: matches over row-typed subjects, judged after rows close.
   readonly pendingRowMatches: { row: ErrRowT; matched: { name: string; span: Span }[]; catchall: boolean; span: Span }[] = [];
+  // S3: expression-position uses of SHARED ctor names, resolved by what the
+  // substitution shows the context demanded (see the Var case).
+  readonly pendingCtorUses: { name: string; span: Span; ret: Type; payload: Type | null }[] = [];
 
   finalizeRows(): void {
+    // 0. Resolve deferred shared-ctor uses (S3). Must run BEFORE row closure:
+    //    a use whose ret var bound to an ErrRow contributes entries via the
+    //    generic accumulate rule in unify, and closure must then propagate them.
+    for (const u of this.pendingCtorUses) {
+      const rt = this.ctx.subst.apply(u.ret);
+      const owners = CTOR_OWNERS.get(u.name)!;
+      // Pick the owner the expected type names; an ErrRow (or unresolved)
+      // context cannot disambiguate — keep the last declaration (the pre-S3
+      // rule) so unconstrained code behaves as before.
+      const pick = (rt.tag === "Named" ? owners.find(o => o.typeName === rt.name) : undefined)
+        ?? owners[owners.length - 1]!;
+      const ct = instantiate(pick.scheme);
+      const label = `constructor '${u.name}' (of ${pick.typeName})`;
+      if (ct.tag === "Fn") {
+        // declared payload first: "expected <declared>, got <argument>"
+        if (u.payload) unify(ct.params[0] ?? { tag: "Unknown" }, u.payload, this.ctx, u.span, label);
+        unify(u.ret, ct.ret, this.ctx, u.span, label);
+      } else {
+        unify(u.ret, ct, this.ctx, u.span, label);
+      }
+    }
     // 1. Cycle check — recursion among `_` defs is rejected in v1 (Zig's rule).
     //    DFS over the ⊇-edges; report each row that can reach itself.
     const adj = new Map<ErrRowT, ErrRowT[]>();
@@ -2862,6 +2913,16 @@ class Inferrer {
         // match must not widen what a def is recorded as raising. The payload
         // is typed from the ctor's own scheme.
         if (at.tag === "ErrRow") {
+          // Prefer the row's own recorded payload for this entry (S3): under
+          // ctor sharing the env's last declaration may be the wrong ADT; the
+          // row entry carries the payload of the ADT that actually contributed.
+          // Falls back to the env scheme if the entry hasn't filled in yet
+          // (rows close at end of module; arms can check before contributors).
+          const entry = at.entries.find(e => e.name === pat.name);
+          if (entry && entry.payload && pat.inner) {
+            this.checkPat(pat.inner, entry.payload, env);
+            break;
+          }
           const rs = env.lookup(pat.name);
           const rct = rs ? instantiate(rs) : null;
           if (rct && rct.tag === "Fn" && pat.inner)
@@ -2892,6 +2953,23 @@ class Inferrer {
         if (at.tag === "Async" && ASYNC_CTORS.has(pat.name)) {
           const ct = asyncCtorType(pat.name, at.inner);
           if (ct) {
+            if (ct.tag === "Fn") {
+              unify(at, ct.ret, this.ctx, pat.span);
+              if (pat.inner) this.checkPat(pat.inner, ct.params[0] ?? { tag: "Unknown" }, env);
+            } else {
+              unify(at, ct, this.ctx, pat.span);
+            }
+            break;
+          }
+        }
+        // Shared ctor names in patterns (S3): the scrutinee type picks the
+        // owner, exactly as the outcome/Async pre-cases above already do for
+        // the prelude's shared names.
+        const ownersP = CTOR_OWNERS.get(pat.name);
+        if (ownersP && ownersP.length >= 2 && at.tag === "Named") {
+          const own = ownersP.find(o => o.typeName === at.name);
+          if (own) {
+            const ct = instantiate(own.scheme);
             if (ct.tag === "Fn") {
               unify(at, ct.ret, this.ctx, pat.span);
               if (pat.inner) this.checkPat(pat.inner, ct.params[0] ?? { tag: "Unknown" }, env);
