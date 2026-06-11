@@ -450,6 +450,19 @@ dimension machinery generalize?
   binds each ctor name once: function if payloaded, bare value if nullary),
   so it waits on an eval redesign. Remaining: guarded arms cover nothing,
   S4/v2 row variables (→ effect-A+).
+  **S4 design written 2026-06** (`docs/row-variables-design.md`): v2 is NOT
+  full row-polymorphic HM — tails are quantified type vars on the def's row,
+  cloned per call site at instantiate and judged by the EXISTING finalize
+  step 0.5 (resolved-to-row → ⊇-edge, so occurs-over-tails is the existing
+  cycle DFS); no new unification on the error side. Probing exposed the real
+  prerequisite: the grammar has NO function-type ascription (lower.ts never
+  produces TRFn; the checker is TRFn-ready), and row defs are mono so rows ×
+  generics is unusable today ("expected a, got String" at every call).
+  Sliced: S4a fn-type ascriptions `(A -> B)` (grammar/lower; mandatory
+  parens — bare `->` in the return slot is the single-line def body), S4b
+  row tails, S4c effect tails on builtin HOF signatures (replacing §12.4's
+  conservative charge where a HOF provably doesn't invoke its argument;
+  Fn-unify must learn effect tails — today it skips effects entirely).
 - [x] 🟡 **User generics** (found during the error-ADT slice, closed 2026-06;
   SPEC §2.12, `generics_test`/`_bad`): `def idy(x: a): a` parsed but the type
   var was a rigid `Named "a"` never generalized — `idy(5)` was a type error,

@@ -126,6 +126,14 @@ OCaml-style open rows + row vars is what makes `map(f, xs)`'s error/effect
 v2 is a genuine HM extension (row unification, occurs over tails) and waits
 until v1's representation is proven in fixtures. Do not start with v2.
 
+*Update 2026-06: v1 is proven (S1–S3 shipped) and v2 is now designed —
+see `row-variables-design.md`. The design corrects this sketch: v2 is NOT
+full row-polymorphic HM but row-polymorphic SIGNATURES over the v1 flow
+core (tails = quantified vars judged by the existing finalize step 0.5;
+occurs-over-tails = the existing cycle DFS). Its S4a prerequisite is a
+surface gap discovered while designing: the grammar has no function-type
+ascription at all.*
+
 ## 7. Build plan (fixture-provable slices)
 
 1. **S1 — row + `?` accumulation + pin check.** Grammar `_`, ErrRow tag,
@@ -203,6 +211,10 @@ until v1's representation is proven in fixtures. Do not start with v2.
    scope for rows v1.
 4. **S4 (v2) — row variables** for HOF error/effect polymorphism; replaces
    SPEC §12.4's conservative rule with precision.
+   **Design ✅ 2026-06** (`row-variables-design.md`): sliced as S4a
+   (function-type ascriptions — grammar/lower; the checker is already
+   TRFn-ready), S4b (row tails: instantiate-time clones + the existing
+   step-0.5 judging), S4c (effect tails on builtin HOF signatures).
 
 Each slice keeps the corpus baselines untouched: `_` is additive, and no
 existing fixture uses it.

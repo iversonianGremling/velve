@@ -383,6 +383,16 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       runtime-ambiguous (eval binds each ctor name once — function if
       payloaded, bare value if nullary) and waits on an eval redesign.
       Next: S4/v2 row variables.
+- [x] **Row variables (S4/v2) design note**: ✅ DONE (2026-06,
+      `docs/row-variables-design.md`). v2 worked out against the as-built
+      v1: row-polymorphic SIGNATURES over the v1 flow core — tails are
+      quantified vars cloned per call site at instantiate and judged by the
+      existing finalize step 0.5; no new unification on the error side.
+      Probes exposed the real prerequisite: NO function-type ascription
+      exists in the surface (lower never produces TRFn; checker is ready),
+      and row defs are mono (rows × generics unusable). Sliced: S4a fn-type
+      ascriptions, S4b row tails, S4c effect tails on builtin HOFs (the
+      §12.4 replacement; Fn-unify must learn effect tails). Next: S4a.
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside
