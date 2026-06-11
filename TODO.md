@@ -520,6 +520,16 @@ best thing in the document. The same razor, applied to the surface:
 - [ ] 🟢 **`@debug` causal tracing** (§16) — keep on the roadmap; the
   deterministic scheduler + journals make it cheap, and it compounds the
   debuggability story that `@interaction` starts.
+- [ ] 🟡 **Free-positioned legibility as proof** (`Canvas`/SVG; design written
+  2026-06, `docs/svg-legibility-design.md`): text unreadable by overlap or by
+  contrast-against-what's-actually-behind-it becomes a *check error* —
+  disjointness + per-region APCA over the composited scene, constEval-folded
+  when static; MaxSMT placement repair as the opt-in synthesis tier (first
+  concrete client of the north-star §3 Z3 floor); `legibleOn` is the
+  color-axis repair. Rule: the free-position form ships only *together with*
+  its obligation (S0+S1 as one slice) — flow layouts stay the structural
+  default where overlap is inexpressible. Dynamic text requires a declared
+  bound in v1 ("impossible by construction" must not be a lie).
 
 ## 6. Spec/example hygiene (cheap, do soon)
 

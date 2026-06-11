@@ -370,6 +370,14 @@ the **honesty at the boundary**: where it can't fold, flag "unprovable here" at 
 instead of skip-and-detonate. **Same fix as §3, both layers** — the `Proof [...]` discharge-flip
 is literally this honesty applied as a declared obligation.
 
+**Generalization designed 2026-06 — `docs/svg-legibility-design.md`:** the same pattern
+extended from "color vs nominal surface" to "color + geometry vs composited scene" for a
+future free-positioned `Canvas`/SVG form: disjointness (no text overlap) + per-region APCA
+(contrast vs what is *actually painted* underneath), constEval-folded when static, with
+MaxSMT placement repair as the opt-in synthesis tier (the §3 Z3 floor's first concrete
+client). Free positioning ships only together with its obligation — the door and the guard
+arrive as one slice.
+
 ---
 
 ## 7. Closing §2.1 for UI / styling
