@@ -1,0 +1,46 @@
+@edition "2026.6"
+
+-- Error rows S3 fix-its: a failing pin names the smallest edit that would
+-- make it hold. Exactly 2 errors.
+
+type AppError
+  = Missing String
+
+type WideError
+  = Missing String
+  | Boom Number
+
+type OnlyError
+  = Quux Bool
+
+def wide(k: String): Result Number WideError
+  if k == "x" then Ok(1) else Error(Boom(5))
+
+def quux(k: String): Result Number OnlyError
+  if k == "x" then Ok(2) else Error(Quux(true))
+
+def step(k: String): Result Number _
+  v = wide(k)?
+  Ok(v)
+
+-- (1) a declared ADT already covers row(step) = {Missing | Boom} — the fix-it
+-- offers the re-pin first, then the add:
+-- "fix: pin with 'WideError' (it covers this row), or add Boom Number to 'AppError'"
+def api(k: String): Result Number AppError
+  v = step(k)?
+  Ok(v)
+
+def step3(k: String): Result Number _
+  a = wide(k)?
+  b = quux(k)?
+  Ok(a + b)
+
+-- (2) row(step3) = {Missing | Boom | Quux} mixes ctors from two ADTs — no
+-- single declared ADT covers it, so only the add is offered:
+-- "fix: add Boom Number, Quux Bool to 'AppError'"
+def api3(k: String): Result Number AppError
+  v = step3(k)?
+  Ok(v)
+
+def main(): Unit
+  println("unreachable")

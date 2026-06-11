@@ -1,0 +1,35 @@
+@edition "2026.6"
+
+-- Error rows S3 fix-its, the green half: applying the suggested re-pin from
+-- row_fixit_bad ("pin with 'WideError' (it covers this row)") checks clean —
+-- the suggestion is actionable, not decorative. Same module shape as the bad
+-- fixture's case (1) with the fix applied.
+
+type AppError
+  = Missing String
+
+type WideError
+  = Missing String
+  | Boom Number
+
+def wide(k: String): Result Number WideError
+  if k == "x" then Ok(1) else Error(Boom(5))
+
+def step(k: String): Result Number _
+  v = wide(k)?
+  Ok(v)
+
+-- the fix-it applied: WideError covers {Missing | Boom}
+def api(k: String): Result Number WideError
+  v = step(k)?
+  Ok(v)
+
+def main(): Unit
+  match api("x")
+    | Ok(v) -> println("ok {v}")
+    | Error(Boom(n)) -> println("boom {n}")
+    | Error(Missing(m)) -> println("missing {m}")
+  match api("y")
+    | Ok(v) -> println("ok2 {v}")
+    | Error(Boom(n)) -> println("boom {n}")
+    | Error(Missing(m)) -> println("missing {m}")

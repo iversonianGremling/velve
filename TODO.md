@@ -441,10 +441,15 @@ dimension machinery generalize?
   finalizeRows step 0.5 and re-judged once the substitution resolves; never-
   contributable types are REJECTED (still-polymorphic → "annotate or pin";
   concrete non-ADT → named in the diagnostic), only `Unknown` stays lenient.
-  S1 silently dropped these and pins passed vacuously. Remaining: S3 polish
-  (mixed-arity shared names + never-resolving ctor-use contexts keep
-  last-decl-wins; guarded arms cover nothing; fix-its), S4/v2 row variables
-  (→ effect-A+).
+  S1 silently dropped these and pins passed vacuously.
+  **S3 fix-it slice BUILT 2026-06** (`row_fixit_test`/`_bad`): a failing pin
+  names the smallest edit — re-pin with a declared covering ADT (smallest
+  wins) and/or add the missing variants in declaration syntax; the green
+  fixture is the suggestion applied. S3 is now CLOSED except mixed-arity
+  shared names — discovered to be runtime-ambiguous, not check-side (eval
+  binds each ctor name once: function if payloaded, bare value if nullary),
+  so it waits on an eval redesign. Remaining: guarded arms cover nothing,
+  S4/v2 row variables (→ effect-A+).
 - [x] 🟡 **User generics** (found during the error-ADT slice, closed 2026-06;
   SPEC §2.12, `generics_test`/`_bad`): `def idy(x: a): a` parsed but the type
   var was a rigid `Named "a"` never generalized — `idy(5)` was a type error,

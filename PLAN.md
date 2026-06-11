@@ -374,6 +374,15 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       polymorphic → "annotate or pin"; concrete non-ADT → named); only
       `Unknown` stays lenient. S1 dropped these silently — pins passed
       vacuously over under-approximated rows.
+- [x] **Error rows S3, fix-it slice**: ✅ DONE (2026-06,
+      `row_fixit_test`/`_bad`). A failing pin names the smallest edit that
+      makes it hold: re-pin with an already-declared covering ADT (smallest
+      ctor count wins) and/or add the missing variants, spelled in
+      declaration syntax. Green fixture = the suggestion applied. S3 closed
+      except mixed-arity shared names, which turned out to be
+      runtime-ambiguous (eval binds each ctor name once — function if
+      payloaded, bare value if nullary) and waits on an eval redesign.
+      Next: S4/v2 row variables.
 - [x] **`Responsive(Length)` prop-only auto-collapse** (§3.1): ✅ DONE (2026-06).
       A `Length` prop accepts a `Breakpoint -> Length` value and collapses it against
       the live `viewport.breakpoint` — a second prop-site coercion exactly beside

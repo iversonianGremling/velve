@@ -454,7 +454,13 @@ As built (2026-06, `error_rows_test`/`_bad`):
   (Zig's rule: pin one def in the cycle).
 - A pin must be a **named ADT** — prose `String` cannot cover a row, and a
   callee whose error type *is* prose enters the row as an uncoverable
-  pseudo-entry. Diagnostics list the escaping constructors by name.
+  pseudo-entry. Diagnostics list the escaping constructors by name, and a
+  failing pin names the smallest edit that would make it hold (S3 fix-its,
+  2026-06, `row_fixit_test`/`_bad`): an already-declared ADT covering the
+  whole row is offered as a re-pin ("fix: pin with 'WideError' (it covers
+  this row)"), and the missing variants are spelled in declaration syntax
+  ("add Boom Number to 'AppError'"). Prose escapees have no covering edit —
+  match-it-out remains the fix.
 - Rows are check-time only — eval is untouched (`?` already unwraps by value).
 - **Rows are directly matchable (S2, 2026-06, `error_rows_match_test`/`_bad`)**
   — no wrapper ADT needed, and exhaustiveness is checked over the **actual
@@ -483,7 +489,11 @@ As built (2026-06, `error_rows_test`/`_bad`):
   contributed it), not the env's last declaration. Declaration order of
   sharing ADTs no longer matters. Residual: a shared name whose owners
   disagree on *arity* (payload vs nullary), and contexts that never resolve
-  (an ErrRow or free var), keep last-declaration-wins.
+  (an ErrRow or free var), keep last-declaration-wins. The mixed-arity case
+  is not merely check-side work: eval binds each ctor name once — a function
+  when it takes a payload, a bare value when nullary — so one runtime binding
+  cannot serve both owners; resolving it needs an eval redesign (or
+  expected-type-driven lowering) and stays out of scope for rows v1.
 - **Late-resolving callee error types are re-judged, not dropped (S3 polish,
   2026-06, `row_late_test`/`_bad`)** — a `?` whose callee error type is still
   a type var when the line is checked (a forward call to a def with

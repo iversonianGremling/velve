@@ -184,9 +184,23 @@ until v1's representation is proven in fixtures. Do not start with v2.
    named constructors") are check errors; only `Unknown` itself, the
    checker's explicit give-up type, stays lenient. Under S1 all of these
    silently under-approximated the row and pins passed vacuously.
+   **Fix-it slice ✅ BUILT 2026-06** (`row_fixit_test`/`_bad`): a failing
+   pin names the smallest edit that would make it hold — an already-declared
+   ADT covering the whole row is offered as a re-pin ("fix: pin with
+   'WideError' (it covers this row)", smallest ctor count wins), and the
+   missing variants are spelled in declaration syntax ("add Boom Number to
+   'AppError'"). Both can appear together; prose escapees suppress the
+   re-pin suggestion (nothing declared can cover prose) and keep
+   match-it-out as the fix. The green fixture is the bad fixture's case (1)
+   with the suggested re-pin applied — proving the suggestion actionable.
    Remaining S3: mixed-arity shared names and never-resolving ctor-use
-   contexts keep last-declaration-wins; fix-its naming the smallest covering
-   ADT edit.
+   contexts keep last-declaration-wins. The mixed-arity case turned out not
+   to be check-side work at all: eval binds each ctor name ONCE — a builtin
+   function when it takes a payload, a bare `VCtor` value when nullary
+   (eval.ts ~309–311) — so a single runtime binding cannot serve a payloaded
+   owner and a nullary owner simultaneously. Closing it needs an eval
+   redesign (hybrid ctor values, or expected-type-driven lowering); out of
+   scope for rows v1.
 4. **S4 (v2) — row variables** for HOF error/effect polymorphism; replaces
    SPEC §12.4's conservative rule with precision.
 

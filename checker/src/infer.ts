@@ -2857,11 +2857,31 @@ class Inferrer {
       const escapees = pin.row.entries.filter(e => e.prose || !ctors.some(c => c.name === e.name));
       if (escapees.length > 0) {
         const prose = escapees.filter(e => e.prose).map(e => e.name);
-        const named = escapees.filter(e => !e.prose).map(e => e.name);
+        const named = escapees.filter(e => !e.prose);
         const parts: string[] = [];
-        if (named.length) parts.push(`missing: ${named.join(", ")}`);
+        if (named.length) parts.push(`missing: ${named.map(e => e.name).join(", ")}`);
         if (prose.length) parts.push(`${prose.join(", ")} is prose — match it out or use a structured error`);
-        err(this.ctx, pin.span, `error row ${rowStr} is not covered by '${declared.name}' — ${parts.join("; ")}`);
+        // Fix-it (S3): name the smallest edit that makes the pin hold. An
+        // already-declared ADT covering the whole row beats editing the pinned
+        // one; otherwise spell out the missing variant declarations. Prose
+        // entries have no covering edit — the existing message is the fix.
+        const fixes: string[] = [];
+        if (prose.length === 0) {
+          let best: { name: string; size: number } | null = null;
+          for (const [adtName, adtCtors] of ADT_CTORS) {
+            if (adtName === declared.name) continue;
+            if (pin.row.entries.every(e => adtCtors.some(c => c.name === e.name))
+                && (!best || adtCtors.length < best.size))
+              best = { name: adtName, size: adtCtors.length };
+          }
+          if (best) fixes.push(`pin with '${best.name}' (it covers this row)`);
+        }
+        if (named.length) {
+          const adds = named.map(e => e.payload ? `${e.name} ${typeToString(e.payload)}` : e.name);
+          fixes.push(`add ${adds.join(", ")} to '${declared.name}'`);
+        }
+        const fixStr = fixes.length ? `; fix: ${fixes.join(", or ")}` : "";
+        err(this.ctx, pin.span, `error row ${rowStr} is not covered by '${declared.name}' — ${parts.join("; ")}${fixStr}`);
       }
     }
     // 4. Row-match exhaustiveness (S2): over the ACTUAL raised set. An arm
