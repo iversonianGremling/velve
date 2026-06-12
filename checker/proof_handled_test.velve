@@ -1,0 +1,38 @@
+-- `proofs: [handled]` — the unpropagated-error obligation (SPEC §12.7).
+-- Third checkable obligation; its §4 blocker (error rows) shipped 2026-06.
+-- Every Result inside the module is matched, ?-propagated, bound, or
+-- returned, so this checks clean and runs; the _bad twin pins the discards.
+@edition "2026.6"
+
+module parsing
+  proofs: [handled]
+
+  -- handled by matching
+  def orZero(s: String): Number
+    match parseNumber(s)
+      | Ok(n)    -> n
+      | Error(_) -> 0
+
+  -- handled by propagation inside try (the ? routes the error to the try value)
+  def sumOf(a: String, b: String): Result Number ParseError
+    try
+      let x = parseNumber(a)?
+      let y = parseNumber(b)?
+      x + y
+
+  -- handled by returning: the caller receives the Result (propagated up)
+  def parseScore(s: String): Result Number ParseError
+    parseNumber(s)
+
+def main(): Effect [io] ()
+  -- OUTSIDE the module the obligation does not apply: this discard is legal
+  -- (the gradient is opt-in — scope-local, like `exhaustive`).
+  parseNumber("unwatched")
+  println(orZero("12"))
+  println(orZero("nope"))
+  match sumOf("3", "4")
+    | Ok(n)    -> println(n)
+    | Error(_) -> println("sum failed")
+  match parseScore("9")
+    | Ok(n)    -> println(n)
+    | Error(_) -> println("score failed")

@@ -545,6 +545,31 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       both tables (north-star §1 + §3.6 closing block + §3.2/§10; TODO §1);
       remaining → A+: refined-type library (gated on module-private ctors)
       + Tier-2 Z3.
+- [x] **`handled` — the third checkable proof obligation**: ✅ DONE
+      (2026-06, SPEC §12.7, `proof_handled_test`/`_bad` — exactly 4 errors;
+      baselines unchanged except the two new rows; no grammar change). Its
+      §4 blocker (error rows) had shipped, making it the cheapest obligation
+      on the board. `proofs: [handled]` = no def in the module silently
+      discards a `Result`: a Result-typed expression in a dropped statement
+      position (non-final in do/try/retry/transaction, ANY position in a
+      loop body) is an error; match/`?`/bind/return are the sanctioned
+      paths, and deliberate discards are rejected too (the escape hatch is
+      not declaring the obligation — gradient-wide rule). New pass
+      `checker/src/handled.ts` (mirrors exhaust's module walk; consumes the
+      inference types map; conservative on unresolved Vars), wired into
+      index.ts + lsp.ts; lower.ts PROOF_CHECKABLE += handled (the
+      not-checkable error message now lists three). Design point recorded
+      in SPEC §12.7 + north-star §3.4: obligations have two enforcement
+      shapes — `total` is call-graph (downward gate), `exhaustive`/`handled`
+      are scope-local (fault is syntactic to the scope) — so no downward
+      gate for handled is principled, not a shortcut. Green fixture also
+      witnesses scope-locality: the same discard OUTSIDE the module is
+      legal. v1 scope: function bodies (store/machine/saga bodies
+      documented out). Surface gap found: wildcard binds (`let _ = e`)
+      don't parse — the PWild discard check in handled.ts is defensive
+      for when they land. 3 of 6 obligations now checkable; remaining:
+      `bounds`/`nonzero` (flow-sensitive fact env, §3.1 catch 1),
+      `overflow` (sized types, §5).
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

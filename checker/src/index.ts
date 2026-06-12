@@ -8,6 +8,7 @@ import { infer } from "./infer.js";
 import { checkExhaustiveness } from "./exhaust.js";
 import { checkBorrows } from "./borrow.js";
 import { checkTotality } from "./total.js";
+import { checkHandled } from "./handled.js";
 import { Evaluator } from "./eval.js";
 import { RuntimeError } from "./value.js";
 import { analyzeTweaks } from "./tweaks.js";
@@ -37,8 +38,9 @@ if (cmd === "check") {
   const exhaustDiags = checkExhaustiveness(mod, types);
   const borrowDiags = checkBorrows(mod, types);
   const totalDiags = checkTotality(mod, resolutions);
+  const handledDiags = checkHandled(mod, types);
 
-  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags];
+  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags];
   console.log(`${types.size} expressions typed, ${resolutions.size} names resolved`);
   if (allDiags.length === 0) {
     console.log("no errors");

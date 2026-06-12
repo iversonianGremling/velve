@@ -1,0 +1,37 @@
+-- `proofs: [handled]` rejections — exactly 4 errors. Each is a Result whose
+-- error silently vanishes: discarded mid-block, discarded in a branch block,
+-- dropped every loop iteration, or discarded mid-try. The same code outside
+-- the module is legal (proof_handled_test's main proves that) — declared =
+-- enforced, scope-local like `exhaustive`.
+@edition "2026.6"
+
+module strict
+  proofs: [handled]
+
+  def slurp(s: String): Number
+    parseNumber(s)            -- error 1: discarded — the block moves on without it
+    42
+
+  def shrug(s: String): Number
+    if s != ""
+      parseNumber(s)          -- error 2: discarded inside the then-block
+      0
+    else
+      0
+
+  def churn(s: String): Number
+    mut n = 0
+    loop
+      parseNumber(s)          -- error 3: loop iteration value is never consumed
+      n = n + 1
+      if n == 3
+        break
+    n
+
+  def tryAnyway(s: String): Result Number ParseError
+    try
+      parseNumber(s)          -- error 4: un-?'d Result mid-try is still a discard
+      parseNumber("0")?
+
+def main(): Effect [io] ()
+  println(slurp("1"))
