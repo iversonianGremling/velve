@@ -594,6 +594,38 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       Type-core row's named next lever, no longer blocked on language
       work. Grade tables updated (no re-grade — the row moved to A last
       slice; this unblocks its → A+ path).
+- [x] **Tier-1 refined-type library (north-star §3.3 item 3 — the
+      `@private type` payoff)**: ✅ DONE (2026-06, SPEC §7.1,
+      `refined_types_test`/`_bad` — exactly 4 errors; baselines unchanged
+      except the two new rows; **zero checker changes** — the "pure
+      library add" prediction held exactly). `module refined` ships
+      `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs:
+      smart-constructor **gates** from raw Number returning Result
+      (`natural`/`nonZero`/`positive`/`inBounds(i, xs)`), **closed ops**
+      that stay in the type with no re-check (`natAdd`/`natMul`/`posMul`/
+      `posToNat` — the Positive ⊆ Natural embedding), **faulting ops**
+      back through the gate (`natSub` → `Result Natural String`), and
+      witness-consuming ops that DELETE fault cases from the type:
+      `divBy(n, d: NonZero)` is total division and `getAt(xs, ix:
+      InBounds)` is safe indexing — passing a raw 0 / raw index is a
+      type error, pinned by the `_bad` twin alongside forge-by-call and
+      match-by-pattern. The module is itself proof-carrying —
+      `proofs: [total, exhaustive, handled]` — every def discharges all
+      three shipped obligations (the gradient eats its own cooking; the
+      in-module indexing kernel `head`/`slice` is in TOTAL_BUILTINS).
+      As-built deltas from the §3.3 sketch: no `@unsafe{}` TCB needed
+      (the module boundary IS the trusted kernel); gates spell as module
+      fns (`natural(n)`, not `Natural.parse`); `SortedList` deferred
+      (sortedness is the §3.2 semantic case — Tier 2's job). Honest
+      Tier-1 bound, documented loudly: `InBounds` witnesses "an index
+      that passed a bounds check", NOT "an index into THAT list" — the
+      relational tie (`Index(xs)`) is Tier 1.5's witness-token
+      primitive, deliberately not faked. Until multi-file imports
+      resolve, the library travels by inclusion;
+      `refined_types_test.velve` is the reference source. No re-grade:
+      Type-core's remaining → A+ was "library + Tier-2"; one of two
+      landed, so the row holds A with remaining = Tier-2 Z3 + the
+      Tier-1.5 witness.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

@@ -1,0 +1,68 @@
+-- The refined-type library's boundary, violated four ways. Expected: exactly
+-- 4 errors —
+--   1. forging a Natural by calling its private ctor outside the module
+--   2. reading a NonZero's representation by pattern outside the module
+--   3. passing a raw 0 where divBy demands a NonZero witness
+--   4. passing a raw index where getAt demands an InBounds witness
+-- Each violation is its own def so nothing cascades.
+@edition "2026.6"
+
+module refined
+  proofs: [total, exhaustive, handled]
+
+  @private
+  type Natural
+    = Natural Number
+
+  @private
+  type NonZero
+    = NonZero Number
+
+  @private
+  type InBounds
+    = InBounds Number
+
+  def natural(n: Number): Result Natural String
+    if n >= 0 then Ok(Natural(n)) else Error("negative")
+
+  def nonZero(n: Number): Result NonZero String
+    if n == 0 then Error("zero") else Ok(NonZero(n))
+
+  def inBounds(i: Number, xs: List(a)): Result InBounds String
+    if i >= 0 && i < length(xs) then Ok(InBounds(i)) else Error("out of bounds")
+
+  def natValue(n: Natural): Number
+    match n
+      | Natural(x) -> x
+
+  def nzValue(d: NonZero): Number
+    match d
+      | NonZero(x) -> x
+
+  def ibValue(ix: InBounds): Number
+    match ix
+      | InBounds(x) -> x
+
+  def divBy(n: Number, d: NonZero): Number
+    n / nzValue(d)
+
+  def getAt(xs: List(a), ix: InBounds): a
+    head(slice(xs, ibValue(ix), ibValue(ix) + 1))
+
+-- 1. Forge: a negative "Natural" by direct construction. (error)
+def forge(): Number
+  natValue(Natural(0 - 5))
+
+-- 2. Representation-dependence: matching the private ctor outside. (error)
+def peek(): Number
+  match nonZero(5)
+    | Ok(NonZero(x)) -> x
+    | Error(_)       -> 0
+
+-- 3. The zero case, un-deleted: raw Number where the witness is demanded. (error)
+def crash(): Number
+  divBy(10, 0)
+
+-- 4. Unchecked index: the partial kernel is unreachable without the witness. (error)
+def wild(xs: List(Number)): Number
+  getAt(xs, 1)

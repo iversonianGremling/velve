@@ -51,6 +51,7 @@ means there is a green fixture exercising it under `checker/`.
 | Totality (`@total`, Tier 1) | ✅ Built (2026-06) | §12.6, `total_test`/`_bad`: opt-in structural termination — recursion must decrease at one position (ctor/tuple/record descent or `n - k` under a literal/comparison floor), totality flows down the call graph (total calls total + terminating builtins; HOFs need a checkable fn), `loop`/`await`/spawn/host rejected in total bodies. Mutual recursion, closure recursion, `n / 2` → conservative reject (Tier 2 `proof.terminates` is the future valve). First shipped obligation of the north-star §3 proof gradient. **§5.1 payoff shipped (2026-06, `constfold_total_test`/`_bad`)**: the refinement folder (§2.6) executes `@total` predicates at check time — fuel-bounded, conservative on anything undecidable — so the conservative-skip set shrinks by exactly the code that proved it terminates. |
 | Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`; `exhaustive` hardens clause-head gaps to errors in every edition. **`handled` shipped (2026-06, `proof_handled_test`/`_bad`)**: no silently discarded `Result` anywhere in the module — third checkable obligation, scope-local like `exhaustive`. Per-def/per-block scopes PROPOSED. |
 | Module-private constructors (`@private type`) | ✅ Built (2026-06) | §7.1, `private_ctor_test`/`_bad`: an ADT's constructors seal at the module boundary (no forging by call, no representation-dependence by pattern); the type name stays public. The soundness primitive for the refined-type tier (north-star §3.5 confirmed → shipped). Resolver scope stays flat — privacy is a use-site check. |
+| Refined-type library (Tier 1) | ✅ Built (2026-06) | §7.1, `refined_types_test`/`_bad`: `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — smart-constructor gates, closed ops, faulting ops through the gate; `divBy(n, NonZero)` makes division total and `getAt(xs, InBounds)` makes indexing safe **as type errors**, no solver. The library module is proof-carrying (`proofs: [total, exhaustive, handled]`). Pure library add — zero checker changes. Tier-1 bound: `InBounds` is not relational (Tier 1.5). |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | Call children (`card()` composition) | ✅ Built (2026-06) | §11.1, `call_child_test`/`_bad`: a bare lowercase component call is a `child` grammar form — composed views nest for real (closes the last children-flattening residual); a call child resolves, type-checks, and effect-checks like a call anywhere. |
@@ -1784,6 +1785,28 @@ one. Validation: `@private` needs an enclosing module, marks ADTs only
 `.parse`), and does not mark functions (v1). Mechanically the resolver's scope
 stays flat — privacy is a use-site check on the constructor binding, so
 shadowing and resolution order are unchanged.
+
+**The refined-type library** *(SHIPPED 2026-06, `refined_types_test`/`_bad`;
+north-star §3.3 Tier 1)*. The payoff `@private type` exists for: `Natural`,
+`NonZero`, `Positive`, `InBounds` as private ADTs in a `module refined`. Each
+type's **gate** is a smart constructor from raw `Number` returning `Result`
+(`natural`, `nonZero`, `positive`, `inBounds(i, xs)`); **closed ops** stay in
+the type with no re-check (`natAdd`, `natMul`, `posMul`, `posToNat` — the
+Positive ⊆ Natural embedding); **faulting ops** return through the gate
+(`natSub` can underflow, so it's `Result Natural String`). The witness types
+*delete* fault cases from consumers' domains: `divBy(n, d: NonZero)` is total
+division — passing a raw `0` is a **type error**, not a runtime check — and
+`getAt(xs, ix: InBounds)` is safe indexing. The module is itself
+proof-carrying: it declares `proofs: [total, exhaustive, handled]` and every
+def discharges all three (§12.7). No solver anywhere — the invariant holds by
+construction because the ctor is unreachable from outside (the `_bad` twin
+pins all four boundary violations: forge by call, match by pattern, raw
+`Number` where `NonZero`/`InBounds` is demanded). Honest Tier-1 bound:
+`InBounds` witnesses *an index that passed a bounds check*, not an index tied
+to **that** list — the relational tie (`Index(xs)`) is Tier 1.5's
+witness-token primitive (north-star §3.3). Until multi-file imports resolve
+(§14), the library travels by inclusion; `refined_types_test.velve` is its
+reference source.
 
 ### 7.2 Stores
 
