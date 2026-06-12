@@ -626,6 +626,35 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       Type-core's remaining → A+ was "library + Tier-2"; one of two
       landed, so the row holds A with remaining = Tier-2 Z3 + the
       Tier-1.5 witness.
+- [x] **`nonzero` + the flow-sensitive fact env (Tier-2 groundwork,
+      north-star §3.1 catch 1)**: ✅ DONE (2026-06, `checker/src/facts.ts`,
+      SPEC §12.7, `proof_nonzero_test`/`_bad` — exactly 6 errors; baselines
+      unchanged except the two new rows). The fourth checkable obligation:
+      in a `proofs: [nonzero]` module every `/` and `%` divisor must be
+      PROVED nonzero — the runtime fault is silent (JS division poisons
+      with Infinity/NaN), so there is no error to handle after the fact.
+      The engine is the fact env the north-star named "the real
+      engineering lift, bigger than the solver call": comparison-to-
+      constant facts on immutable names from if/else (negated on else),
+      `&&`/`||`/`not`, match literals + fall-through binders (the
+      factorial idiom), branch guards, `for` filters, and earlier
+      multi-clause literal heads (`def recip(0) -> …` makes the next
+      clause's binder != 0); `mut`/reassignment kills facts; facts
+      survive into lambdas (immutable names are frozen at the test).
+      Entailment is the no-solver interval floor (`!= 0`, `== k≠0`,
+      `> k≥0`, `≥ k>0`, `< k≤0`, `≤ k<0`). Deliberate Tier-2 pin in the
+      `_bad` twin: `if a != b then n / (a - b)` is a SUFFICIENT guard the
+      floor can't use — compound divisors error with a message naming the
+      Z3 fall-through, so the residue is a concrete error, not a sketch.
+      Scope-local like `exhaustive`/`handled` (no downward gate). Checker
+      changes: facts.ts (new), lower.ts PROOF_CHECKABLE + message,
+      index.ts/lsp.ts wiring; `proof_scope_bad` untouched (it pins
+      `bounds` as the not-checkable example). NOT done — and blocked on a
+      user-approved dependency: the **Z3 back-end** (`z3-solver` npm
+      install was permission-denied this session); the hook is exactly
+      `entailsNonZero` + `proveDivisor`. No re-grade: type-core holds A;
+      this is groundwork named inside its remaining → A+ path, not the
+      path itself.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

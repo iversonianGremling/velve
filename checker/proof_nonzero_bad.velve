@@ -1,0 +1,35 @@
+-- `proofs: [nonzero]` violations (SPEC §12.7). Each def isolates one way a
+-- divisor fails the fact env, including the deliberate Tier-2 pin: `wide`'s
+-- guard (`a != b`) IS mathematically sufficient for `a - b != 0`, but the
+-- no-solver entailment floor only proves names against constants — compound
+-- divisors are exactly the Z3 fall-through residue (north-star §3.3),
+-- conservatively rejected today.
+-- Expected: exactly 6 errors.
+@edition "2026.6"
+
+module unsafe_div
+  proofs: [nonzero]
+
+  -- 1: a raw parameter — no fact on any path.
+  def raw(n: Number, d: Number): Number
+    n / d
+
+  -- 2: guard proves the WRONG arm — on the then branch d == 0.
+  def inverted(n: Number, d: Number): Number
+    if d == 0 then n / d else 0
+
+  -- 3: the wrong name is guarded — facts about n say nothing about d.
+  def misguarded(n: Number, d: Number): Number
+    if n != 0 then n / d else 0
+
+  -- 4: the literal 0.
+  def crash(n: Number): Number
+    n / 0
+
+  -- 5: sufficient guard, compound divisor — the pinned Tier-2/Z3 residue.
+  def wide(n: Number, a: Number, b: Number): Number
+    if a != b then n / (a - b) else 0
+
+  -- 6: `%` carries the same obligation.
+  def rawMod(n: Number, d: Number): Number
+    n % d

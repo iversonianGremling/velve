@@ -19,6 +19,7 @@ import { infer } from "./infer.js";
 import { checkExhaustiveness } from "./exhaust.js";
 import { checkTotality } from "./total.js";
 import { checkHandled } from "./handled.js";
+import { checkNonZero } from "./facts.js";
 import { typeToString } from "./types.js";
 import { findExprAt } from "./find.js";
 import type { Expr, Module } from "./ast.js";
@@ -55,13 +56,14 @@ function analyze(uri: string, text: string): { analysis: Analysis; lspDiags: Ret
   const ed                                                   = checkExhaustiveness(mod, types);
   const td                                                   = checkTotality(mod, resolutions);
   const hd                                                   = checkHandled(mod, types);
+  const nd                                                   = checkNonZero(mod);
 
   const analysis: Analysis = { mod, types, resolutions, snapshots, globals, nameToTypeString, tree };
   cache.set(uri, analysis);
 
   return {
     analysis,
-    lspDiags: [...ld, ...rd, ...id, ...ed, ...td, ...hd].map(toLspDiag),
+    lspDiags: [...ld, ...rd, ...id, ...ed, ...td, ...hd, ...nd].map(toLspDiag),
   };
 }
 

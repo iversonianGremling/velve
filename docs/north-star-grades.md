@@ -22,7 +22,7 @@ remaining gap is a live *design* choice.
 
 | Field | Now | A+ exemplar(s) | What closes the gap | Gap is… |
 |---|---|---|---|---|
-| **Type core** | **A** *(2026-06)* | F★ / Liquid Haskell (SMT refinements); Idris / Lean (full dependent) | The old A− was the **conservative skip** — Velve bailed on hard obligations instead of discharging them. (**User generics shipped 2026-06**, SPEC §2.12 — implicit def-signature type vars, polymorphic at call sites / rigid in the body.) (**Proof-gradient surface live 2026-06**, SPEC §12.6–12.7 — `@total` + the `proofs: [...]` module scope; `total`/`exhaustive`/`handled` checkable, 3 of the 6 obligations.) **A− → A re-graded 2026-06** — this row's named next lever landed: **§5.1 constEval widening** (`constfold_total_test`/`_bad`) — the refinement folder executes `@total` predicates at check time, so the skip set shrinks by exactly the code that proved it terminates. The skip is now *opt-out-able per predicate* (mark it `@total`), which changes its character: what remains skipped is the un-asked-for frontier, not a refusal. Honest bound: this fold is also the *only* check a plain refined call gets (runtime enforcement is the explicit `T.parse` boundary), and `Number ≠ Nat` keeps it fuel-bounded. **Refined-type library SHIPPED 2026-06** (SPEC §7.1, `refined_types_test`/`_bad`): `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — gates from raw `Number`, closed ops with no re-check, `divBy`/`getAt` deleting the zero/out-of-bounds cases as type errors; a pure library add (zero checker changes, the §3.5 prediction exact), itself proof-carrying (`proofs: [total, exhaustive, handled]`). Remaining → A+: **Tier-2 Z3** for the semantic residue (§3.6 item 5) + the Tier-1.5 relational witness (`Index(xs)` — `InBounds` is deliberately non-relational). | **Build** — next lever: Tier-2 Z3 `std/proof` (or the Tier-1.5 witness primitive — smaller). |
+| **Type core** | **A** *(2026-06)* | F★ / Liquid Haskell (SMT refinements); Idris / Lean (full dependent) | The old A− was the **conservative skip** — Velve bailed on hard obligations instead of discharging them. (**User generics shipped 2026-06**, SPEC §2.12 — implicit def-signature type vars, polymorphic at call sites / rigid in the body.) (**Proof-gradient surface live 2026-06**, SPEC §12.6–12.7 — `@total` + the `proofs: [...]` module scope; `total`/`exhaustive`/`handled` checkable, 3 of the 6 obligations.) **A− → A re-graded 2026-06** — this row's named next lever landed: **§5.1 constEval widening** (`constfold_total_test`/`_bad`) — the refinement folder executes `@total` predicates at check time, so the skip set shrinks by exactly the code that proved it terminates. The skip is now *opt-out-able per predicate* (mark it `@total`), which changes its character: what remains skipped is the un-asked-for frontier, not a refusal. Honest bound: this fold is also the *only* check a plain refined call gets (runtime enforcement is the explicit `T.parse` boundary), and `Number ≠ Nat` keeps it fuel-bounded. **Refined-type library SHIPPED 2026-06** (SPEC §7.1, `refined_types_test`/`_bad`): `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — gates from raw `Number`, closed ops with no re-check, `divBy`/`getAt` deleting the zero/out-of-bounds cases as type errors; a pure library add (zero checker changes, the §3.5 prediction exact), itself proof-carrying (`proofs: [total, exhaustive, handled]`). **`nonzero` + the fact env SHIPPED 2026-06** (`facts.ts`, SPEC §12.7, `proof_nonzero_test`/`_bad`): the flow-sensitive fact environment — §3.1 catch 1, the named "real engineering lift, bigger than the solver call" — now exists (comparison facts from if/match/guards/filters/literal clause heads, mutation kills, no-solver interval entailment), discharging the fourth obligation; the Z3 hand-off is pinned as a concrete error (compound divisors). Remaining → A+: **Tier-2 Z3** as the entailment back-end over the now-built fact env (the residue is pinned, the hook is one function: `entailsNonZero`) + the Tier-1.5 relational witness (`Index(xs)` — `InBounds` is deliberately non-relational). | **Build** — next lever: the Z3 back-end (needs the `z3-solver` dependency approved) or `bounds` on the fact env (no new deps), or the Tier-1.5 witness primitive. |
 | **UI / styling** | A | SwiftUI (ergonomics) + Elm (purity); **no shipping language** has accessibility-as-proof | Ceiling already above the field. **§2.1 duality closed** (paren-form elements), the **theme system shipped 4/4** (typed `Surface` tokens → `using` clause → derived `Theme` record → `theme` read-only reactive root: `std/color` now has a real consumer; accessibility-as-proof fires on token, `using`-surface, computed, and live-root colours), and **responsive is built end-to-end** — closed `Breakpoint`, `Clamp` band, the read-only `viewport` root, the `responsive` keyword, and the **prop-site auto-collapse** of a `Responsive(Length)` against the live `viewport.breakpoint` (re-collapsing on `setViewport`, the viewport sibling of `setTheme`). Re-graded A− → **A** (2026-06): the prior hold was "responsive/inputmap design-only" — responsive is shipped, and `inputmap` is an input/event item (event-row §3.2). Residual is polish (compile-time vs runtime cycle detection; §2.1 handler/spread tail), not a pillar. | **Build** — A→A+ is table-stakes breadth (§2), not a single lever. |
 | **Event / state** | A *(2026-06)* | Erlang/OTP + Temporal + XState — Velve already unifies all three | Both named gaps shipped 2026-06: per-stream **backpressure** (`drop`/`buffer N`/`block` at decl site, policy-exempt `Done`, `stream_policy_test`) and **`await`→step-goto** in machine steps (lowering fix, `machine_await_test` — the idiomatic stream-draining machine works). Re-graded A− → **A**. The `inputmap` **core shipped 2026-06** (SPEC §10.5, `inputmap_test`/`_bad`): typed pattern-match table over a stream, conflict analysis ("bound twice"/"shadowed" — the dual of exhaustiveness, as designed), labels retained, drain-loop runtime. **Help-as-derived-data shipped too** (`inputmap_help_test`/`_bad`): a dedicated `Inputmap` type + `help(map) : List({pattern, label})` — the auto-help differentiator's data layer, check-time-typed. **And `++` layering** (`inputmap_layer_test`/`_bad`): maps are values, `default ++ userOverrides` replaces-in-place/appends, cross-stream layering is a check error (the type carries the stream). **And chord-refinement literals** (`inputmap_chord_test`/`_bad`): `Push("Ctl+S")` is a check-time typo — the literal-pattern refinement fold, general to every match site. **And `keymap` sugar** (`keymap_test`/`_bad`): `keymap N` ≡ `inputmap N over Key`, proven by layering a keymap with a plain inputmap over `Key`. A→A+ residual: remaining breadth — std `Key` device library + physical-key prefix, focus-zone scoping, the *rendered* overlay element. | **Build** — inputmap breadth (the overlay element waits on the element-DSL render path; the Key library waits on a host keyboard source). |
 | **Error handling** | A+ *(2026-06)* | Rust (`Result`+`?`+`thiserror`); Swift typed `throws`; Zig inferred error sets | B→B+ was readability (ternary deleted). **B+→A** (SPEC §2.6, `error_adt_test`/`_bad`): named error ADTs — prelude `ParseError`, stringly-error use a check error, map-at-the-boundary convention; `try` soundness closed (`try_sound_test`/`_bad`). **A→A+ shipped 2026-06** (SPEC §2.13, `error_rows{,_match}_test`/`_bad`): **inferred error rows v1** — `Result T _` infers the raised ctor set with zero threading (the §4 hybrid: Zig ergonomics inside), named-ADT pins check ctor-set inclusion with escapees listed (reviewed contract at the edge), and rows are directly matchable with exhaustiveness over the **actual raised set** incl. "can never match" arms — the combination none of the references ship (Zig has no reviewed pin, Rust threads everything, Swift's `throws` set is declared not derived). **Ctor shadowing fixed 2026-06** (`ctor_shadow_test`/`_bad`): shared ctor names resolve by expected type in expression position and scrutinee type in patterns — declaration order no longer matters. **Late contributions fixed 2026-06** (`row_late_test`/`_bad`): a callee error type still unresolved at the `?` is re-judged at end of module — landed in the row or rejected, never silently dropped. **Pin fix-its shipped 2026-06** (`row_fixit_test`/`_bad`): failing pins name the smallest edit (re-pin with a covering ADT, or add the missing variants). S3 closed. Residuals (honest): mixed-arity shared names keep last-decl-wins (runtime-ambiguous — needs an eval redesign, not a rows slice); prose `parseInt`/`parseFloat` remain. **Row variables shipped 2026-06** (v2/S4b, SPEC §2.13 v2 block, `row_tails_test`/`_bad`): generic row defs with per-call-site rows — a callback's error var is a tail, the same def pins differently at each call, matches are exhaustive over *this* call's set. | **v2 done** (S4a fn-type ascriptions + S4b row tails + S4c effect tails shipped — the §4 convergence built at E1 scope); remaining residuals are the documented eval-side/prose items, not rows work. |
@@ -117,6 +117,12 @@ reaches:
    solver earns its keep on *symbolic* facts — `if k <= len(xs) then …` makes `k <= len(xs)`
    true in that branch. Using that needs widening the env to **constraints + path conditions**
    (flow-sensitive). That's the real engineering lift, bigger than the solver call.
+   *(The floor of this lift SHIPPED 2026-06 as `facts.ts`: a flow-sensitive fact env of
+   comparison-to-constant facts on immutable names — if/else negation, `&&`/`||`/`not`,
+   match literals + fall-through binders, guards, `for` filters, multi-clause literal heads;
+   `mut`/reassignment kills — built to discharge `nonzero` (SPEC §12.7) with a no-solver
+   interval entailment. What Z3 adds on top is the entailment back-end over richer facts:
+   name-vs-name, compound terms like `a - b != 0`, and `len(xs)` symbols.)*
 2. **`where` out-expresses any solver.** `OnSurface = Color where contrast(value, surface) >= 60`
    calls `contrast` (APCA math) — an **uninterpreted function** to a solver, opaque, computable
    *only* when inputs are constant. A solver only adds power over a **theory it knows** (linear
@@ -232,8 +238,8 @@ enumerable taxonomy of *runtime faults we can statically forbid*, not open-ended
 | Obligation | Forbids | Discharge | Cheap? |
 |---|---|---|---|
 | `total` | non-termination | structural + Z3 (`@total`) | **yes** (structural) |
-| `bounds` | out-of-range indexing | `InBounds` + path facts | needs flow env (§3.1) |
-| `nonzero` / `arith` | div-by-zero, partial arithmetic | refinement + path facts | needs flow env |
+| `bounds` | out-of-range indexing | `InBounds` + path facts | fact env now built (`facts.ts`) — `bounds` is next on it |
+| `nonzero` / `arith` | div-by-zero, partial arithmetic | refinement + path facts | **`nonzero` SHIPPED 2026-06** (`proof_nonzero_test`/`_bad`) — fact env + interval entailment; compound divisors pinned as the Z3 residue; `arith` pending |
 | `overflow` | silent numeric overflow | sized types (§5) | needs §5 |
 | `exhaustive` | incomplete match | already built | **yes** |
 | `handled` | unpropagated error | error rows (§4) | **SHIPPED 2026-06** (`proof_handled_test`/`_bad`) — no silently discarded `Result` in the scope |
@@ -245,17 +251,19 @@ type-proofs = "values satisfy invariants."** The list is bounded by the fixed se
 kinds, exactly as §5.4 is bounded by the fixed set of capabilities.
 
 **Honest rollout:** the *vocabulary* is fixed and small; the *implementations* land per
-obligation. `total`, `exhaustive`, and `handled` are shipped; `bounds`/`nonzero` need the
-flow-sensitive fact env (§3.1 catch 1); `overflow` needs sized types (§5). So
+obligation. `total`, `exhaustive`, `handled`, and `nonzero` are shipped; `bounds` rides the
+now-built fact env (§3.1 catch 1, `facts.ts`); `arith` extends `nonzero`'s engine; `overflow`
+needs sized types (§5). So
 `Proof [...]` is a stable surface where each obligation is a checker capability arriving on its
 own schedule — declare `proofs: [total]` the day totality lands, add `bounds` later. **The
 grade moves per-obligation, not all-or-nothing** — which is also what makes it genuinely
 "optionally good for whoever needs it": you opt into exactly the faults you care about.
 *(Live as of 2026-06: SPEC §12.7 ships the module scope with `total` + `exhaustive` +
-`handled` checkable and the other three as loud not-checkable-yet errors — the rollout
-above, as built. `handled` also surfaced the second enforcement shape: it is scope-local
+`handled` + `nonzero` checkable and `bounds`/`arith`/`overflow` as loud not-checkable-yet
+errors — the rollout above, as built. `handled` also surfaced the second enforcement shape:
+it is scope-local
 like `exhaustive` — its fault is syntactic to the scope — where `total` is the call-graph
-obligation needing the downward gate.)*
+obligation needing the downward gate; `nonzero` is scope-local too.)*
 
 ### 3.5 The one primitive to confirm — module-private constructors ✅ SHIPPED
 
@@ -333,6 +341,9 @@ the re-grade below argues the construct's A+, not cheaper proofs):
    `exhaustive` hardens clause-head gaps to errors in every edition, ahead of the 2026.6 gate.
    Per-def `Proof [obligation] T` and per-block `@proof[...]{}` remain PROPOSED in SPEC.
 5. 🟢 Z3 **Tier-2** + relational witnesses — later, opt-in, for the semantic residue.
+   *(First Tier-2 groundwork landed 2026-06: the fact env (`facts.ts`) shipped with
+   `nonzero`, and the Z3 hand-off is pinned in `proof_nonzero_bad.velve` — the residue is
+   now a concrete error message, not a design sketch.)*
 
 Items 1–4 are done (2026-06; item 3 landed one slice after the re-grade below), so the
 type system *is* now the opt-in spectrum and only the Tier-2/relational residue (item 5)
@@ -354,11 +365,14 @@ defended by design prose; it's defended by fixtures (`total_test`/`_bad`,
 3. **The direction rule survived contact.** Proofs-flow-down wasn't prose: it is the downward
    call gate in `total.ts`, and the module scope reuses that engine untouched —
    `proofs: [total]` is enforcement arriving from the module head, not an annotation.
-4. **Every unshipped obligation has a named blocker — and the cheapest has since shipped.**
-   `bounds`/`nonzero` wait on the flow-sensitive fact env (§3.1 catch 1); `overflow` waits on
-   sized types (§5); `handled` waited on §4 error rows, which shipped (2026-06) — and then
-   `handled` itself shipped (2026-06, `proof_handled_test`/`_bad`): 3 of 6 obligations are
-   now checkable, exactly the per-obligation cadence the rollout promised.
+4. **Every unshipped obligation has a named blocker — and the blockers keep falling on
+   schedule.** `handled` waited on §4 error rows, which shipped (2026-06) — and then
+   `handled` itself shipped (2026-06, `proof_handled_test`/`_bad`). `bounds`/`nonzero`
+   waited on the flow-sensitive fact env (§3.1 catch 1) — the env shipped (2026-06,
+   `facts.ts`) *together with* `nonzero` (`proof_nonzero_test`/`_bad`): 4 of 6 obligations
+   are now checkable, exactly the per-obligation cadence the rollout promised. Still
+   blocked: `bounds` (next on the fact env), `arith` (extends `nonzero`'s engine),
+   `overflow` (sized types, §5).
 
 What this argument buys, precisely: the **Security row's A+** (the proof-gradient integration
 was its last named ingredient — §1) and the construct-level A+ for the gradient itself. The

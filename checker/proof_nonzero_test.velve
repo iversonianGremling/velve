@@ -1,0 +1,59 @@
+-- `proofs: [nonzero]` — the partial-arithmetic obligation (SPEC §12.7), the
+-- fourth checkable proof: no `/` or `%` in the module may have a divisor the
+-- checker can't prove nonzero. Discharge is the flow-sensitive fact env
+-- (north-star §3.1 catch 1): facts flow from if-branches (negated on else),
+-- `&&` conjunctions, match literals (the fall-through binder knows what it
+-- ISN'T), branch guards, and earlier multi-clause literal heads. The runtime
+-- fault is silent (`x / 0` is Infinity/NaN, not an error) — exactly why it
+-- wants a static obligation. Scope-local like `exhaustive`/`handled`.
+-- Expected: clean; runs.
+@edition "2026.6"
+
+module safediv
+  proofs: [nonzero]
+
+  -- if-guard: the else arm knows d != 0.
+  def safeDiv(n: Number, d: Number): Number
+    if d == 0 then 0 else n / d
+
+  -- comparison floor: d > 0 entails d != 0.
+  def rate(n: Number, d: Number): Number
+    if d > 0 then n / d else 0
+
+  -- match-literal gate: the fall-through binder inherits != 0.
+  def divide(n: Number, d: Number): Result Number String
+    match d
+      | 0 -> Error("zero")
+      | m -> Ok(n / m)
+
+  -- literal divisor: trivially nonzero.
+  def half(n: Number): Number
+    n / 2
+
+  -- `&&` distributes facts into the then arm.
+  def clampRate(n: Number, d: Number): Number
+    if d > 0 && d < 100 then n / d else 0
+
+  -- multi-clause literal head: by clause 2, n cannot be 0.
+  def recip(0): Number -> 0
+  def recip(n: Number): Number -> 1 / n
+
+  -- `%` is a divisor too.
+  def parity(n: Number, d: Number): Number
+    if d != 0 then n % d else 0
+
+def main(): Effect [io] ()
+  println(safeDiv(10, 4))
+  println(safeDiv(10, 0))
+  println(rate(9, 3))
+  match divide(10, 5)
+    | Ok(x)    -> println(x)
+    | Error(_) -> println("?")
+  match divide(10, 0)
+    | Ok(_)    -> println("?")
+    | Error(e) -> println("no: {e}")
+  println(half(7))
+  println(clampRate(50, 5))
+  println(recip(4))
+  println(recip(0))
+  println(parity(7, 2))
