@@ -6,6 +6,12 @@
 //   • `@total` measure jobs (terminates.ts): per recursive call, path facts
 //     ∧ ¬(arg ≤ param − 1), and path facts ∧ param < 0 — both UNSAT for one
 //     argument position means the fn unit-decreases a floored measure.
+//   • `bounds` residue (facts.ts): two queries per index read — path facts
+//     ∧ index < 0, and path facts ∧ index ≥ length(xs) — both UNSAT means
+//     the read is in range. `length(x)` terms become Int-sorted constants
+//     `len$x` with `len$x >= 0` asserted (the builtin's actual range);
+//     Int-sortedness is what turns `length(xs) > 0` into ≥ 1, so the
+//     last-element idiom `xs[length(xs) - 1]` proves.
 //
 // SAT yields a counterexample (surfaced in the error), UNKNOWN is a
 // conservative error. The solver only ever REMOVES errors the sync floor
@@ -19,14 +25,15 @@
 // the package isn't installed, everything falls back to the floor error with
 // an install hint appended — conservative, never a crash.
 import type { Expr } from "./ast.js";
+import type { Span } from "./span.js";
 import type { Diagnostic } from "./resolve.js";
-import type { Obligation, Fact } from "./facts.js";
-import { residueFloorDiags, mkFact, numE } from "./facts.js";
+import type { Obligation, Fact, BoundsObligation } from "./facts.js";
+import { residueFloorDiags, boundsFloorDiags, mkFact, numE, varE } from "./facts.js";
 import type { MeasureJob } from "./terminates.js";
 import { measureFailDiag } from "./terminates.js";
 
-export async function discharge(residue: Obligation[], jobs: MeasureJob[]): Promise<Diagnostic[]> {
-  if (residue.length === 0 && jobs.length === 0) return [];
+export async function discharge(residue: Obligation[], jobs: MeasureJob[], bounds: BoundsObligation[]): Promise<Diagnostic[]> {
+  if (residue.length === 0 && jobs.length === 0 && bounds.length === 0) return [];
   let z3: typeof import("z3-solver");
   try {
     z3 = await import("z3-solver");
@@ -35,6 +42,7 @@ export async function discharge(residue: Obligation[], jobs: MeasureJob[]): Prom
     return [
       ...residueFloorDiags(residue).map(d => ({ ...d, message: d.message + hint })),
       ...jobs.map(j => measureFailDiag(j.fnName, j.span, hint)),
+      ...boundsFloorDiags(bounds).map(d => ({ ...d, message: d.message + hint })),
     ];
   }
   const { Context, em } = await z3.init();
@@ -73,6 +81,22 @@ export async function discharge(residue: Obligation[], jobs: MeasureJob[]): Prom
       }
       if (!proved) diags.push(measureFailDiag(job.fnName, job.span, detail));
     }
+
+    for (const ob of bounds) {
+      const lenE = lenCall(ob.obj, ob.span);
+      const low = await checkUnsat(Z3, [...ob.facts, mkFact(ob.index, "<", numE(0, ob.span))]);
+      const high = low.verdict === "unsat"
+        ? await checkUnsat(Z3, [...ob.facts, mkFact(ob.index, ">=", lenE)])
+        : null;
+      if (high?.verdict === "unsat") continue;  // both sides proved
+      const r = high ?? low;
+      const side = high ? `may reach length('${ob.obj}')` : "may be negative";
+      const detail = r.verdict === "sat"
+        ? `the index ${side} — Z3 found a model consistent with every fact on this path (${r.example})`
+        : `the index ${side} — Z3 returned unknown, conservatively rejected`;
+      diags.push({ kind: "error", span: ob.span,
+        message: `proof obligation 'bounds': cannot prove the index in range — ${detail} (the module declares proofs: [bounds])` });
+    }
   } finally {
     em.PThread.terminateAllThreads();
   }
@@ -86,20 +110,49 @@ export async function discharge(residue: Obligation[], jobs: MeasureJob[]): Prom
 type Ctx = any;
 type Arith = any;
 
+// The synthesized `length(obj)` node for the upper-bound query — shaped
+// exactly like a source-level builtin call, so `term` translates it the
+// same way (a synthesized Var has no resolution entry, i.e. reads as the
+// builtin, which it is).
+function lenCall(obj: string, span: Span): Expr {
+  return { tag: "Call", fn: varE("length", span), args: [varE(obj, span)], named: [], span };
+}
+
 // Assert every fact; UNSAT proves the conjunction impossible. SAT returns a
-// model over the mentioned names as the counterexample.
+// model over the mentioned names as the counterexample. Length terms get
+// Int-sorted constants with `>= 0` asserted — adding the builtin's true
+// range only ever strengthens toward UNSAT, never weakens.
 async function checkUnsat(Z3: Ctx, facts: Fact[]): Promise<{ verdict: string; example?: string }> {
-  const names = new Set<string>();
-  for (const f of facts) for (const n of f.names) names.add(n);
+  const names = new Set<string>(), lens = new Set<string>();
+  for (const f of facts) {
+    for (const n of f.names) names.add(n);
+    collectLens(f.lhs, lens); collectLens(f.rhs, lens);
+  }
   const consts = new Map([...names].map(n => [n, Z3.Real.const(n)] as const));
+  // Int-sorted underneath, ToReal-wrapped so it compares against Real terms
+  // (the wrap keeps the integrality constraint — that's the whole point).
+  for (const n of lens) consts.set(`len$${n}`, Z3.ToReal(Z3.Int.const(`len$${n}`)));
   const solver = new Z3.Solver();
+  for (const n of lens) solver.add(consts.get(`len$${n}`)!.ge(0));
   for (const f of facts) solver.add(cmp(Z3, f, consts));
   const verdict = await solver.check();
   if (verdict !== "sat") return { verdict };
   const model = solver.model();
   const example = [...consts.entries()]
-    .map(([n, c]) => `${n} = ${model.eval(c, true).toString()}`).join(", ");
+    .filter(([n]) => !lens.has(n))  // the list itself has no numeric value — only its length does
+    .map(([n, c]) => `${n.replace(/^len\$(.*)$/, "length($1)")} = ${model.eval(c, true).toString()}`).join(", ");
   return { verdict, example };
+}
+
+// Length-call occurrences inside a vetted fact term. Shape-only on purpose:
+// the collection side (facts.ts `lenArg`) already checked the callee resolves
+// to the builtin before letting the term into a fact.
+function collectLens(e: Expr, into: Set<string>): void {
+  switch (e.tag) {
+    case "Call": { const a = e.args[0]; if (a?.tag === "Var") into.add(a.name); return; }
+    case "BinOp": collectLens(e.left, into); collectLens(e.right, into); return;
+    case "UnOp": collectLens(e.expr, into); return;
+  }
 }
 
 // Both functions only ever see the `translatable` fragment (facts.ts) — the
@@ -107,6 +160,11 @@ async function checkUnsat(Z3: Ctx, facts: Fact[]): Promise<{ verdict: string; ex
 function term(Z3: Ctx, e: Expr, consts: Map<string, Arith>): Arith {
   switch (e.tag) {
     case "Var": return consts.get(e.name)!;
+    case "Call": {
+      const a = e.args[0];
+      if (a?.tag === "Var") return consts.get(`len$${a.name}`)!;
+      break;
+    }
     case "Lit":
       if (e.lit.tag === "Num") return Z3.Real.val(e.lit.value);
       break;

@@ -1,0 +1,52 @@
+-- `proofs: [bounds]` — every list index read must be PROVED in range
+-- (SPEC §12.7): 0 ≤ i ∧ i < length(xs), discharged by the fact env's
+-- interval floor or the Tier-2 Z3 fall-through. The new piece is the
+-- LENGTH SYMBOL: `length(xs)` on an immutable name is an Int-sorted
+-- uninterpreted constant with `length >= 0` asserted — Int-sortedness is
+-- what turns `length(xs) > 0` into ≥ 1, so the last-element idiom proves.
+-- Strings are exempt (an out-of-range string index pads with "", no fault);
+-- dicts are exempt (a missing key is `handled`'s fault class, not bounds').
+-- Expected: clean; runs.
+@edition "2026.6"
+
+module indexer
+  proofs: [bounds]
+
+  -- The guarded-read idiom: both sides settle on the sync interval floor
+  -- (no solver) — which is also what keeps the LSP clean on this shape.
+  def get(xs: List(Number), i: Number): Number
+    if i >= 0 && i < length(xs) then xs[i] else -1
+
+  -- First element: literal lower side; Z3 settles 0 < length(xs) from >= 1.
+  def first(xs: List(Number)): Number
+    if length(xs) >= 1 then xs[0] else 0
+
+  -- The classic: xs[length(xs) - 1] under `> 0` — over the REALS this is
+  -- unprovable (length could be ½); the Int sort is what closes it.
+  def last(xs: List(Number)): Number
+    if length(xs) > 0 then xs[length(xs) - 1] else 0
+
+  -- Arithmetic index: length(xs) ≥ 1 ⟹ 0 ≤ len/2 < len. The runtime
+  -- floors fractional indices, and 0 ≤ i ∧ i < len over ℝ implies
+  -- 0 ≤ ⌊i⌋ < len for integer len, so the real-valued proof is sound.
+  def mid(xs: List(Number)): Number
+    if length(xs) >= 1 then xs[length(xs) / 2] else 0
+
+  -- Negated facts on else-arms: the surviving path has i ≥ 0 ∧ i < len.
+  def pick(xs: List(Number), i: Number): Number
+    if i < 0 then 0
+    else if i >= length(xs) then 0
+    else xs[i]
+
+  -- The string exemption, pinned: reading past the end pads with "".
+  def initial(s: String): String
+    s[0]
+
+def main(): Effect [io] ()
+  let xs = [10, 20, 30, 40]
+  println(get(xs, 2))
+  println(first(xs))
+  println(last(xs))
+  println(mid(xs))
+  println(pick(xs, 9))
+  println(initial("velve"))

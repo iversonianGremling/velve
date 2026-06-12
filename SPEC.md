@@ -49,7 +49,7 @@ means there is a green fixture exercising it under `checker/`.
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. **User-spelled rows built (E2, 2026-06, `effect_spell_test`/`_bad`)**: `..e` on param fn-types binds, in the Effect clause charges — user HOFs get the same per-call-site precision; unbound tails error. **Ascription coverage built (2026-06, `effect_ascribe_test`/`_bad`)**: a fn-type ascription must cover the value's row (returns + bindings, covariant-deep) — the erasure laundering hole is closed. |
 | Effect-typed builtin surface | ✅ Built (2026-06) | §12.5, `builtin_effects_test`/`_bad`: `setTheme`/`setViewport` charge `[ui]`, `externSource` and the network names charge `[io]` — the stdlib stops lying by omission, incl. through HOF tails. Decided ambient: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. |
 | Totality (`@total`, Tier 1) | ✅ Built (2026-06) | §12.6, `total_test`/`_bad`: opt-in structural termination — recursion must decrease at one position (ctor/tuple/record descent or `n - k` under a literal/comparison floor), totality flows down the call graph (total calls total + terminating builtins; HOFs need a checkable fn), `loop`/`await`/spawn/host rejected in total bodies. Mutual recursion, closure recursion → conservative reject. **The Tier-2 valve opened (2026-06, `proof_terminates_test`/`_bad`)**: when the structural decrease is the only failure, Z3 proves a unit-decreasing floored measure from path facts — `halve(n / 2)` under `if n < 2`, non-constant `shrink(n - k, k)` under `k >= 1`; counterexamples in the errors. First shipped obligation of the north-star §3 proof gradient. **§5.1 payoff shipped (2026-06, `constfold_total_test`/`_bad`)**: the refinement folder (§2.6) executes `@total` predicates at check time — fuel-bounded, conservative on anything undecidable — so the conservative-skip set shrinks by exactly the code that proved it terminates. |
-| Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`; `exhaustive` hardens clause-head gaps to errors in every edition. **`handled` shipped (2026-06, `proof_handled_test`/`_bad`)**: no silently discarded `Result` anywhere in the module — third checkable obligation, scope-local like `exhaustive`. **`nonzero` shipped (2026-06, `proof_nonzero_test`/`_bad`)**: every `/` and `%` divisor proved nonzero via the flow-sensitive fact env — fourth checkable obligation. **Z3 back-end shipped one slice later (2026-06, `proof_nonzero_z3_test`/`_bad`)**: the floor's residue goes to Z3 as a refutation over the reals — the pinned `a != b ⟹ a - b != 0` case graduated from `_bad` to green; counterexample models in the errors; lazy load; floor fallback when uninstalled. Per-def/per-block scopes PROPOSED. |
+| Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`; `exhaustive` hardens clause-head gaps to errors in every edition. **`handled` shipped (2026-06, `proof_handled_test`/`_bad`)**: no silently discarded `Result` anywhere in the module — third checkable obligation, scope-local like `exhaustive`. **`nonzero` shipped (2026-06, `proof_nonzero_test`/`_bad`)**: every `/` and `%` divisor proved nonzero via the flow-sensitive fact env — fourth checkable obligation. **Z3 back-end shipped one slice later (2026-06, `proof_nonzero_z3_test`/`_bad`)**: the floor's residue goes to Z3 as a refutation over the reals — the pinned `a != b ⟹ a - b != 0` case graduated from `_bad` to green; counterexample models in the errors; lazy load; floor fallback when uninstalled. **`bounds` shipped (2026-06, `proof_bounds_test`/`_bad`)**: every list index read proved `0 ≤ i < length(xs)` — fifth checkable obligation; `length(xs)` on an immutable name becomes an Int-sorted solver symbol (`≥ 0` asserted), so `xs[length(xs) - 1]` under `length(xs) > 0` proves; two queries per read, the error names which side leaked with the model. Not-checkable-yet is down to `arith`/`overflow`. Per-def/per-block scopes PROPOSED. |
 | Module-private constructors (`@private type`) | ✅ Built (2026-06) | §7.1, `private_ctor_test`/`_bad`: an ADT's constructors seal at the module boundary (no forging by call, no representation-dependence by pattern); the type name stays public. The soundness primitive for the refined-type tier (north-star §3.5 confirmed → shipped). Resolver scope stays flat — privacy is a use-site check. |
 | Refined-type library (Tier 1) | ✅ Built (2026-06) | §7.1, `refined_types_test`/`_bad`: `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — smart-constructor gates, closed ops, faulting ops through the gate; `divBy(n, NonZero)` makes division total and `getAt(xs, InBounds)` makes indexing safe **as type errors**, no solver. The library module is proof-carrying (`proofs: [total, exhaustive, handled]`). Pure library add — zero checker changes. Tier-1 bound: `InBounds` is not relational (Tier 1.5). |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
@@ -2568,10 +2568,10 @@ The obligation vocabulary is **closed** — six fault classes, fixed up front so
 declaration is portable across checker versions: `total`, `bounds`,
 `nonzero`/`arith`, `overflow`, `exhaustive`, `handled`. An unknown name is a
 compile error. **Declared = enforced**: an obligation the checker cannot
-discharge yet (`bounds`, `arith`, `overflow`) is also an
-error — "checkable today: total, exhaustive, handled, nonzero" — never a silent
-skip, so a `proofs:` line can never promise more than the compiler actually
-verified.
+discharge yet (`arith`, `overflow`) is also an
+error — "checkable today: total, exhaustive, handled, nonzero, bounds" — never
+a silent skip, so a `proofs:` line can never promise more than the compiler
+actually verified.
 
 Checkable today:
 
@@ -2621,21 +2621,54 @@ Checkable today:
   residue obligation falls back to the floor error with an install hint. The
   LSP shows the conservative floor (its pipeline is sync); the CLI verdict is
   authoritative. Still conservative: divisors through calls or projections
-  (`nzValue(d)`, `length(xs)`) are **uninterpreted functions** — opaque to
+  (`nzValue(d)`, `head(xs)`) are **uninterpreted functions** — opaque to
   any solver (north-star §3.1 catch 2) — and error at the floor; the no-fact
   alternative remains the `NonZero` witness type (§7.1) — construct the proof
-  instead of deriving it. Honesty note: Z3 reasons over ℝ, not IEEE doubles —
-  for this obligation the gap is benign (gradual underflow makes `a - b = 0`
-  iff `a = b` hold for doubles too, and overflow to ±Infinity is nonzero).
+  instead of deriving it. (One call graduated out of that class when `bounds`
+  shipped: `length(xs)` on an immutable name is now an interpreted symbol —
+  see below — so `if length(xs) >= 1 then n / length(xs)` proves.) Honesty
+  note: Z3 reasons over ℝ, not IEEE doubles — for this obligation the gap is
+  benign (gradual underflow makes `a - b = 0` iff `a = b` hold for doubles
+  too, and overflow to ±Infinity is nonzero).
   Scope-local like `exhaustive`/`handled`; v1 scope: function bodies.
+- **`bounds`** *(2026-06, `proof_bounds_test`/`_bad`)* — every **list index
+  read** in the module must be proved in range: `0 ≤ i ∧ i < length(xs)`
+  (eval faults with "index out of bounds"). Strings are exempt (an
+  out-of-range string index pads with `""` — no fault to prove away) and so
+  are dicts (a missing key is a *presence* fault — `handled`'s family, not an
+  arithmetic one); the list/string/dict split comes from the inferred type of
+  the indexed expression. Rides the same fact env and two-tier discharge as
+  `nonzero`; the new piece is the **length symbol**: `length(xs)` — the
+  builtin, on an immutable name — joins the translatable fragment as an
+  *uninterpreted-but-congruent* term, an **Int-sorted** Z3 constant `len$xs`
+  with `len$xs ≥ 0` asserted (the builtin's actual range). Int-sortedness is
+  what turns `length(xs) > 0` into `≥ 1`, so the last-element idiom
+  `xs[length(xs) - 1]` proves; arithmetic indices (`xs[length(xs) / 2]` under
+  `length(xs) >= 1`) prove the same way. Two refutation queries per read —
+  facts ∧ i < 0, and facts ∧ i ≥ length(xs); both unsat ⟹ in range — and the
+  error names which side leaked, with the model (`i = -1.0`; `i = 0.0,
+  length(xs) = 0.0`). Congruence (two `length(xs)` occurrences denote one
+  value) is exactly why the name must be **immutable** — a `mut` list never
+  carries length facts, a push under the fact would falsify it — and why the
+  callee must be the *builtin*: a user fn shadowing `length` resolves to a
+  binding and stays opaque. The guarded-read idiom
+  (`if i >= 0 && i < length(xs)`) settles on the sync interval floor, which
+  keeps the LSP clean on the common shape; the runtime **floors** fractional
+  indices, and over ℝ `0 ≤ i ∧ i < len` implies `0 ≤ ⌊i⌋ < len` for integer
+  `len`, so the real-valued proof is sound for the floored read. Conservative
+  residue: a call-valued index (`xs[abs(x)]`) and a nameless list
+  (`f()[0]`) error at the floor — the witness alternative is `InBounds`
+  (§7.1), construct the proof instead of deriving it. Scope-local; v1 scope:
+  function bodies, index *reads* (a write through `xs[i] =` requires `mut`,
+  which kills length facts — proved writes are the witness type's territory).
 
 Obligations come in two enforcement shapes, and the difference is principled:
 **`total` is a call-graph obligation** (its fault — non-termination — can hide
 in a callee, so it needs the downward gate), while **`exhaustive`, `handled`,
-and `nonzero` are scope-local** (their faults are syntactic to the proved
-scope; a callee outside the module may still match partially, drop a `Result`,
-or divide unsafely *inside itself*, and that is the callee's unproven business,
-exactly as with code called from any verified kernel).
+`nonzero`, and `bounds` are scope-local** (their faults are syntactic to the
+proved scope; a callee outside the module may still match partially, drop a
+`Result`, or index unsafely *inside itself*, and that is the callee's unproven
+business, exactly as with code called from any verified kernel).
 
 The remaining scopes from the design — per-def `Proof [total, bounds] T` result
 brackets and per-block `@proof[...] { }` — are PROPOSED (north-star §3.4); the

@@ -1,0 +1,41 @@
+-- `bounds` verdicts that stay errors (SPEC §12.7). An insufficient guard
+-- gets Z3's counterexample naming which side leaks; untranslatable shapes
+-- stay conservative floor errors; and a `mut` list never carries length
+-- facts — a push under the fact would falsify it — so its reads are
+-- honestly unprovable (the InBounds witness type is that case's answer).
+-- Expected: exactly 7 errors.
+@edition "2026.6"
+
+module leaky_index
+  proofs: [bounds]
+
+  -- 1: no facts at all — i can be anything.
+  def raw(xs: List(Number), i: Number): Number
+    xs[i]
+
+  -- 2: upper side only — Z3 answers sat with a negative i.
+  def noLower(xs: List(Number), i: Number): Number
+    if i < length(xs) then xs[i] else 0
+
+  -- 3: lower side only — Z3 answers sat with i at the length.
+  def noUpper(xs: List(Number), i: Number): Number
+    if i >= 0 then xs[i] else 0
+
+  -- 4: off-by-one — <= admits i == length(xs).
+  def offByOne(xs: List(Number), i: Number): Number
+    if i >= 0 && i <= length(xs) then xs[i] else 0
+
+  -- 5: a negative literal index is sync-rejected, no solver needed.
+  def negLit(xs: List(Number)): Number
+    xs[-1]
+
+  -- 6: the index is a call result — uninterpreted, conservative floor error.
+  def opaque(xs: List(Number), x: Number): Number
+    xs[abs(x)]
+
+  -- 7: `mut` kills length facts — the guard tests a length the list may not
+  -- still have by the read (this engine's facts attach to immutable names
+  -- only; same rule as nonzero).
+  def shifty(i: Number): Number
+    mut xs = [1, 2, 3]
+    if i >= 0 && i < length(xs) then xs[i] else 0

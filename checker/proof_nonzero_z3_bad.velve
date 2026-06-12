@@ -18,5 +18,8 @@ module leaky_div
 
   -- 3: opaque to any solver: a call result is an uninterpreted function, so
   -- it stays the conservative floor error (the fix is the NonZero witness).
+  -- This pin was `length(xs)` until the `bounds` slice made `length` an
+  -- INTERPRETED symbol — that case graduated to `proof_nonzero_z3_test`
+  -- (guarded, it now proves); `head` keeps the uninterpreted class pinned.
   def opaque(n: Number, xs: List(Number)): Number
-    n / length(xs)
+    n / head(xs)

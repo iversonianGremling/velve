@@ -9,7 +9,7 @@ import { checkExhaustiveness } from "./exhaust.js";
 import { checkBorrows } from "./borrow.js";
 import { checkTotality } from "./total.js";
 import { checkHandled } from "./handled.js";
-import { checkNonZero } from "./facts.js";
+import { checkNonZero, checkBounds } from "./facts.js";
 import { buildMeasureJobs } from "./terminates.js";
 import { discharge } from "./smt.js";
 import { Evaluator } from "./eval.js";
@@ -43,13 +43,14 @@ if (cmd === "check") {
   const { diagnostics: totalDiags, candidates } = checkTotality(mod, resolutions);
   const handledDiags = checkHandled(mod, types);
   // The sync floors hand their residue to Z3 (smt.ts): unproved-but-
-  // translatable divisors, and @total fns whose only failure was the
-  // structural decrease (the Tier-2 measure check).
-  const { diagnostics: nonZeroDiags, residue } = checkNonZero(mod);
+  // translatable divisors and index reads, and @total fns whose only failure
+  // was the structural decrease (the Tier-2 measure check).
+  const { diagnostics: nonZeroDiags, residue } = checkNonZero(mod, resolutions);
+  const { diagnostics: boundsDiags, residue: boundsResidue } = checkBounds(mod, types, resolutions);
   const { diagnostics: measureDiags, jobs } = buildMeasureJobs(candidates, resolutions);
-  const smtDiags = await discharge(residue, jobs);
+  const smtDiags = await discharge(residue, jobs, boundsResidue);
 
-  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags, ...measureDiags, ...smtDiags];
+  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags, ...boundsDiags, ...measureDiags, ...smtDiags];
   console.log(`${types.size} expressions typed, ${resolutions.size} names resolved`);
   if (allDiags.length === 0) {
     console.log("no errors");

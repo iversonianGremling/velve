@@ -28,9 +28,16 @@ module solver_div
   def smooth(n: Number, d: Number): Number
     n / (d * d + 1)
 
+  -- Graduated from `proof_nonzero_z3_bad` when the `bounds` slice made
+  -- `length` an interpreted symbol (Int-sorted, >= 0): the guard's fact
+  -- now reaches Z3 instead of dying as an uninterpreted call.
+  def density(n: Number, xs: List(Number)): Number
+    if length(xs) >= 1 then n / length(xs) else 0
+
 def main(): Effect [io] ()
   println(wide(10, 7, 2))
   println(wide(10, 3, 3))
   println(gap(9, 5, 2))
   println(shrink(12, 4))
   println(smooth(10, 3))
+  println(density(10, [1, 2]))

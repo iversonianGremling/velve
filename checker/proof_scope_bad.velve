@@ -10,11 +10,12 @@ type Priority
   | Medium
   | Low
 
--- 1 + 2: vocabulary errors. 'fast' is not an obligation; 'bounds' is in the
+-- 1 + 2: vocabulary errors. 'fast' is not an obligation; 'arith' is in the
 -- closed vocabulary but not checkable yet — declaring it would promise an
--- unenforced guarantee.
+-- unenforced guarantee. (This pin was 'bounds' until the bounds slice made
+-- it checkable — the not-yet set is down to arith and overflow.)
 module wishes
-  proofs: [fast, bounds]
+  proofs: [fast, arith]
 
   def fine(): Number
     1

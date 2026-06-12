@@ -724,6 +724,40 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       Translatable fragment extended with division by nonzero literals.
       NO re-grade: type-core holds A — remaining → A+ is now the semantic
       case proper (`proof.sorted`/`SortedList`) + the Tier-1.5 witness.
+- [x] **`bounds` — the fifth checkable obligation (north-star §3.4)**:
+      ✅ DONE (2026-06, SPEC §12.7, `proof_bounds_test`/`_bad` — 0 and
+      exactly 7 errors; baselines unchanged except the new fixture rows).
+      Every list index read in a `proofs: [bounds]` module proved
+      `0 ≤ i < length(xs)`; strings exempt (out-of-range pads with "", no
+      fault), dicts exempt (missing key is `handled`'s family) — the split
+      comes from inferred types, so `checkBounds(mod, types, resolutions)`.
+      The new engine piece is the fact env's first FUNCTION SYMBOL:
+      `length(xs)` — the builtin (no resolutions entry; a user `length`
+      resolves and stays opaque), on an immutable name (mutation kills via
+      termNames; a mut list never carries length facts, a push would
+      falsify them) — enters the translatable fragment and becomes an
+      Int-sorted Z3 constant `len$xs` with `≥ 0` asserted (ToReal-wrapped:
+      Real→Int casts throw in the JS API, Int→Real is exact).
+      Int-sortedness is the payoff: `length(xs) > 0` entails `≥ 1`, so
+      `xs[length(xs) - 1]` proves — over ℝ alone length could be ½.
+      Two refutation queries per read (facts ∧ i < 0; facts ∧ i ≥ len),
+      the error names which side leaked with the model (`i = -1.0`;
+      `i = 0.0, length(xs) = 0.0`). Runtime floors fractional indices:
+      0 ≤ i ∧ i < len over ℝ ⟹ 0 ≤ ⌊i⌋ < len for integer len, so the
+      real proof is sound for the floored read (and the floor's lower
+      side rejects `i > -1` — it admits −0.5, which floors to −1).
+      Sync interval floor keeps the guarded-read idiom
+      (`if i >= 0 && i < length(xs)`) LSP-clean. Cross-obligation
+      graduation: `length` interpreted means the nonzero `_bad` pin
+      `n / length(xs)` moved to `proof_nonzero_z3_test` guarded-and-proved
+      (`head(xs)` re-pins the uninterpreted class), and `proof_scope_bad`'s
+      not-checkable-yet pin moved `bounds` → `arith` (counts hold at 3/5).
+      v1 scope: reads (writes require `mut`, which kills length facts —
+      proved writes are InBounds-witness territory, documented). 5 of 6
+      obligations checkable; not-yet is down to `arith`/`overflow`.
+      NO re-grade: type-core holds A — the → A+ residue was never bounds;
+      it remains `proof.sorted`/`SortedList` + the Tier-1.5 witness, and
+      the cheap side-tracks are now spent.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

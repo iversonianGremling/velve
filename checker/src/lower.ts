@@ -311,12 +311,12 @@ export class Lowerer {
   }
 
   // The proof-obligation vocabulary is CLOSED (SPEC §12.7): six fault classes,
-  // fixed up front so a declaration is portable across checker versions. Four
+  // fixed up front so a declaration is portable across checker versions. Five
   // are checkable today; declaring one of the others is an error, not a skip —
   // under `proofs:`, declared means enforced (the unchecked-mode hole the
   // effect work closed must not reappear here).
   private static readonly PROOF_VOCAB = new Set(["total", "bounds", "nonzero", "arith", "overflow", "exhaustive", "handled"]);
-  private static readonly PROOF_CHECKABLE = new Set(["total", "exhaustive", "handled", "nonzero"]);
+  private static readonly PROOF_CHECKABLE = new Set(["total", "exhaustive", "handled", "nonzero", "bounds"]);
 
   private lowerProofs(node: N | undefined): string[] {
     if (!node) return [];
@@ -330,7 +330,7 @@ export class Lowerer {
       }
       if (!Lowerer.PROOF_CHECKABLE.has(ob)) {
         this.diagnostics.push({ kind: "error", span: this.sp(id),
-          message: `proof obligation '${ob}' is not checkable yet — declaring it would promise an unenforced guarantee (checkable today: total, exhaustive, handled, nonzero)` });
+          message: `proof obligation '${ob}' is not checkable yet — declaring it would promise an unenforced guarantee (checkable today: total, exhaustive, handled, nonzero, bounds)` });
         continue;
       }
       out.push(ob);

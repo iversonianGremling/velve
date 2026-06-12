@@ -87,7 +87,7 @@ function buildAttempt(fnName: string, clauses: FnClause[], pos: number, resoluti
       queries.push([...env, mkFact(arg, ">", { tag: "BinOp", op: "-", left: paramV, right: numE(1, e.span), span: e.span })]);
       // floor: F ∧ param < 0 must be unsat
       queries.push([...env, mkFact(paramV, "<", numE(0, e.span))]);
-    });
+    }, resolutions);
     if (!viable) return null;
   }
   return queries.length > 0 ? { pos, queries } : null;

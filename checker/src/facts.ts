@@ -57,7 +57,8 @@
 // what `nonzero` proves is that THIS module's divisors can't be zero.
 import type { Module, Decl, Expr, Stmt, Pat, Branch, FnClause } from "./ast.js";
 import type { Span } from "./span.js";
-import type { Diagnostic } from "./resolve.js";
+import type { Diagnostic, ResolutionMap } from "./resolve.js";
+import type { Type } from "./types.js";
 
 export type CmpOp = "==" | "!=" | "<" | "<=" | ">" | ">=";
 
@@ -71,9 +72,9 @@ export interface Obligation { facts: Fact[]; divisor: Expr; span: Span }
 
 export interface NonZeroResult { diagnostics: Diagnostic[]; residue: Obligation[] }
 
-export function checkNonZero(mod: Module): NonZeroResult {
+export function checkNonZero(mod: Module, resolutions: ResolutionMap): NonZeroResult {
   const out: NonZeroResult = { diagnostics: [], residue: [] };
-  walkDecls(mod.decls, false, out);
+  walkDecls(mod.decls, false, resolutions, out);
   return out;
 }
 
@@ -83,10 +84,10 @@ export function residueFloorDiags(residue: Obligation[]): Diagnostic[] {
   return residue.map(o => floorError(o.divisor));
 }
 
-function walkDecls(decls: Decl[], inNonZero: boolean, out: NonZeroResult): void {
+function walkDecls(decls: Decl[], inNonZero: boolean, resolutions: ResolutionMap, out: NonZeroResult): void {
   for (const d of decls) {
     if (d.tag === "DModule") {
-      walkDecls(d.decls, inNonZero || d.proofs.includes("nonzero"), out);
+      walkDecls(d.decls, inNonZero || d.proofs.includes("nonzero"), resolutions, out);
       continue;
     }
     // v1 scope: function bodies, like `handled` (SPEC §12.7).
@@ -95,20 +96,138 @@ function walkDecls(decls: Decl[], inNonZero: boolean, out: NonZeroResult): void 
         walkFacts(c.body, clauseEnv(d.clauses, i), (e, env) => {
           if (e.tag === "BinOp" && (e.op === "/" || e.op === "%"))
             proveDivisor(e.right, env, out);
-        });
+        }, resolutions);
   }
+}
+
+// ── `proofs: [bounds]` — the out-of-range-index obligation ───────────────────
+//
+// Same engine, next fault: in a proved scope every LIST index read must be
+// proved `0 <= i < length(xs)` (eval faults with "index out of bounds"; the
+// runtime floors fractional indices, and over the reals 0 ≤ i ∧ i < len ⟹
+// 0 ≤ ⌊i⌋ < len for integer len, so the real-valued proof is sound for the
+// floored read). Strings are excluded (an out-of-range string index pads with
+// "" — no fault to prove away) and so are dicts (a missing key is a presence
+// fault, not an arithmetic one — its answer is `handled`, not `bounds`).
+//
+// What makes this obligation different from `nonzero` is the LENGTH SYMBOL:
+// `length(xs)` on an immutable name enters the translatable fragment as an
+// uninterpreted-but-congruent term — Z3 sees an Int-sorted constant `len$xs`
+// with `len$xs >= 0` asserted (the builtin's actual range), so
+// `xs[length(xs) - 1]` under `if length(xs) > 0` proves (Int-sortedness turns
+// `> 0` into `>= 1`). Congruence is exactly why the name must be immutable
+// and the callee must be THE BUILTIN (a user fn shadowing `length` is opaque
+// — the resolutions map distinguishes them); a `mut` list never carries
+// length facts, because a push under the fact would falsify it.
+export interface BoundsObligation { facts: Fact[]; index: Expr; obj: string; span: Span }
+
+export interface BoundsResult { diagnostics: Diagnostic[]; residue: BoundsObligation[] }
+
+export function checkBounds(mod: Module, types: Map<Expr, Type>, resolutions: ResolutionMap): BoundsResult {
+  const out: BoundsResult = { diagnostics: [], residue: [] };
+  walkBoundsDecls(mod.decls, false, types, resolutions, out);
+  return out;
+}
+
+export function boundsFloorDiags(residue: BoundsObligation[]): Diagnostic[] {
+  return residue.map(o => boundsError(o.span,
+    `no fact proves the index within '${o.obj}' on this path — guard it (\`if i >= 0 && i < length(${o.obj})\`)`));
+}
+
+function walkBoundsDecls(decls: Decl[], inBounds: boolean, types: Map<Expr, Type>, resolutions: ResolutionMap, out: BoundsResult): void {
+  for (const d of decls) {
+    if (d.tag === "DModule") {
+      walkBoundsDecls(d.decls, inBounds || d.proofs.includes("bounds"), types, resolutions, out);
+      continue;
+    }
+    if (inBounds && d.tag === "DFn")
+      for (const [i, c] of d.clauses.entries())
+        walkFacts(c.body, clauseEnv(d.clauses, i), (e, env) => {
+          if (e.tag === "Index" && e.index.tag !== "Range")
+            proveIndex(e, env, types, out);
+        }, resolutions);
+  }
+}
+
+function boundsError(span: Span, detail: string): Diagnostic {
+  return { kind: "error", span,
+    message: `proof obligation 'bounds': cannot prove the index in range — ${detail} (the module declares proofs: [bounds])` };
+}
+
+function proveIndex(e: Extract<Expr, { tag: "Index" }>, env: Env, types: Map<Expr, Type>, out: BoundsResult): void {
+  const t = types.get(e.obj);
+  if (t?.tag === "Prim" && t.kind === "String") return;          // pads, never faults
+  if (t?.tag === "Named" && t.name === "Dict") return;           // key presence ≠ bounds
+  if (e.obj.tag !== "Var") {
+    out.diagnostics.push(boundsError(e.span,
+      "the list is not a name — bind it (`let xs = …`) so length facts can attach"));
+    return;
+  }
+  const lit = numLit(e.index);
+  if (lit !== null && lit < 0) {
+    out.diagnostics.push(boundsError(e.index.span, `the literal index ${lit} is negative`));
+    return;
+  }
+  if (entailsInBounds(env, e.index, e.obj.name, lit)) return;
+  // The floor failed. Translatable indices go to the solver with every fact
+  // in scope; the rest is a conservative error here and now.
+  if (translatable(e.index)) out.residue.push({ facts: env, index: e.index, obj: e.obj.name, span: e.span });
+  else out.diagnostics.push(boundsError(e.index.span,
+    "the index is not a provable term — bind it to a name and guard that, or use the InBounds witness type (SPEC §7.1)"));
+}
+
+// The sync bounds floor (LSP-clean for the guarded idioms): lower side needs
+// a constant fact pinning the index >= 0; upper side a direct comparison
+// against length(obj) — variable `i` via `i < length(xs)`, literal `k` via a
+// length fact that exceeds it. Everything subtler is Z3's job.
+function entailsInBounds(env: Env, index: Expr, obj: string, lit: number | null): boolean {
+  const lower = lit !== null ? lit >= 0 : index.tag === "Var" && entailsGE0(env, index.name);
+  if (!lower) return false;
+  for (const f of env) {
+    let cmpE: Expr | null = null;
+    let op = f.op;
+    if (lenArg(f.lhs) === obj) { cmpE = f.rhs; op = FLIP[op]; }
+    else if (lenArg(f.rhs) === obj) cmpE = f.lhs;
+    if (cmpE === null) continue;
+    // Normalized: cmpE `op` length(obj).
+    if (index.tag === "Var" && cmpE.tag === "Var" && cmpE.name === index.name && op === "<") return true;
+    const k = numLit(cmpE);
+    if (lit !== null && k !== null
+        && ((op === "<" && k >= lit) || (op === "<=" && k > lit) || (op === "==" && k > lit)))
+      return true;  // over ℝ: length(obj) > k >= lit, or >= k > lit — either way lit < length(obj)
+  }
+  return false;
+}
+
+const FLIP: Record<CmpOp, CmpOp> =
+  { "==": "==", "!=": "!=", "<": ">", ">": "<", "<=": ">=", ">=": "<=" };
+
+function entailsGE0(env: Env, name: string): boolean {
+  for (const f of env) {
+    let op = f.op;
+    let k: number | null = null;
+    if (f.lhs.tag === "Var" && f.lhs.name === name) k = numLit(f.rhs);
+    else if (f.rhs.tag === "Var" && f.rhs.name === name) { k = numLit(f.lhs); op = FLIP[op]; }
+    if (k === null) continue;
+    // Over ℝ, `i > -1` admits -0.5 (which floors to -1 and faults) — only
+    // bounds at or above 0 entail the floored read's lower side.
+    if ((op === ">=" && k >= 0) || (op === ">" && k >= 0) || (op === "==" && k >= 0)) return true;
+  }
+  return false;
 }
 
 // The reusable fact-env walk: visits EVERY expression with the fact env in
 // force at that point. `proofs: [nonzero]` visits divisors; the @total Tier-2
 // measure check (terminates.ts) visits recursive calls. Handles the mutation
 // prepass itself, so callers just provide the seed env and a visitor.
-export function walkFacts(body: Expr, env0: Env, visit: FactVisitor): void {
-  const saved = currentVisit, savedMut = currentMutated;
+export function walkFacts(body: Expr, env0: Env, visit: FactVisitor, resolutions?: ResolutionMap): void {
+  const saved = currentVisit, savedMut = currentMutated, savedRes = currentResolutions;
   currentVisit = visit;
   currentMutated = new Set();
+  currentResolutions = resolutions ?? null;
   collectMutatedDeep(body, currentMutated);
-  try { walkExpr(body, env0); } finally { currentVisit = saved; currentMutated = savedMut; }
+  try { walkExpr(body, env0); }
+  finally { currentVisit = saved; currentMutated = savedMut; currentResolutions = savedRes; }
 }
 
 export type FactVisitor = (e: Expr, env: Env) => void;
@@ -116,9 +235,10 @@ export type FactVisitor = (e: Expr, env: Env) => void;
 // ── Terms ─────────────────────────────────────────────────────────────────────
 
 // The solver-translatable fragment: names, numeric literals, + - *, unary
-// minus, and division by a NONZERO literal. General division is excluded
-// (its own obligation); calls/fields are uninterpreted functions — opaque to
-// any solver (north-star §3.1 catch 2).
+// minus, division by a NONZERO literal, and the length symbol `length(x)`
+// on a plain name. General division is excluded (its own obligation); every
+// OTHER call/field is an uninterpreted function — opaque to any solver
+// (north-star §3.1 catch 2).
 export function translatable(e: Expr): boolean {
   switch (e.tag) {
     case "Var": return true;
@@ -127,8 +247,24 @@ export function translatable(e: Expr): boolean {
       if (e.op === "/" && (numLit(e.right) ?? 0) === 0) return false;
       return ["+", "-", "*", "/"].includes(e.op) && translatable(e.left) && translatable(e.right);
     case "UnOp": return e.op === "-" && translatable(e.expr);
+    case "Call": return lenArg(e) !== null;
     default: return false;
   }
+}
+
+// The one interpreted call: `length(x)` where `x` is a bare name and the
+// callee is THE BUILTIN — builtins resolve to no entry in the resolutions
+// map (user bindings shadow first and DO get entries), so any resolution at
+// all means a user `length`, which has no congruence guarantee and stays
+// opaque. The argument must be a name so two occurrences denote the same
+// list (and so mutation kills, via termNames).
+export function lenArg(e: Expr): string | null {
+  if (e.tag !== "Call" || e.fn.tag !== "Var" || e.fn.name !== "length") return null;
+  if (e.args.length !== 1 || e.named.length > 0) return null;
+  const a = e.args[0];
+  if (!a || a.tag !== "Var") return null;
+  if (currentResolutions?.get(e.fn) !== undefined) return null;
+  return a.name;
 }
 
 function termNames(e: Expr, into: Set<string>): Set<string> {
@@ -136,6 +272,7 @@ function termNames(e: Expr, into: Set<string>): Set<string> {
     case "Var": into.add(e.name); break;
     case "BinOp": termNames(e.left, into); termNames(e.right, into); break;
     case "UnOp": termNames(e.expr, into); break;
+    case "Call": for (const a of e.args) termNames(a, into); break;
   }
   return into;
 }
@@ -166,6 +303,7 @@ export function mkFact(lhs: Expr, op: CmpOp, rhs: Expr): Fact {
 
 let currentMutated: Set<string> = new Set();
 let currentVisit: FactVisitor = () => {};
+let currentResolutions: ResolutionMap | null = null;
 
 // A syntax-only sweep for mutation targets, run once per clause. Generic
 // deep walk: the AST is plain data, and this only needs the two binding
