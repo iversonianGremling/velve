@@ -1,0 +1,39 @@
+@edition "2026.6"
+
+-- User-spelled effect tails (E2): the guardrails. Five errors:
+--   1. a pure caller of a tail-charged HOF call pays the bound row ([io])
+--   2. a declared-but-wrong pool ([db]) doesn't cover the bound row
+--   3. the tail is a promise about fn params, NEVER a license: a body spelling
+--      `Effect [..e]` still can't call a charged builtin outside its names
+--   4. a tail in the Effect clause bound by NO fn parameter is a no-op lie
+--   5. a tail on the return fn-type bound by NO fn parameter — same lie
+
+def netGet(url: String): Effect [io] String
+  "body of {url}"
+
+def each(f: (String -> Effect [..e] String), xs: List(String)): Effect [..e] List(String)
+  xs |> pmap(f)
+
+-- 1. pure caller, effectful argument: the spelled tail charges [io] here
+def leak(): List(String)
+  each(netGet, ["x"])
+
+-- 2. declared pool doesn't cover what the tail binds
+def wrongPool(): Effect [db] List(String)
+  each(netGet, ["y"])
+
+-- 3. the tail licenses NOTHING in the body: pool is the named effects only
+def sneaky(f: (String -> Effect [..e] String)): Effect [..e] String
+  setViewport(#{ width: 375, height: 667, breakpoint: Mobile })
+  f("z")
+
+-- 4. clause tail with no binding fn param: nothing can ever flow into it
+def ghost(x: Number): Effect [..e] Number
+  x + 1
+
+-- 5. return-slot tail with no binding fn param: same no-op spelling
+def vapor(): (String -> Effect [..e] String)
+  netGet
+
+def main(): ()
+  println("never typechecks")

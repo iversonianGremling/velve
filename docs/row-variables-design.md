@@ -1,7 +1,7 @@
 # Row variables (error rows v2 / S4) — design note
 
-*Status: S4a + S4b + S4c built (2026-06) — the v2 slice family is complete
-(E2 user-spelled effect tails deferred, see §4). This is
+*Status: S4a + S4b + S4c + **E2** built (2026-06) — the v2 slice family is
+complete INCLUDING user-spelled effect tails (`..e`, see §4). This is
 `error-rows-design.md` §6 worked out against the as-built v1 (S1–S3, all
 shipped) to the level where implementation can be sliced. The headline correction to §6's sketch: v2 is
 NOT full row-polymorphic HM. It is **row-polymorphic signatures over the v1
@@ -153,9 +153,35 @@ shape:
   its argument (stores it, returns it) stops charging the caller. The
   conservative rule REMAINS as the fallback for Unknown-typed callees —
   unchanged behavior wherever tails aren't present.
-- **E2 (deferred)** — user-spelled effect tails. Needs surface design
-  (`Effect [io | e]`?) and is not scheduled; E1 must prove the unify
-  extension first.
+- **E2 ✅ BUILT (2026-06**, SPEC §12.4 E2 block, `effect_spell_test`/`_bad`).
+  Surface decision: **`..e` inside the existing `Effect [...]` bracket** —
+  not the sketched `Effect [io | e]` — because `effect_type` is already a
+  `_type`, so the param-side spelling `f: (String -> Effect [..e] String)`
+  parses with zero new syntax concepts (one grammar extension: the bracket
+  list admits `effect_tail`). Param position BINDS, the def's own clause
+  CHARGES (`Effect [io, ..e]` mixes), shared name ties them. As-built:
+  - tail names quantify in `generalizeSig` alongside type vars, namespaced
+    `"..e"` in the tp map (a tail and a type var may share a letter); the
+    own-clause tail sets `Fn.effectTail`, param tails set it on the param's
+    Fn — then the S4c machinery runs verbatim (substVars clone per call,
+    bindEffectTails absorb, fnEffectRow charge). Genuinely zero new rules.
+  - the latent-rule skip widened from "own Fn is tailed" to **tail-aware**
+    (own OR any param Fn tailed) so the user identity pattern
+    (`keep(f: (A -> Effect [..e] B)): (A -> Effect [..e] B)`, no clause
+    tail) is uncharged at `keep(netGet)` while the returned value keeps its
+    row — same shape as builtin `identity`, now spellable.
+  - a clause spelling only `Effect [..e]` HAS declared a contract: its body
+    pool is the named effects (empty) — the tail is never a license.
+  - validation: ≤1 tail per row (lower); every tail spelled in the clause
+    or on the top-level return fn-type must be bound by some fn param
+    carrying the same `..e` (collect-time error) — param-only tails are the
+    legal identity pattern; tails nested deeper in a returned HOF type are
+    that inner type's business.
+  - **residual found while building** (pre-existing, S4a-era): a concrete
+    untailed fn-type ascription ERASES the value's effects — effects don't
+    participate in unification, so `def grab(): (String -> String)` over
+    `netGet` launders `[io]` silently. Its own slice; candidate shape:
+    effects-aware Fn-unify in ascription (declared-vs-inferred) position.
 
 ## 5. Build plan (fixture-provable slices)
 
@@ -262,8 +288,9 @@ shape:
      (generalize doesn't re-quantify tail ids — conservative union, sound).
 4. **Out of scope for v2**: anonymous union pins (unchanged from v1), open
    rows escaping a module boundary (pins close them or error), prose tails,
-   E2 user-spelled effect rows, and the eval-side mixed-arity residual
-   (runtime-ambiguous; documented in error-rows-design §7.3).
+   ~~E2 user-spelled effect rows~~ (built 2026-06, §4), and the eval-side
+   mixed-arity residual (runtime-ambiguous; documented in error-rows-design
+   §7.3).
 
 Each slice keeps corpus baselines untouched: arrow ascriptions are new
 syntax, tailed rows only arise from them, and E1 only RELAXES the

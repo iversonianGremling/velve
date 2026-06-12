@@ -389,7 +389,19 @@ function resolveRef(ref: TypeRef, tp: Map<string, Type>, sagas?: Map<string, Typ
       }
     }
     case "TRAtom":   return { tag: "Atom", name: ref.name };
-    case "TRFn":     return { tag: "Fn", params: ref.params.map(p => resolveRef(p, tp, sagas)), ret: resolveRef(ref.ret, tp, sagas), effects: ref.effects };
+    case "TRFn": {
+      const f: Type & { tag: "Fn" } = { tag: "Fn", params: ref.params.map(p => resolveRef(p, tp, sagas)), ret: resolveRef(ref.ret, tp, sagas), effects: ref.effects };
+      // A user-spelled effect tail (`..e`, E2) resolves through tp under the
+      // key "..e" — namespaced so a tail named `e` and a type var `e` coexist.
+      // Outside a generalized signature (no tp entry) the tail is dropped: the
+      // clause body sees the param without a live tail, which charges nothing
+      // (EFFECT_TAILS for an unregistered id is empty anyway).
+      if (ref.effectTail !== undefined) {
+        const v = tp.get(".." + ref.effectTail);
+        if (v?.tag === "Var") f.effectTail = v.id;
+      }
+      return f;
+    }
     case "TRTuple":  return { tag: "Tuple", elems: ref.elems.map(e => resolveRef(e, tp, sagas)) };
     case "TRRecord": return { tag: "Record", fields: ref.fields.map(f => ({ name: f.name, type: resolveRef(f.type, tp, sagas), optional: f.optional })) };
     case "TRPtr":    return { tag: "Named", name: "Ptr", args: [resolveRef(ref.inner, tp, sagas)] };  // lifetime is borrow-checker-only
@@ -652,6 +664,27 @@ function refTypeVars(refs: (TypeRef | null)[]): string[] {
         r.args.forEach(walk);
         break;
       case "TRFn":     r.params.forEach(walk); walk(r.ret); break;
+      case "TRTuple":  r.elems.forEach(walk); break;
+      case "TRRecord": r.fields.forEach(f => walk(f.type)); break;
+      case "TRPtr":    walk(r.inner); break;
+      case "TRAtom": case "TRExpr": break;
+    }
+  };
+  for (const r of refs) if (r) walk(r);
+  return out;
+}
+
+// User-spelled effect tails (`..e`, E2) mentioned on fn-type ascriptions in the
+// given refs — collected so generalizeSig can quantify them alongside type vars.
+function refEffectTails(refs: (TypeRef | null)[]): string[] {
+  const out: string[] = [];
+  const walk = (r: TypeRef): void => {
+    switch (r.tag) {
+      case "TRNamed":  r.args.forEach(walk); break;
+      case "TRFn":
+        if (r.effectTail !== undefined && !out.includes(r.effectTail)) out.push(r.effectTail);
+        r.params.forEach(walk); walk(r.ret);
+        break;
       case "TRTuple":  r.elems.forEach(walk); break;
       case "TRRecord": r.fields.forEach(f => walk(f.type)); break;
       case "TRPtr":    walk(r.inner); break;
@@ -1344,6 +1377,26 @@ class Inferrer {
             (c.ret && refHasMarker(c.ret) && !isRowRet(c.ret)));
           if (markerMisuse)
             err(this.ctx, decl.span, "the inferred-row `_` is only legal as the error of a def's return `Result` (e.g. `Result Number _`)");
+          // E2 validation: a tail spelled in the def's OWN Effect clause, or on
+          // its top-level return fn-type, must be bound by some fn parameter
+          // carrying the same `..e` — otherwise nothing ever flows into it and
+          // the spelling is a misleading no-op. Params BIND (at any depth — a
+          // `List((A -> Effect [..e] B))` param binds elementwise through
+          // unify); the clause row and the returned fn USE. A param tail
+          // absent from the clause is the identity pattern ("takes it, never
+          // calls it") and is legal. Tails nested deeper in the return type
+          // (a returned HOF whose own params bind them) are out of scope here.
+          {
+            const clause0 = decl.clauses[0];
+            const tails = decl.sig?.effectTails.length ? decl.sig.effectTails : clause0?.effectTails ?? [];
+            const retRef = decl.sig ? decl.sig.ret : clause0?.ret ?? null;
+            const retTail = retRef?.tag === "TRFn" && retRef.effectTail !== undefined ? [retRef.effectTail] : [];
+            const paramRefs: (TypeRef | null)[] = decl.sig ? decl.sig.params : (clause0?.params.map(p => p.ascription) ?? []);
+            for (const t of new Set([...tails, ...retTail]))
+              if (!paramRefs.some(r => r !== null && refEffectTails([r]).includes(t)))
+                err(this.ctx, decl.span,
+                  `effect tail '..${t}' is not bound by any fn parameter — spell it on the fn param whose effects it names (e.g. \`f: (A -> Effect [..${t}] B)\`)`);
+          }
           if (decl.clauses.length > 1) {
             if (decl.clauses.some(c => c.ret && isRowRet(c.ret)))
               err(this.ctx, decl.span, "an inferred error row needs a single-clause def — multi-clause heads are typed per-clause");
@@ -1354,7 +1407,7 @@ class Inferrer {
             env.defineMono(decl.name, { tag: "Unknown" });
           } else if (decl.sig) {
             env.define(decl.name, this.generalizeSig(
-              decl.sig.params, decl.sig.ret, decl.sig.effects)
+              decl.sig.params, decl.sig.ret, decl.sig.effects, decl.sig.effectTails)
               ?? mono(sigToFnType(decl.sig, new Map())));
           } else {
             // Ordinary defs carry their types on the clause, not decl.sig.
@@ -1395,7 +1448,7 @@ class Inferrer {
             // generalized scheme now; otherwise keep the existing shape (a
             // fresh var pinned by the post-clause unify in inferClause).
             const scheme = clause && clause.ret && clause.params.every(p => p.ascription)
-              ? this.generalizeSig(clause.params.map(p => p.ascription!), clause.ret, clause.effects)
+              ? this.generalizeSig(clause.params.map(p => p.ascription!), clause.ret, clause.effects, clause.effectTails)
               : null;
             if (scheme) env.define(decl.name, scheme);
             else env.defineMono(decl.name, freshVar(decl.name));
@@ -1494,9 +1547,17 @@ class Inferrer {
   // skolems, so an implementation that pins `a` (e.g. `-> x + 1`) still errors;
   // the post-clause declared-vs-inferred unify just binds fresh vars to those
   // skolems.
-  private generalizeSig(params: TypeRef[], ret: TypeRef, effects: string[]): Scheme | null {
+  private generalizeSig(params: TypeRef[], ret: TypeRef, effects: string[], effectTails: string[] = []): Scheme | null {
     const tvNames = refTypeVars([...params, ret]);
-    if (tvNames.length === 0) return null;
+    // Effect tails (E2): clause-spelled (`Effect [..e] T` — charges the def's
+    // own row) and param-spelled (`f: (A -> Effect [..e] B)` — binds at the
+    // call) quantify alongside type vars, namespaced "..e" in tp so a tail
+    // and a type var may share a letter. The resulting Fn rides the SAME S4c
+    // machinery as tailed builtins: substVars clones the tail per call site,
+    // Fn-unify's bindEffectTails absorbs the argument's row, fnEffectRow
+    // charges it — no new rules.
+    const tailNames = [...new Set([...effectTails, ...refEffectTails([...params, ret])])];
+    if (tvNames.length === 0 && tailNames.length === 0) return null;
     const tp = new Map<string, Type>();
     const ids: number[] = [];
     for (const n of tvNames) {
@@ -1504,9 +1565,17 @@ class Inferrer {
       tp.set(n, v);
       ids.push(v.id);
     }
-    return { forall: ids, type: { tag: "Fn",
+    for (const n of tailNames) {
+      const v = freshVar(".." + n);
+      tp.set(".." + n, v);
+      ids.push(v.id);
+    }
+    const fnT: Type & { tag: "Fn" } = { tag: "Fn",
       params: params.map(p => resolveRef(p, tp, this.sagaRets)),
-      ret: resolveRef(ret, tp, this.sagaRets), effects } };
+      ret: resolveRef(ret, tp, this.sagaRets), effects };
+    const ownTail = effectTails[0] !== undefined ? tp.get(".." + effectTails[0]) : undefined;
+    if (ownTail?.tag === "Var") fnT.effectTail = ownTail.id;
+    return { forall: ids, type: fnT };
   }
 
   private collectType(decl: Extract<Decl, { tag: "DType" }>, env: TypeEnv): void {
@@ -1636,7 +1705,13 @@ class Inferrer {
     this.ctx.returnType = retType;
 
     // Effect context: use the declared effects, or null (unchecked) if none declared.
-    const declaredEffects = sig?.effects.length ? sig.effects : clause.effects.length ? clause.effects : null;
+    // A clause spelling only a tail (`Effect [..e] T`) HAS declared a contract:
+    // its pool is the named effects (here: empty) — the tail is a promise about
+    // what flows through fn params at call sites, never a license for the body.
+    const declaredEffects =
+      sig && (sig.effects.length || sig.effectTails.length) ? sig.effects :
+      clause.effects.length || clause.effectTails.length ? clause.effects :
+      null;
     const prevEffects = this.ctx.effects;
     this.ctx.effects = declaredEffects;
 
@@ -2187,14 +2262,19 @@ class Inferrer {
         }
 
         // Typed callee: latent effects of fn-valued arguments count exactly as
-        // they do for Unknown callees above — UNLESS the callee's signature
-        // carries an effect tail (S4c): a tailed signature accounts for its
-        // arguments' effects explicitly (they were charged through
-        // requiredEffects above, or deliberately not at all for a builtin that
-        // never invokes its argument, e.g. `identity`), so the conservative
-        // rule defers to it. User HOFs never carry tails (E2 deferred), so
-        // they keep the conservative charge.
-        if (!(resolvedFnT.tag === "Fn" && resolvedFnT.effectTail !== undefined))
+        // they do for Unknown callees above — UNLESS the callee's signature is
+        // TAIL-AWARE: an effect tail on its own row (S4c builtins; user defs
+        // spelling `Effect [..e]` — charged through requiredEffects above) or
+        // on a fn PARAM only (the user identity pattern, `f: (A -> Effect
+        // [..e] B)` with no `..e` in the own clause: "takes it, never calls
+        // it" — deliberately uncharged, no laundering since the value keeps
+        // its row). A tail-aware signature accounts for its fn arguments
+        // explicitly, so the conservative §12.4 rule defers to it; untailed
+        // signatures keep the conservative charge.
+        const tailAware = resolvedFnT.tag === "Fn" &&
+          (resolvedFnT.effectTail !== undefined ||
+           resolvedFnT.params.some(p => { const rp = this.ctx.subst.apply(p); return rp.tag === "Fn" && rp.effectTail !== undefined; }));
+        if (!tailAware)
           checkLatentArgEffects(expr.fn.tag === "Var" ? expr.fn.name : "fn");
 
         return this.ctx.subst.apply(ret);

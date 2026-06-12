@@ -315,11 +315,12 @@ export class Lowerer {
     const types = n.namedChildren.filter(isTypeKind);
     const retNode = types.at(-1);
     const paramNodes = types.slice(0, -1);
-    const { effects, retRef } = this.unpackEffectType(retNode ?? null);
+    const { effects, effectTails, retRef } = this.unpackEffectType(retNode ?? null);
     return {
       params: paramNodes.map(t => this.lowerTypeRef(t)),
       ret: retRef,
       effects,
+      effectTails,
       span: this.sp(n),
     };
   }
@@ -341,9 +342,9 @@ export class Lowerer {
     const lifetimeConstraints = whereNodes.flatMap(w => this.lowerLifetimeConstraints(w));
     const surface = usingNode ? this.lowerUsingClause(usingNode) : null;
     const rawRetNode = typeIdx >= 0 ? rest[typeIdx] : undefined;
-    const { effects, retRef: ret } = this.unpackEffectType(rawRetNode ?? null);
+    const { effects, effectTails, retRef: ret } = this.unpackEffectType(rawRetNode ?? null);
 
-    return { params, ret, effects, body: this.lowerBody(bodyContent), where_, lifetimeConstraints, surface, span: this.sp(n) };
+    return { params, ret, effects, effectTails, body: this.lowerBody(bodyContent), where_, lifetimeConstraints, surface, span: this.sp(n) };
   }
 
   // `using S` / `using surface = <expr>`: extract the role name and (for the inline
@@ -735,18 +736,20 @@ export class Lowerer {
         return { tag: "TRTuple", elems: n.namedChildren.filter(isTypeKind).map(c => this.lowerTypeRef(c)) };
       case "function_type": {
         // `(A, B -> C)` — params in source order, the last type is the return.
-        // effects stay [] in S4a: an effect-carrying fn ascription is S4c
-        // (effect tails) — `Effect [...]` in the return slot today unpacks to
-        // its bare return type, same as everywhere else lowerTypeRef recurses.
-        const types = n.namedChildren.filter(isTypeKind).map(c => this.lowerTypeRef(c));
-        const ret = types.pop() ?? { tag: "TRNamed" as const, name: "Unknown", args: [] };
+        // An `Effect [caps, ..tail] C` return slot (E2) unpacks onto the TRFn:
+        // caps become its effects, `..e` its effectTail (the user-spelled row).
+        const typeNodes = n.namedChildren.filter(isTypeKind);
+        const retNode = typeNodes.pop() ?? null;
+        const { effects, effectTails, retRef: ret } = this.unpackEffectType(retNode);
+        const types = typeNodes.map(c => this.lowerTypeRef(c));
         // `(() -> T)` is a THUNK: zero-param defs type as `() -> T` with an
         // EMPTY param list (no Unit argument exists at calls), so a lone `()`
         // param means zero params. `()` among several params stays a
         // Unit-typed argument.
         const params = types.length === 1 && types[0]!.tag === "TRNamed" && types[0]!.name === "()"
           ? [] : types;
-        return { tag: "TRFn", params, ret, effects: [] };
+        return { tag: "TRFn", params, ret, effects,
+                 ...(effectTails[0] !== undefined ? { effectTail: effectTails[0] } : {}) };
       }
       case "tainted_type": {
         const inner = n.namedChildren.find(isTypeKind);
@@ -795,13 +798,20 @@ export class Lowerer {
     }
   }
 
-  // Unpacks Effect [cap1, cap2] RetType → { effects, retRef }
-  private unpackEffectType(n: N | null): { effects: string[]; retRef: TypeRef } {
+  // Unpacks Effect [cap1, ..tail] RetType → { effects, effectTails, retRef }.
+  // `..e` entries are user-spelled effect TAILS (row-variables E2): names tying
+  // the def's own row to the rows of fn params marked with the same `..e`. At
+  // most one tail per clause — a second is a lower error (one row, one rest).
+  private unpackEffectType(n: N | null): { effects: string[]; effectTails: string[]; retRef: TypeRef } {
     const empty: TypeRef = { tag: "TRNamed", name: "()", args: [] };
-    if (!n || n.type !== "effect_type") return { effects: [], retRef: n ? this.lowerTypeRef(n) : empty };
+    if (!n || n.type !== "effect_type") return { effects: [], effectTails: [], retRef: n ? this.lowerTypeRef(n) : empty };
     const effects = n.namedChildren.filter(c => c.type === "lower_id").map(c => c.text);
+    const effectTails = n.namedChildren.filter(c => c.type === "effect_tail").map(c => c.namedChildren[0]?.text ?? "?");
+    if (effectTails.length > 1)
+      this.diagnostics.push({ kind: "error", span: this.sp(n),
+        message: `at most one effect tail per row — found [${effectTails.map(t => ".." + t).join(", ")}]` });
     const retNode  = n.namedChildren.find(isTypeKind);
-    return { effects, retRef: retNode ? this.lowerTypeRef(retNode) : empty };
+    return { effects, effectTails, retRef: retNode ? this.lowerTypeRef(retNode) : empty };
   }
 
   // ── Params ──────────────────────────────────────────────────────────────────

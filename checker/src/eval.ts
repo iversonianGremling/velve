@@ -748,7 +748,7 @@ export class Evaluator {
       }
 
       case "Lambda": {
-        const clause: FnClause = { params: expr.params, body: expr.body, ret: null, effects: [], where_: [], lifetimeConstraints: [], surface: null, span: expr.span };
+        const clause: FnClause = { params: expr.params, body: expr.body, ret: null, effects: [], effectTails: [], where_: [], lifetimeConstraints: [], surface: null, span: expr.span };
         return { tag: "VFn", name: "<lambda>", clauses: [clause], env };
       }
 

@@ -29,7 +29,7 @@ remaining gap is a live *design* choice.
 | **Low-level** | B− | Rust (borrow + sized types); Zig (comptime) | Four numeric stories that never met + gpu/audio/std-low sketches. A+ = **F#-style units-of-measure** as the general mechanism + sized types built on it. See §5. | **Design** — the unifying note (TODO §3.4 🔴) is unwritten. |
 | **Games** | C+ / A− | Bevy ECS; Unity DOTS | **100% gated on the compiled target** — a tree-walker can't hold 60fps. A+ = compiled backend + frame clock + `@interaction`. | **Build.** |
 | **Animation** | C / A | SwiftUI animation; Framer Motion | `animated` + motion-policy chokepoint is unique, unbuilt. Ceiling is **A** not A+ — see §8 (choreography breadth). Blocked on `frames` + reconciler. | **Build + undesigned breadth.** |
-| **Security** | A *(2026-06)* | Capability-secure: Austral, Pony, Koka/Unison; IFC: Jif / Flow Caml | Taint-at-parse is the right cut. A+ = make `Effect` **enforcement** real (TODO §3.6). **The mechanism now is** (2026-06): direct calls checked (`effects_test`, pure-hole edition-gated) and the HOF laundering route closed (SPEC §12.4, `hof_effects_test`/`_bad` — latent effects of a function argument charge the call that supplies it; aliasing doesn't launder; fires for untyped and typed callees alike). **Effect tails shipped 2026-06** (S4c, SPEC §12.4 effect-tails block, `effect_tails_test`/`_bad`): tailed builtin HOF signatures charge the argument's row precisely per call site, and the conservative rule defers to them — the effect-rows ingredient at E1 scope (E2 user-spelled tails deferred). **A− → A re-graded 2026-06** (SPEC §12.5, `builtin_effects_test`/`_bad`): the named coverage gap is closed — the effectful runtime builtins charge their capability (`setTheme`/`setViewport` `[ui]`, `externSource` + network `[io]`), including through S4c tails (`pmap(setViewport)` charges `[ui]` in a pure def), so the stdlib no longer lies by omission. Decided ambient line: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. Remaining → A+: E2 user-spelled effect rows + the `Proof`-gradient integration (§3/§4) — and honesty that ambient stdout is a *decided* hole, not an oversight. | **Build** (A+ = E2 rows + §3 integration). |
+| **Security** | A *(2026-06)* | Capability-secure: Austral, Pony, Koka/Unison; IFC: Jif / Flow Caml | Taint-at-parse is the right cut. A+ = make `Effect` **enforcement** real (TODO §3.6). **The mechanism now is** (2026-06): direct calls checked (`effects_test`, pure-hole edition-gated) and the HOF laundering route closed (SPEC §12.4, `hof_effects_test`/`_bad` — latent effects of a function argument charge the call that supplies it; aliasing doesn't launder; fires for untyped and typed callees alike). **Effect tails shipped 2026-06** (S4c, SPEC §12.4 effect-tails block, `effect_tails_test`/`_bad`): tailed builtin HOF signatures charge the argument's row precisely per call site, and the conservative rule defers to them — the effect-rows ingredient at E1 scope. **A− → A re-graded 2026-06** (SPEC §12.5, `builtin_effects_test`/`_bad`): the named coverage gap is closed — the effectful runtime builtins charge their capability (`setTheme`/`setViewport` `[ui]`, `externSource` + network `[io]`), including through S4c tails (`pmap(setViewport)` charges `[ui]` in a pure def), so the stdlib no longer lies by omission. Decided ambient line: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. **E2 user-spelled effect rows shipped 2026-06** (SPEC §12.4 E2 block, `effect_spell_test`/`_bad`): `..e` in the Effect bracket — param position binds, clause position charges — gives user HOFs the same per-call-site precision as tailed builtins, including the spellable identity pattern (uncharged keep, row preserved); unbound tails error. One A+ ingredient down. Remaining → A+: the `Proof`-gradient integration (§3/§4), the untailed-ascription effect-erasure residual (effects don't unify — `(String -> String)` over `netGet` launders; pre-existing, now documented), and honesty that ambient stdout is a *decided* hole, not an oversight. | **Build** (A+ = §3 integration + ascription erasure). |
 
 ---
 
@@ -396,11 +396,16 @@ charge replaced with per-call precision exactly where a typed signature exists; 
 (tailed on its own row only, never invokes its argument) accepts an effectful fn from a pure
 def **uncharged**, closing the conservative rule's one false positive, with no laundering (the
 value keeps its row; calling it is the ordinary per-call check). Untailed callees — surface
-`map`/`filter` (Unknown to infer) and all user HOFs — keep the conservative rule unchanged.
-Deferred: E2 user-spelled effect tails; tailing the remaining fn-taking builtins (`sortBy`,
-`listReduce`, …) is mechanical. **The S4/v2 slice family is complete.** Security stays A− —
-its hold is builtin-surface effect *coverage* (typed-prelude/BUILTINS split), a different
-lever than HOF precision; the "→ A+ adds effect rows" ingredient now exists at E1.
+`map`/`filter` (Unknown to infer) and untailed user HOFs — keep the conservative rule unchanged.
+Tailing the remaining fn-taking builtins (`sortBy`, `listReduce`, …) is mechanical.
+**The S4/v2 slice family is complete — including E2** (2026-06, SPEC §12.4 E2 block,
+`effect_spell_test`/`_bad`): user signatures spell the tail as `..e` inside the existing
+`Effect [...]` bracket — param fn-types bind it, the def's own clause charges it — so user
+HOFs now get exactly the builtin precision (`each(double)` free, `each(netGet)` pays `[io]`,
+the `keep` identity pattern uncharged with the row preserved). Zero new checker rules: the
+spelled name quantifies alongside type vars and rides the S4c machinery. Found while
+building (pre-existing residual): an untailed concrete fn-type ascription erases effects —
+effects don't participate in unification — its own future slice.
 
 ---
 

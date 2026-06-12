@@ -35,7 +35,7 @@ export type Pat =
 export type TypeRef =
   | { tag: "TRNamed";  name: string; args: TypeRef[] }
   | { tag: "TRAtom";   name: string }
-  | { tag: "TRFn";     params: TypeRef[]; ret: TypeRef; effects: string[] }
+  | { tag: "TRFn";     params: TypeRef[]; ret: TypeRef; effects: string[]; effectTail?: string }  // effectTail: user-spelled `..e` in the return slot's Effect clause (E2)
   | { tag: "TRTuple";  elems: TypeRef[] }
   | { tag: "TRRecord"; fields: { name: string; type: TypeRef; optional: boolean }[] }
   | { tag: "TRPtr";    lifetime: string | null; inner: TypeRef }   // Ptr [~a] T — lifetime is borrow-checker metadata
@@ -131,6 +131,7 @@ export interface FnSig {
   params: TypeRef[];
   ret: TypeRef;
   effects: string[];
+  effectTails: string[];  // user-spelled `..e` tails in the Effect clause (E2; ≤1 enforced at lower)
   span: Span;
 }
 
@@ -152,6 +153,7 @@ export interface FnClause {
   params: Param[];
   ret: TypeRef | null;    // return type from function_def (if written inline)
   effects: string[];      // capabilities declared in Effect [...] annotation
+  effectTails: string[];  // user-spelled `..e` tails in the Effect clause (E2; ≤1 enforced at lower)
   body: Expr;
   where_: { pat: Pat; value: Expr }[];  // where bindings
   lifetimeConstraints: LifetimeConstraint[];  // `where (~a >= ~b)` region bounds

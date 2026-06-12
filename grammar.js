@@ -472,10 +472,16 @@ export default grammar({
     effect_type: $ => seq(
       'Effect',
       '[',
-      commaSep1($.lower_id),
+      commaSep1(choice($.lower_id, $.effect_tail)),
       ']',
       $._type,
     ),
+
+    // `..e` — a user-spelled effect TAIL (row-variables E2): "plus whatever the
+    // fn parameter(s) marked ..e charge at each call site". Spelled identically
+    // in a def's own Effect clause and in an fn-type ascription's return slot
+    // (`f: (String -> Effect [..e] String)`) — the shared name ties them.
+    effect_tail: $ => seq('..', $.lower_id),
 
     async_type: $ => seq(
       'Async',

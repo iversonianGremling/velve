@@ -1,0 +1,41 @@
+@edition "2026.6"
+
+-- USER-SPELLED effect rows (row-variables E2, SPEC §12.4): `..e` is an effect
+-- TAIL — "plus whatever the fn param marked ..e charges at each call site".
+-- Spelled in the def's own Effect clause it CHARGES the caller; spelled on a
+-- param fn-type it BINDS from the argument; the shared name ties them. This is
+-- the S4c builtin machinery (pmap/identity) handed to user code: same tails,
+-- same per-call-site precision, no new checker rules.
+-- Expected: 0 errors. Runs.
+
+-- the stdlib stub pattern: a user def shadowing the unresolvable prelude name
+def netGet(url: String): Effect [io] String
+  "body of {url}"
+
+def double(s: String): String
+  "{s}{s}"
+
+-- an honestly-spelled user HOF: invokes f, so its row is f's row — per call
+def each(f: (String -> Effect [..e] String), xs: List(String)): Effect [..e] List(String)
+  xs |> pmap(f)        -- a tailed param forwards through a tailed builtin
+
+-- the identity pattern: tail on the param, NOT in the own clause — "takes it,
+-- never calls it". keep(netGet) charges nothing; the VALUE keeps its row.
+def keep(f: (String -> Effect [..e] String)): (String -> Effect [..e] String)
+  f
+
+-- the same def, three verdicts — per-call-site precision:
+def pureUse(): List(String)
+  each(double, ["a", "b"])             -- pure arg, pure call: free
+
+def ioUse(): Effect [io] List(String)
+  each(netGet, ["x"])                  -- [io] arg: THIS call charges [io]
+
+def callKept(): Effect [io] String
+  let h = keep(netGet)                 -- uncharged: keep never invokes f
+  h("u")                               -- ...but h kept its row — [io] due here
+
+def main(): Effect [io] ()
+  println("pure: {pureUse()}")
+  println("io: {ioUse()}")
+  println("kept: {callKept()}")

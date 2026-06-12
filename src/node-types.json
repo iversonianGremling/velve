@@ -3801,6 +3801,21 @@
     }
   },
   {
+    "type": "effect_tail",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "lower_id",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "effect_type",
     "named": true,
     "fields": {},
@@ -3818,6 +3833,10 @@
         },
         {
           "type": "atomic_type",
+          "named": true
+        },
+        {
+          "type": "effect_tail",
           "named": true
         },
         {

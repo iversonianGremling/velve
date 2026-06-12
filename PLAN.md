@@ -424,6 +424,22 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       untailed callees (surface `map`/`filter`, user HOFs) unchanged.
       Zero corpus impact (`hof_effects_bad` stays 4 — its pmap case now
       fails via the tail). S4/v2 complete; E2 user-spelled tails deferred.
+- [x] **User-spelled effect rows (E2)**: ✅ DONE (2026-06, SPEC §12.4 E2
+      block, `effect_spell_test`/`_bad`). The S4c tails handed to user code:
+      `..e` inside the existing `Effect [...]` bracket — a param fn-type
+      (`f: (String -> Effect [..e] String)`) BINDS the argument's row per
+      call site; the def's own clause (`Effect [..e]` / `Effect [io, ..e]`)
+      CHARGES the caller. Zero new syntax concepts (effect_type was already
+      a _type — one grammar extension admits the tail in the bracket) and
+      zero new checker rules (tail names quantify in generalizeSig beside
+      type vars, namespaced "..e"; substVars/bindEffectTails/fnEffectRow run
+      verbatim). Latent-rule skip widened to tail-AWARE (own or param Fn),
+      making the identity pattern spellable: `keep(netGet)` uncharged, the
+      value keeps its row. Guardrails: ≤1 tail per row; unbound clause/
+      return tails error; a tail-only clause is a declared-EMPTY pool (the
+      tail never licenses the body). Baseline diff = the new fixtures only.
+      Found (pre-existing): untailed fn-type ascriptions erase effects —
+      effects don't unify; documented as its own future slice.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →
