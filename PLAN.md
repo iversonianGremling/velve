@@ -471,8 +471,31 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       module-private ctors = language change (flat resolver scope) — gates
       the refined-type tier only. Deferred follow-on: §5.1 constEval folding
       of @total predicates (corpus-wide, own slice). Baseline diff = the two
-      new fixture rows. NEXT (slice 2): the `Proof [...]` module-scope
-      surface (`proofs: [total, exhaustive]` mirroring `capabilities:`).
+      new fixture rows.
+- [x] **`Proof [...]` module scope (proof-gradient slice 2)**: ✅ DONE
+      (2026-06, SPEC §12.7, `proof_scope_test`/`_bad`). `proofs: [total,
+      exhaustive]` in module heads — `proofs_decl` mirrors `capabilities_decl`
+      in the grammar (additive; corpus case added; the 9 pre-existing corpus
+      failures unchanged). The dual of capabilities: effects flow UP, proofs
+      flow DOWN into every def the module contains. Vocabulary CLOSED at
+      lower time (`total bounds nonzero arith overflow exhaustive handled`);
+      declared = enforced — unknown obligation → error; not-checkable-yet
+      obligation (`bounds` etc.) → error naming what IS checkable; never a
+      silent skip. `total`: lower marks each contained DFn implicitly @total
+      (total.ts untouched — decrease check + downward gate fire as if the
+      decorator were present); `exhaustive`: clause-head gaps harden to
+      errors in EVERY edition (a `hardened` flag through checkClauseHeads;
+      the bad fixture is deliberately baseline-edition to prove the
+      obligation beats the 2026.6 gate). Found while fixturing: payload-ctor
+      clause heads (`def f(Rise(n))`) are grammar-ambiguous with
+      function_sig types — the exhaustive fixture dispatches on nullary
+      ctors (the safe subset's shape anyway). `proof_scope_bad` = exactly 5
+      errors; run-mode refuses it (vocabulary errors are lower-stage —
+      correct: a module promising an unknown obligation shouldn't run).
+      Baseline diff = the two new fixture rows. North-star §3.6 items 1, 2,
+      4 ✅. NEXT (slice 3): the §3 + Security row re-grade (argue the A+
+      over the shipped surface); per-def `Proof [obligation] T` only if
+      wanted.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

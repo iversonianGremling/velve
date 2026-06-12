@@ -9609,6 +9609,10 @@
           "named": true
         },
         {
+          "type": "proofs_decl",
+          "named": true
+        },
+        {
           "type": "saga_def",
           "named": true
         },
@@ -11827,6 +11831,21 @@
         },
         {
           "type": "type_def",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "proofs_decl",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "lower_id",
           "named": true
         }
       ]
@@ -18146,6 +18165,10 @@
   },
   {
     "type": "pipe",
+    "named": false
+  },
+  {
+    "type": "proofs",
     "named": false
   },
   {

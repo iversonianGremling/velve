@@ -49,6 +49,7 @@ means there is a green fixture exercising it under `checker/`.
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. **User-spelled rows built (E2, 2026-06, `effect_spell_test`/`_bad`)**: `..e` on param fn-types binds, in the Effect clause charges — user HOFs get the same per-call-site precision; unbound tails error. **Ascription coverage built (2026-06, `effect_ascribe_test`/`_bad`)**: a fn-type ascription must cover the value's row (returns + bindings, covariant-deep) — the erasure laundering hole is closed. |
 | Effect-typed builtin surface | ✅ Built (2026-06) | §12.5, `builtin_effects_test`/`_bad`: `setTheme`/`setViewport` charge `[ui]`, `externSource` and the network names charge `[io]` — the stdlib stops lying by omission, incl. through HOF tails. Decided ambient: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. |
 | Totality (`@total`, Tier 1) | ✅ Built (2026-06) | §12.6, `total_test`/`_bad`: opt-in structural termination — recursion must decrease at one position (ctor/tuple/record descent or `n - k` under a literal/comparison floor), totality flows down the call graph (total calls total + terminating builtins; HOFs need a checkable fn), `loop`/`await`/spawn/host rejected in total bodies. Mutual recursion, closure recursion, `n / 2` → conservative reject (Tier 2 `proof.terminates` is the future valve). First shipped obligation of the north-star §3 proof gradient. |
+| Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`; `exhaustive` hardens clause-head gaps to errors in every edition. Per-def/per-block scopes PROPOSED. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | Call children (`card()` composition) | ✅ Built (2026-06) | §11.1, `call_child_test`/`_bad`: a bare lowercase component call is a `child` grammar form — composed views nest for real (closes the last children-flattening residual); a call child resolves, type-checks, and effect-checks like a call anywhere. |
@@ -2438,6 +2439,53 @@ The Tier-1 check is structural (no solver), the discipline total languages use:
 `factorial(-1)` type-checks total yet diverges at runtime — the integer-domain
 assumption is documented, not checked; the honest fix is a `Natural` refined
 type (north-star §3.3), not a cleverer syntactic rule.
+
+### 12.7 The proof gradient — `proofs: [...]` (module scope SHIPPED)
+
+A module can declare a set of **proof obligations** it promises to discharge,
+in the same position and shape as `capabilities:`:
+
+```
+module kernel
+  proofs: [total, exhaustive]
+
+  def steps(0): Number -> 0
+  def steps(n: Number): Number -> 1 + steps(n - 1)   -- implicitly @total
+```
+
+Proofs are the **dual of effects** — same declaration shape, opposite flow:
+
+| | Effects (`Effect [...]`, `capabilities:`) | Proofs (`proofs: [...]`) |
+|---|---|---|
+| What's declared | side effects the code may **perform** | guarantees the code must **uphold** |
+| Direction | flow **up** — a caller absorbs its callees' effects | flow **down** — a proven scope may only call proven code |
+| Violation | doing something undeclared | failing to discharge a declared obligation |
+| Default | pure (`[]`) — effects are opt-out | partial/unproven — proofs are opt-in |
+
+The obligation vocabulary is **closed** — six fault classes, fixed up front so a
+declaration is portable across checker versions: `total`, `bounds`,
+`nonzero`/`arith`, `overflow`, `exhaustive`, `handled`. An unknown name is a
+compile error. **Declared = enforced**: an obligation the checker cannot
+discharge yet (`bounds`, `nonzero`, `arith`, `overflow`, `handled`) is also an
+error — "checkable today: total, exhaustive" — never a silent skip, so a
+`proofs:` line can never promise more than the compiler actually verified.
+
+Checkable today:
+
+- **`total`** — every def directly inside the module is implicitly `@total` and
+  goes through the full §12.6 check (structural decrease + the downward call
+  gate). A module def calling an unmarked outside fn is an error: totality flows
+  down.
+- **`exhaustive`** — clause-head exhaustiveness (§17's edition-gated check)
+  hardens to an **error in every edition** inside the module. Match
+  exhaustiveness is already a hard error everywhere; this closes the multi-clause
+  dispatch gap ahead of the 2026.6 edition gate.
+
+The remaining scopes from the design — per-def `Proof [total, bounds] T` result
+brackets and per-block `@proof[...] { }` — are PROPOSED (north-star §3.4); the
+module scope shipped first because it rides the existing `capabilities:` grammar
+shape and matches the verified-kernel use case (a small proven core, partial
+code around it).
 
 ```
 velve new my-app    -- scaffold new project

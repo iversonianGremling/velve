@@ -87,7 +87,7 @@ export function checkExhaustiveness(
   const diags: Diagnostic[] = [];
 
   walkDecls(mod.decls, types, typedefs, diags);
-  checkClauseHeads(mod.decls, typedefs, diags, mod.edition);
+  checkClauseHeads(mod.decls, typedefs, diags, mod.edition, false);
   return diags;
 }
 
@@ -114,9 +114,16 @@ function checkClauseHeads(
   td: TypeDefMap,
   diags: Diagnostic[],
   edition: Edition,
+  // True inside a `proofs: [exhaustive]` module (SPEC §12.7): the obligation
+  // hardens the clause-head gap to an error in EVERY edition — declared =
+  // enforced, ahead of the 2026.6 edition gate.
+  hardened: boolean,
 ): void {
   for (const decl of decls) {
-    if (decl.tag === "DModule") { checkClauseHeads(decl.decls, td, diags, edition); continue; }
+    if (decl.tag === "DModule") {
+      checkClauseHeads(decl.decls, td, diags, edition, hardened || decl.proofs.includes("exhaustive"));
+      continue;
+    }
     if (decl.tag !== "DFn" || decl.clauses.length < 2) continue;
 
     const arity = decl.clauses[0]!.params.length;
@@ -144,9 +151,11 @@ function checkClauseHeads(
       const where = arity > 1 ? `parameter ${i + 1} (${adt})` : `the ${adt} argument`;
       const base = `non-exhaustive clause heads for '${decl.name}' — ${where} missing: ${missing.join(", ")}`;
       diags.push({
-        kind: deprecated ? "error" : "warning",
+        kind: hardened || deprecated ? "error" : "warning",
         span: decl.span,
-        message: deprecated ? base : `${base} (rejected from edition 2026.6)`,
+        message: deprecated ? base
+          : hardened ? `${base} (module declares proofs: [exhaustive])`
+          : `${base} (rejected from edition 2026.6)`,
       });
     }
   }

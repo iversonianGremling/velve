@@ -197,3 +197,8 @@ SPEC §12.6; fixtures `total_test.velve` (6 accepted shapes, runs) and
 - **Deferred follow-on (recorded in TODO):** §5.1's payoff — folding refinement
   predicates whose call-closure is `@total` — touches `constEval` corpus-wide
   and ships as its own slice.
+- **Module scope (2026-06, the slice after):** `proofs: [total]` (SPEC §12.7)
+  marks every def in a module implicitly `@total` at lower time — this engine
+  is unchanged, the marker just arrives from the module head instead of a
+  decorator. The errors read "@total function …" by design: that *is* the
+  semantics the declaration buys.

@@ -272,3 +272,29 @@ def view(): Element
                     (identifier_expr
                       (lower_id))
                     (lower_id)))))))))))
+
+================================================================================
+module: with proofs
+================================================================================
+
+module kernel
+  proofs: [total, exhaustive]
+
+  def foo(): Number
+    42
+
+--------------------------------------------------------------------------------
+
+(program
+  (module_def
+    (lower_id)
+    (proofs_decl
+      (lower_id)
+      (lower_id))
+    (function_def
+      (lower_id)
+      (param_list)
+      (simple_type
+        (upper_id))
+      (literal
+        (number)))))

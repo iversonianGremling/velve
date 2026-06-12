@@ -1,0 +1,45 @@
+-- Proof-scope guardrails (SPEC §12.7). Declared = enforced: the vocabulary is
+-- closed, an obligation the checker can't discharge yet is an error (never a
+-- silent skip), and a declared obligation binds every def in the module. NO
+-- @edition pragma — this file is baseline 2026.1, proving `proofs: [exhaustive]`
+-- hardens clause heads ahead of the 2026.6 edition gate.
+-- Expected: exactly 5 errors.
+
+type Priority
+  = High
+  | Medium
+  | Low
+
+-- 1 + 2: vocabulary errors. 'fast' is not an obligation; 'bounds' is in the
+-- closed vocabulary but not checkable yet — declaring it would promise an
+-- unenforced guarantee.
+module wishes
+  proofs: [fast, bounds]
+
+  def fine(): Number
+    1
+
+-- 3: a partial def inside a `proofs: [total]` module — recursion, no decrease.
+-- 4: a total-module def calling an unmarked outside fn — totality flows down.
+module engine
+  proofs: [total]
+
+  def spin(n: Number): Number
+    spin(n)
+
+  def launder(n: Number): Number
+    helper(n)
+
+-- 5: a clause-head gap (Low unhandled) inside a `proofs: [exhaustive]` module —
+-- an error even at baseline, where the same gap outside is only a warning.
+module dispatch
+  proofs: [exhaustive]
+
+  def rank(High): Number -> 2
+  def rank(Medium): Number -> 1
+
+def helper(n: Number): Number
+  n + 1
+
+def main(): Number
+  fine()

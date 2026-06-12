@@ -1,0 +1,39 @@
+@edition "2026.6"
+
+-- The proof gradient's module scope (SPEC §12.7): `proofs: [...]` declares
+-- obligations the whole module must discharge — the dual of `capabilities:`.
+-- Effects flow UP to callers; proofs flow DOWN into every def the module
+-- contains: `total` marks each def implicitly @total (decrease check + downward
+-- call gate), `exhaustive` hardens clause-head gaps to errors in every edition.
+-- Expected: clean; runs.
+
+type Trend
+  = Up
+  | Flat
+  | Down
+
+-- A total fn OUTSIDE the module: the downward gate accepts it as a callee.
+@total
+def clamp(n: Number): Number
+  if n > 100 then 100 else n
+
+module kernel
+  proofs: [total, exhaustive]
+
+  -- Implicitly @total: numeric descent under a literal base clause.
+  def steps(0): Number -> 0
+  def steps(n: Number): Number -> 1 + steps(n - 1)
+
+  -- Implicitly @total AND exhaustive clause heads: every Trend ctor covered.
+  def magnitude(Up): Number   -> 1
+  def magnitude(Flat): Number -> 0
+  def magnitude(Down): Number -> 0 - 1
+
+  -- Totality flows down: a module def may call @total fns outside the module.
+  def gauge(n: Number): Number
+    clamp(n * 2)
+
+-- main is OUTSIDE the kernel: partial code may freely call into proven code.
+def main(): Number
+  println("steps={steps(4)} mag={magnitude(Down)} gauge={gauge(70)}")
+  steps(4)

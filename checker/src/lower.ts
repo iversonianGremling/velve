@@ -275,14 +275,52 @@ export class Lowerer {
     const name = n.namedChildren.find(c => c.type === "lower_id")?.text ?? "?";
     const capsNode = n.namedChildren.find(c => c.type === "capabilities_decl");
     const capabilities = capsNode?.namedChildren.filter(c => c.type === "lower_id").map(c => c.text) ?? [];
-    // Everything that's not the name, capabilities, or comments is a declaration.
+    const proofsNode = n.namedChildren.find(c => c.type === "proofs_decl");
+    const proofs = this.lowerProofs(proofsNode);
+    // Everything that's not the name, capabilities, proofs, or comments is a declaration.
     const bodyNodes = n.namedChildren.filter(c =>
       c.type !== "lower_id" &&
       c.type !== "capabilities_decl" &&
+      c.type !== "proofs_decl" &&
       c.type !== "comment"
     );
     const decls = this.lowerDeclList(bodyNodes);
-    return { tag: "DModule", name, capabilities, decls, span: this.sp(n) };
+    // `proofs: [total]` means every def in the module is implicitly @total —
+    // declared = enforced, top-down. Marking here keeps the engine (total.ts)
+    // untouched: the decrease check and the downward call gate fire as if each
+    // def carried the marker itself.
+    if (proofs.includes("total")) {
+      for (const d of decls) if (d.tag === "DFn") d.total = true;
+    }
+    return { tag: "DModule", name, capabilities, proofs, decls, span: this.sp(n) };
+  }
+
+  // The proof-obligation vocabulary is CLOSED (SPEC §12.7): six fault classes,
+  // fixed up front so a declaration is portable across checker versions. Two are
+  // checkable today; declaring one of the others is an error, not a skip —
+  // under `proofs:`, declared means enforced (the unchecked-mode hole the
+  // effect work closed must not reappear here).
+  private static readonly PROOF_VOCAB = new Set(["total", "bounds", "nonzero", "arith", "overflow", "exhaustive", "handled"]);
+  private static readonly PROOF_CHECKABLE = new Set(["total", "exhaustive"]);
+
+  private lowerProofs(node: N | undefined): string[] {
+    if (!node) return [];
+    const out: string[] = [];
+    for (const id of node.namedChildren.filter(c => c.type === "lower_id")) {
+      const ob = id.text;
+      if (!Lowerer.PROOF_VOCAB.has(ob)) {
+        this.diagnostics.push({ kind: "error", span: this.sp(id),
+          message: `unknown proof obligation '${ob}' — the vocabulary is closed: total, bounds, nonzero, arith, overflow, exhaustive, handled` });
+        continue;
+      }
+      if (!Lowerer.PROOF_CHECKABLE.has(ob)) {
+        this.diagnostics.push({ kind: "error", span: this.sp(id),
+          message: `proof obligation '${ob}' is not checkable yet — declaring it would promise an unenforced guarantee (checkable today: total, exhaustive)` });
+        continue;
+      }
+      out.push(ob);
+    }
+    return out;
   }
 
   private lowerImport(n: N): Decl {

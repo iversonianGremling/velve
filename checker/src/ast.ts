@@ -252,6 +252,12 @@ export type Decl =
   | ({ tag: "DModule";
        name: string;
        capabilities: string[];
+       // Proof obligations declared with `proofs: [...]` (SPEC §12.7) — the dual
+       // of capabilities: effects flow up to callers, proofs flow down into every
+       // def the module contains. Closed vocabulary, validated at lower time;
+       // declared = enforced (an obligation we can't check yet is a lower error,
+       // never a silent skip).
+       proofs: string[];
        decls: Decl[] }                                                       & Node)
 
 // The per-stream backpressure policy (SPEC §10.1), written at the declaration

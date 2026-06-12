@@ -29,7 +29,7 @@ remaining gap is a live *design* choice.
 | **Low-level** | B− | Rust (borrow + sized types); Zig (comptime) | Four numeric stories that never met + gpu/audio/std-low sketches. A+ = **F#-style units-of-measure** as the general mechanism + sized types built on it. See §5. | **Design** — the unifying note (TODO §3.4 🔴) is unwritten. |
 | **Games** | C+ / A− | Bevy ECS; Unity DOTS | **100% gated on the compiled target** — a tree-walker can't hold 60fps. A+ = compiled backend + frame clock + `@interaction`. | **Build.** |
 | **Animation** | C / A | SwiftUI animation; Framer Motion | `animated` + motion-policy chokepoint is unique, unbuilt. Ceiling is **A** not A+ — see §8 (choreography breadth). Blocked on `frames` + reconciler. | **Build + undesigned breadth.** |
-| **Security** | A *(2026-06)* | Capability-secure: Austral, Pony, Koka/Unison; IFC: Jif / Flow Caml | Taint-at-parse is the right cut. A+ = make `Effect` **enforcement** real (TODO §3.6). **The mechanism now is** (2026-06): direct calls checked (`effects_test`, pure-hole edition-gated) and the HOF laundering route closed (SPEC §12.4, `hof_effects_test`/`_bad` — latent effects of a function argument charge the call that supplies it; aliasing doesn't launder; fires for untyped and typed callees alike). **Effect tails shipped 2026-06** (S4c, SPEC §12.4 effect-tails block, `effect_tails_test`/`_bad`): tailed builtin HOF signatures charge the argument's row precisely per call site, and the conservative rule defers to them — the effect-rows ingredient at E1 scope. **A− → A re-graded 2026-06** (SPEC §12.5, `builtin_effects_test`/`_bad`): the named coverage gap is closed — the effectful runtime builtins charge their capability (`setTheme`/`setViewport` `[ui]`, `externSource` + network `[io]`), including through S4c tails (`pmap(setViewport)` charges `[ui]` in a pure def), so the stdlib no longer lies by omission. Decided ambient line: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. **E2 user-spelled effect rows shipped 2026-06** (SPEC §12.4 E2 block, `effect_spell_test`/`_bad`): `..e` in the Effect bracket — param position binds, clause position charges — gives user HOFs the same per-call-site precision as tailed builtins, including the spellable identity pattern (uncharged keep, row preserved); unbound tails error. **Ascription effect-coverage shipped 2026-06** (`effect_ascribe_test`/`_bad`): the erasure laundering hole is closed — a fn-type ascription (def return or binding) must COVER the value's row, checked covariant-deep (record fields, list elems, Stream/Async); over-approximation legal; the check even caught and fixed a genuine erasure in `effect_tails_test`'s own `keep`. **`@total` shipped 2026-06** (SPEC §12.6, `total_test`/`_bad`) — the proof gradient's first checked obligation: structural decrease + the DOWNWARD call gate (a total fn may only call total code — effect enforcement's dual, run in reverse), with conservative rejection of mutual/closure recursion. Remaining → A+: the `Proof [...]` surface (§3.4 — the scoped obligation set over the now-real engine) — and honesty that ambient stdout is a *decided* hole, not an oversight. | **Build** (A+ = `Proof [...]` surface over §3). |
+| **Security** | A *(2026-06)* | Capability-secure: Austral, Pony, Koka/Unison; IFC: Jif / Flow Caml | Taint-at-parse is the right cut. A+ = make `Effect` **enforcement** real (TODO §3.6). **The mechanism now is** (2026-06): direct calls checked (`effects_test`, pure-hole edition-gated) and the HOF laundering route closed (SPEC §12.4, `hof_effects_test`/`_bad` — latent effects of a function argument charge the call that supplies it; aliasing doesn't launder; fires for untyped and typed callees alike). **Effect tails shipped 2026-06** (S4c, SPEC §12.4 effect-tails block, `effect_tails_test`/`_bad`): tailed builtin HOF signatures charge the argument's row precisely per call site, and the conservative rule defers to them — the effect-rows ingredient at E1 scope. **A− → A re-graded 2026-06** (SPEC §12.5, `builtin_effects_test`/`_bad`): the named coverage gap is closed — the effectful runtime builtins charge their capability (`setTheme`/`setViewport` `[ui]`, `externSource` + network `[io]`), including through S4c tails (`pmap(setViewport)` charges `[ui]` in a pure def), so the stdlib no longer lies by omission. Decided ambient line: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. **E2 user-spelled effect rows shipped 2026-06** (SPEC §12.4 E2 block, `effect_spell_test`/`_bad`): `..e` in the Effect bracket — param position binds, clause position charges — gives user HOFs the same per-call-site precision as tailed builtins, including the spellable identity pattern (uncharged keep, row preserved); unbound tails error. **Ascription effect-coverage shipped 2026-06** (`effect_ascribe_test`/`_bad`): the erasure laundering hole is closed — a fn-type ascription (def return or binding) must COVER the value's row, checked covariant-deep (record fields, list elems, Stream/Async); over-approximation legal; the check even caught and fixed a genuine erasure in `effect_tails_test`'s own `keep`. **`@total` shipped 2026-06** (SPEC §12.6, `total_test`/`_bad`) — the proof gradient's first checked obligation: structural decrease + the DOWNWARD call gate (a total fn may only call total code — effect enforcement's dual, run in reverse), with conservative rejection of mutual/closure recursion. **`Proof [...]` module scope shipped 2026-06** (SPEC §12.7, `proof_scope_test`/`_bad`): `proofs: [total, exhaustive]` rides the `capabilities:` shape — closed vocabulary, declared = enforced (unknown/not-yet-checkable obligations are errors, never silent skips), `total` implicitly @total-marks every module def, `exhaustive` hardens clause heads in every edition. The proof gradient is now a live surface with per-obligation rollout. Remaining → A+: the §3 re-grade (the A+ argument over the shipped surface), per-def/per-block scopes (PROPOSED), and honesty that ambient stdout is a *decided* hole, not an oversight. | **Re-grade** (§3.6 items 1, 2, 4 ✅ — argue the A+). |
 
 ---
 
@@ -238,6 +238,8 @@ env (§3.1 catch 1); `overflow` needs sized types (§5); `handled` needs error r
 own schedule — declare `proofs: [total]` the day totality lands, add `bounds` later. **The
 grade moves per-obligation, not all-or-nothing** — which is also what makes it genuinely
 "optionally good for whoever needs it": you opt into exactly the faults you care about.
+*(Live as of 2026-06: SPEC §12.7 ships the module scope with `total` + `exhaustive`
+checkable and the other four as loud not-checkable-yet errors — the rollout above, as built.)*
 
 ### 3.5 The one primitive to confirm — module-private constructors 🔴
 
@@ -275,8 +277,10 @@ Two honest reasons it's an A+ *thesis*, not a delivered A+:
    ergonomics (the `Vec n` / `append : Vec n -> Vec m -> Vec (n+m)` flex stays clunkier).
 2. **It's design-on-design, partly built now.** `Proof [...]` rests on `std/proof` (stub) and
    on `@total` — which HAS survived contact with a compiler (Tier 1 built 2026-06, and the
-   downward-propagation rule survived intact: it's the call gate). The `Proof [...]` surface
-   and boundary rules (§3.4) are still unbuilt and are exactly the kind that bleed on impl.
+   downward-propagation rule survived intact: it's the call gate). The module-scope
+   `Proof [...]` surface is now built too (2026-06, SPEC §12.7), and the per-obligation
+   rollout held: two obligations live, the other four loud errors until their checkers
+   exist. The per-def/per-block scopes and the Tier-2 obligations remain unbuilt.
 
 **Definition of done** (converts the A into "optionally good for whoever needs it"):
 1. ✅ ~~Confirm/add~~ **Confirmed** (2026-06, §3.5): module-private constructors are a small
@@ -286,9 +290,13 @@ Two honest reasons it's an A+ *thesis*, not a delivered A+:
    recursion conservatively rejected (Tier 2's job). The conservative-skip payback (§5.1
    constEval folding of `@total` predicates) is recorded in TODO as its own slice.
 3. 🟡 Ship the **Tier-1 refined-type library** (`Natural`/`NonZero`/`Positive`/`InBounds`).
-4. 🟡 Specify **`Proof [...]`** (§3.4) — the exhaustive fault vocabulary, the three scopes
-   (mirroring `Effect [...]`/`capabilities:`), and the downward propagation rule — as the
-   single-construct "what do I reach for" answer.
+4. ✅ **`Proof [...]` module scope SHIPPED** (2026-06) — SPEC §12.7, `proof_scope_test`/`_bad`:
+   `proofs: [...]` rides the `capabilities:` grammar shape; the vocabulary is closed (the §3.4
+   six) and **declared = enforced** — unknown or not-yet-checkable obligations are errors,
+   never silent skips, so the surface can't promise more than the checker verified. `total`
+   marks every module def implicitly `@total` (the downward gate then fires automatically);
+   `exhaustive` hardens clause-head gaps to errors in every edition, ahead of the 2026.6 gate.
+   Per-def `Proof [obligation] T` and per-block `@proof[...]{}` remain PROPOSED in SPEC.
 5. 🟢 Z3 **Tier-2** + relational witnesses — later, opt-in, for the semantic residue.
 
 Do 1 → 2 → 4 and the type system *is* the opt-in spectrum, and the A+ thesis becomes

@@ -651,12 +651,25 @@ export default grammar({
       $._newline,
       $._indent,
       optional($.capabilities_decl),
+      optional($.proofs_decl),
       repeat($._declaration),
       $._dedent,
     ),
 
     capabilities_decl: $ => seq(
       'capabilities',
+      ':',
+      '[',
+      commaSep1($.lower_id),
+      ']',
+      $._newline,
+    ),
+
+    // The proof gradient's module scope (SPEC §12.7): obligations the module
+    // promises, checked top-down — the dual of capabilities (effects flow up,
+    // proofs flow down into every def the module contains).
+    proofs_decl: $ => seq(
+      'proofs',
       ':',
       '[',
       commaSep1($.lower_id),
