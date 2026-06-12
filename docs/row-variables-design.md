@@ -180,8 +180,19 @@ shape:
   - **residual found while building** (pre-existing, S4a-era): a concrete
     untailed fn-type ascription ERASES the value's effects — effects don't
     participate in unification, so `def grab(): (String -> String)` over
-    `netGet` launders `[io]` silently. Its own slice; candidate shape:
-    effects-aware Fn-unify in ascription (declared-vs-inferred) position.
+    `netGet` launders `[io]` silently. **CLOSED 2026-06**
+    (`effect_ascribe_test`/`_bad`, SPEC §12.4 coverage block): not
+    effects-in-unify (accumulate-never-unify stays law) but a directional
+    coverage check AT the ascription boundaries — def returns and
+    `let` bindings — walking covariant structure (fn rets, type args,
+    tuples, record fields, Stream/Async); declared ⊇ actual or error with
+    fix-its. Over-approximation legal. Tail-spelled returns exempt at top
+    level (the tail owns the row). Fn params stay with the conservative
+    rule (contravariant — erasure flips direction there). The check
+    flagged `effect_tails_test`'s own `keep` ascription — a genuine
+    erasure shipped with S4c — now spelled
+    `(String -> Effect [io] String)`, which reads as the no-laundering
+    property made explicit.
 
 ## 5. Build plan (fixture-provable slices)
 

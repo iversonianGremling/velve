@@ -1,0 +1,33 @@
+@edition "2026.6"
+
+-- Ascription effect-erasure: the guardrails. Effects don't participate in
+-- unification, so each of these used to retype an effectful value as pure —
+-- the laundering hole found while building E2, now closed. Four errors:
+--   1. a return ascription whose fn type under-declares the body's row
+--   2. a binding (`let`) ascription doing the same
+--   3. erasure nested in a record field
+--   4. erasure nested in a List element
+
+def netGet(url: String): Effect [io] String
+  "body of {url}"
+
+-- 1. the original hole: declared (String -> String) over a [io] value
+def grab(): (String -> String)
+  netGet
+
+-- 2. same lie at a let
+def viaLet(): ()
+  let h: (String -> String) = netGet
+  ()
+
+-- 3. the row can't hide in a record field
+type Porter = { fetch: (String -> String) }
+def make(): Porter
+  #{ fetch: netGet }
+
+-- 4. ...or in a list element
+def fns(): List((String -> String))
+  [netGet]
+
+def main(): ()
+  println("never typechecks")

@@ -1,0 +1,44 @@
+@edition "2026.6"
+
+-- Ascription effect-COVERAGE (SPEC §12.4): effects never unify, so before
+-- this check a concrete fn-type ascription silently ERASED a value's effect
+-- row. The rule is directional: the declared row must COVER the actual row;
+-- over-approximating is allowed (merely conservative). This green fixture
+-- proves the row SURVIVES a correctly-spelled ascription and still charges.
+-- Expected: 0 errors. Runs.
+
+def netGet(url: String): Effect [io] String
+  "body of {url}"
+
+def double(s: String): String
+  "{s}{s}"
+
+-- the row spelled in the return slot: no erasure, the value keeps [io]
+def grab(): (String -> Effect [io] String)
+  netGet
+
+-- over-approximation is legal: declaring [io] over a pure fn is conservative
+def cautious(): (String -> Effect [io] String)
+  double
+
+-- a binding ascription with the row spelled
+def viaLet(): Effect [io] String
+  let h: (String -> Effect [io] String) = netGet
+  h("let")
+
+-- nested coverage: the row spelled on a record-field fn type
+type Porter = { fetch: (String -> Effect [io] String) }
+def make(): Porter
+  #{ fetch: netGet }
+
+def main(): Effect [io] ()
+  let g = grab()
+  let r1 = g("u")                    -- the ascribed row charges [io] here
+  println("grab: {r1}")
+  let c = cautious()
+  let r2 = c("v")                    -- pure underneath, [io] by declaration
+  println("cautious: {r2}")
+  println("let: {viaLet()}")
+  let m = make()
+  let r3 = m.fetch("w")
+  println("rec: {r3}")

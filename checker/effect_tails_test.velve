@@ -16,8 +16,11 @@ def double(n: Number): Number -> n * 2
 def doubles(xs: List(Number)): List(Number) -> xs |> pmap(double)
 
 -- 2. THE precision win: identity returns netGet without calling it; before
---    S4c the latent rule errored here ("the callee may call it")
-def keep(): (String -> String) -> identity(netGet)
+--    S4c the latent rule errored here ("the callee may call it"). The pure
+--    def is the point — keep() charges nothing. The RETURN type spells the
+--    row of the returned value (it IS netGet, still [io] — no laundering);
+--    the ascription-coverage check rejects the erasing `(String -> String)`.
+def keep(): (String -> Effect [io] String) -> identity(netGet)
 
 -- 3. an invoking HOF's tail binds to [io] at this call, and [io] is
 --    declared: covered (per-call-site — `doubles` above shares the def)

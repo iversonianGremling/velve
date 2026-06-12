@@ -46,7 +46,7 @@ means there is a green fixture exercising it under `checker/`.
 | Inferred error rows (`Result T _`) | ✅ v1 built (S1+S2) | §2.13, `error_rows{,_match}_test`/`_bad`: `?` accumulates a ctor row with zero threading; named-ADT pins check inclusion (escapees listed); rows are directly matchable with exhaustiveness over the ACTUAL raised set ("can never match" included); recursion among `_` defs rejected; shared ctor names resolve by expected type (`ctor_shadow_test`/`_bad`) — declaration order no longer matters. v2 row variables built (S4b, `row_tails_test`/`_bad`): generic row defs with per-call-site rows; a callback's error var is a tail. |
 | User generics (`def idy(x: a): a`) | ✅ Built | §2.12, `generics_test`/`_bad`: implicit type vars in def ascriptions — quantified at call sites (each call instantiates fresh), rigid skolems inside the body. Was a silent trap: the annotation parsed but `idy(5)` errored. |
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
-| Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. **User-spelled rows built (E2, 2026-06, `effect_spell_test`/`_bad`)**: `..e` on param fn-types binds, in the Effect clause charges — user HOFs get the same per-call-site precision; unbound tails error. |
+| Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. **User-spelled rows built (E2, 2026-06, `effect_spell_test`/`_bad`)**: `..e` on param fn-types binds, in the Effect clause charges — user HOFs get the same per-call-site precision; unbound tails error. **Ascription coverage built (2026-06, `effect_ascribe_test`/`_bad`)**: a fn-type ascription must cover the value's row (returns + bindings, covariant-deep) — the erasure laundering hole is closed. |
 | Effect-typed builtin surface | ✅ Built (2026-06) | §12.5, `builtin_effects_test`/`_bad`: `setTheme`/`setViewport` charge `[ui]`, `externSource` and the network names charge `[io]` — the stdlib stops lying by omission, incl. through HOF tails. Decided ambient: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
@@ -2331,11 +2331,23 @@ tail is a promise about fn params, never a license: a body spelling
 `Effect [..e]` has declared an (empty-named) pool and still can't call a
 charged builtin outside it. Implementation: the spelled name quantifies
 alongside type vars and rides the S4c machinery verbatim (per-call-site
-clone, absorb-at-unify, charge-after-unify) — no new checker rules. Known
-residual (pre-existing, not E2's): a concrete fn-type ascription with no
-tail **erases** the value's effects (`def grab(): (String -> String)` over
-`netGet` launders `[io]`) — effects don't participate in type unification;
-closing that is its own slice.
+clone, absorb-at-unify, charge-after-unify) — no new checker rules.
+
+**Ascription effect-coverage (2026-06, `effect_ascribe_test`/`_bad`).**
+Effects never participate in type unification (accumulate-never-unify), so a
+concrete fn-type ascription used to silently **erase** a value's row —
+`def grab(): (String -> String)` over `netGet` laundered `[io]`. Closed with
+a directional rule at ascription boundaries (def returns and `let`/`mut`
+bindings): the **declared row must cover the actual row**; declaring *more*
+is legal (merely conservative — ascribing `(String -> Effect [io] String)`
+over a pure fn charges its callers `[io]` by declaration). The check walks
+covariant structure — fn returns, type arguments, tuple elems, record
+fields, `Stream`/`Async` inners — so the row can't hide in a record field or
+list element; the error names the missing row and both fix-its (spell
+`Effect [io]` in the return slot, or bind with `..e`). A tail-spelled return
+is exempt at top level (the tail owns that row; an unbound tail already
+errors at collect). Fn *params* are contravariant — erasure flips direction
+there — and stay guarded by the §12.4 conservative latent rule instead.
 
 ### 12.5 The builtin surface is effect-typed
 

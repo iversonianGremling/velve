@@ -21,7 +21,7 @@ Legend: 🔴 load-bearing (fix before the surface freezes) · 🟡 important · 
 | Low-level | **B−** | Rust, Zig | Ptr/regions/outlives/move tracking are real and end-to-end. But unified `Number` vs. planned sized types vs. `Duration` dimensions vs. `Px` units = four numeric stories that haven't met each other (§3.4). `std/low`/gpu/audio are sketches. |
 | Games / intensive interactive | **C+** (today) / **A−** (as designed) | Unity C#, Bevy ECS, Pony | `docs/interaction-model-design.md` (footprint = `mut` params, capability-keyed dispatch, `@interaction`/`@confined`) is a credible, novel answer to ECS — but nothing of it is implemented, there is no frame clock, and a tree-walking interpreter can't hold 60fps. The claim depends on the compiled target. |
 | Animation | **C** (today) / **A** (as designed) | CSS, Framer Motion, SwiftUI | The `animated` modifier + mandatory motion-policy chokepoint ("motion you can't write inaccessibly") is a real differentiator no shipping system has. Entirely unimplemented; depends on `frames` + reconciler work. |
-| Security model | **A** *(2026-06)* | everything mainstream | Taint-at-parse (not at transport) is the right boundary and well-argued. `Effect` capability enforcement is real end-to-end (§3.6 closed): direct calls + HOF laundering + effect tails + the effect-typed builtin surface (SPEC §12.5 — `setTheme`/`setViewport` `[ui]`, `externSource`/network `[io]`; `print`/`sleep` decided-ambient). E2 user-spelled effect rows shipped (2026-06, `..e` — user HOFs get builtin-grade per-call precision). A→A+ = §3 proof-gradient integration + the untailed-ascription effect-erasure residual. |
+| Security model | **A** *(2026-06)* | everything mainstream | Taint-at-parse (not at transport) is the right boundary and well-argued. `Effect` capability enforcement is real end-to-end (§3.6 closed): direct calls + HOF laundering + effect tails + the effect-typed builtin surface (SPEC §12.5 — `setTheme`/`setViewport` `[ui]`, `externSource`/network `[io]`; `print`/`sleep` decided-ambient). E2 user-spelled effect rows shipped (2026-06, `..e` — user HOFs get builtin-grade per-call precision); ascription effect-coverage shipped (2026-06 — fn-type ascriptions can't erase rows). A→A+ = §3 proof-gradient integration. |
 
 **Overall:** the semantic layer is unusually coherent — the state primitives, the
 refusal discipline (§4.0 of the SPEC), and the design-note honesty ("evidence
@@ -512,7 +512,16 @@ dimension machinery generalize?
   is never a license for the body. Residual FOUND while building
   (pre-existing, S4a-era): an untailed concrete fn-type ascription ERASES
   effects (`def grab(): (String -> String)` over netGet launders [io] —
-  effects don't unify); its own slice. S4/v2 complete including E2.
+  effects don't unify). **CLOSED 2026-06** (`effect_ascribe_test`/`_bad`,
+  SPEC §12.4 coverage block): directional check at ascription boundaries
+  (def returns + let bindings) — declared row must COVER the actual row,
+  walked covariant-deep (fn rets, type args, tuples, record fields,
+  Stream/Async inners); over-approximating is legal; tail-spelled returns
+  exempt at top level; fn params stay with the conservative rule
+  (contravariant). Caught a real one in the corpus: effect_tails_test's
+  `keep(): (String -> String)` over identity(netGet) was a genuine
+  erasure — now spelled `(String -> Effect [io] String)` (the
+  no-laundering property, explicit). S4/v2 complete including E2.
 - [x] 🟡 **User generics** (found during the error-ADT slice, closed 2026-06;
   SPEC §2.12, `generics_test`/`_bad`): `def idy(x: a): a` parsed but the type
   var was a rigid `Named "a"` never generalized — `idy(5)` was a type error,

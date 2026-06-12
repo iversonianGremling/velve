@@ -1578,6 +1578,44 @@ class Inferrer {
     return { forall: ids, type: fnT };
   }
 
+  // Ascription effect-coverage (the E2 dig's residual, closed): effects never
+  // participate in unification (accumulate-never-unify), so unifying a
+  // concrete fn-type ASCRIPTION against an effectful value silently erased
+  // its row — `def grab(): (String -> String)` over `netGet` laundered [io].
+  // The rule is directional: the DECLARED row must cover the ACTUAL row
+  // (over-approximating is fine — declaring [io] over a pure fn is merely
+  // conservative). Walks covariant structure (fn returns, type args, tuple
+  // elems, record fields, Stream/Async inners) where both sides are concrete
+  // and congruent; a declared tail covers by construction (bound at calls).
+  // Fn PARAMS are contravariant — erasure flips direction there — and are
+  // out of scope here (the §12.4 conservative latent rule guards that side).
+  private checkEffectErasure(declared: Type, actual: Type, span: Span, what: string): void {
+    const d = this.ctx.subst.apply(declared);
+    const a = this.ctx.subst.apply(actual);
+    if (d.tag === "Fn" && a.tag === "Fn") {
+      if (d.effectTail === undefined) {
+        const row = fnEffectRow(a);
+        const missing = row.filter(e => !d.effects.includes(e));
+        if (missing.length > 0)
+          err(this.ctx, span,
+            `${what} erases effects: the value's row is [${row.join(", ")}] but the ascribed fn type declares ${d.effects.length ? `[${d.effects.join(", ")}]` : "none"} — spell the row (\`Effect [${row.join(", ")}]\` in the return slot) or bind it with a tail (\`..e\`)`);
+      }
+      this.checkEffectErasure(d.ret, a.ret, span, what);
+      return;
+    }
+    if (d.tag === "Named" && a.tag === "Named" && d.name === a.name && d.args.length === a.args.length)
+      d.args.forEach((x, i) => this.checkEffectErasure(x, a.args[i]!, span, what));
+    else if (d.tag === "Tuple" && a.tag === "Tuple" && d.elems.length === a.elems.length)
+      d.elems.forEach((x, i) => this.checkEffectErasure(x, a.elems[i]!, span, what));
+    else if (d.tag === "Record" && a.tag === "Record")
+      for (const f of d.fields) {
+        const g = a.fields.find(x => x.name === f.name);
+        if (g) this.checkEffectErasure(f.type, g.type, span, what);
+      }
+    else if ((d.tag === "Stream" && a.tag === "Stream") || (d.tag === "Async" && a.tag === "Async"))
+      this.checkEffectErasure(d.inner, a.inner, span, what);
+  }
+
   private collectType(decl: Extract<Decl, { tag: "DType" }>, env: TypeEnv): void {
     const tp = new Map<string, Type>();
     for (const p of decl.params) tp.set(p, freshVar(p));
@@ -1741,6 +1779,13 @@ class Inferrer {
 
     const bodyType = this.inferExpr(clause.body, env);
     unify(bodyType, retType, this.ctx, clause.body.span, `'${name}' return type`);
+    // Ascription effect-coverage: a return ascription must not ERASE the
+    // body value's effect row (effects don't participate in unification, so
+    // the unify above would silently retype `netGet` as `(String -> String)`).
+    // A tail-spelled return ref is exempt at top level — the tail owns that
+    // row (bound at call sites; an unbound tail already errored at collect).
+    if (retRef && !(retRef.tag === "TRFn" && retRef.effectTail !== undefined))
+      this.checkEffectErasure(retType, bodyType, clause.body.span, `'${name}' return ascription`);
 
     this.surfaceBg = prevSurface;
     if (inlineSurfaceKey) this.moduleConsts.delete(inlineSurfaceKey);
@@ -3018,10 +3063,12 @@ class Inferrer {
           let bindType = vt;
           if (stmt.ascription) {
             const prevErrCount = this.ctx.diagnostics.length;
-            unify(resolveRef(stmt.ascription, new Map(), this.sagaRets), vt, this.ctx, stmt.span);
+            const declT = resolveRef(stmt.ascription, new Map(), this.sagaRets);
+            unify(declT, vt, this.ctx, stmt.span);
             // If the ascription check failed, bind the name as Unknown so downstream
             // uses of this variable don't cascade into follow-on type errors.
             if (this.ctx.diagnostics.length > prevErrCount) bindType = { tag: "Unknown" };
+            else this.checkEffectErasure(declT, vt, stmt.span, "binding ascription");
           }
           const next = env.child();
           this.bindPat(stmt.pat, bindType, next);
@@ -3075,8 +3122,10 @@ class Inferrer {
           let bindType = peel(this.inferExpr(stmt.value, env), stmt.span);
           if (stmt.ascription) {
             const prevErrCount = this.ctx.diagnostics.length;
-            unify(resolveRef(stmt.ascription, new Map(), this.sagaRets), bindType, this.ctx, stmt.span);
+            const declT = resolveRef(stmt.ascription, new Map(), this.sagaRets);
+            unify(declT, bindType, this.ctx, stmt.span);
             if (this.ctx.diagnostics.length > prevErrCount) bindType = { tag: "Unknown" };
+            else this.checkEffectErasure(declT, bindType, stmt.span, "binding ascription");
           }
           const next = env.child();
           this.bindPat(stmt.pat, bindType, next);

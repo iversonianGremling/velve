@@ -440,6 +440,21 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       tail never licenses the body). Baseline diff = the new fixtures only.
       Found (pre-existing): untailed fn-type ascriptions erase effects —
       effects don't unify; documented as its own future slice.
+- [x] **Ascription effect-coverage**: ✅ DONE (2026-06, SPEC §12.4 coverage
+      block, `effect_ascribe_test`/`_bad`). The E2 dig's laundering hole
+      closed: a concrete fn-type ascription must COVER the value's effect
+      row — directional (declared ⊇ actual; over-approximating is legal),
+      checked at the ascription boundaries (def returns, let bindings in
+      both block and try bodies) rather than inside unify
+      (accumulate-never-unify stays law). Walks covariant structure (fn
+      rets, type args, tuples, record fields, Stream/Async inners) so the
+      row can't hide in a record field or list element; error names the
+      missing row + both fix-its. Tail-spelled returns exempt at top level
+      (the tail owns the row); fn params stay with the conservative §12.4
+      rule (contravariant — direction flips). Caught a genuine erasure in
+      effect_tails_test's `keep` (S4c-era) — fixture corrected to spell
+      `(String -> Effect [io] String)`. Baseline diff = the new bad
+      fixture only.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →
