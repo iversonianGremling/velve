@@ -162,6 +162,12 @@ export class Lowerer {
       if (isTotal && inner.type !== "function_def") {
         this.diagnostics.push({ kind: "error", span: this.sp(node), message: "`@total` marks a function definition" });
       }
+      // `@private` hides CONSTRUCTORS — on a function it's a different feature
+      // (not in v1); the type-def path applies it in lowerTopDecl's
+      // decorator_def case.
+      if (decoNames.includes("private") && inner.type !== "type_def") {
+        this.diagnostics.push({ kind: "error", span: this.sp(node), message: "`@private` marks a type definition — it hides the type's constructors inside the declaring module (function privacy is not part of v1)" });
+      }
 
       if (inner.type === "function_def") {
         const name = inner.namedChild(0)?.text ?? "?";
@@ -265,7 +271,16 @@ export class Lowerer {
       }
       case "decorator_def": {
         const inner = n.namedChildren.find(c => c.type !== "decorator");
-        return inner ? this.lowerTopDecl(inner) : null;
+        const d = inner ? this.lowerTopDecl(inner) : null;
+        const decoNames = n.namedChildren.filter(c => c.type === "decorator").map(dd => dd.namedChild(0)?.text ?? "");
+        if (decoNames.includes("private") && d?.tag === "DType") {
+          // Constructors are what `@private` hides; an alias/refinement has
+          // none (its gate is already `.parse`), so the marker would promise
+          // an opacity transparency immediately breaks.
+          if (d.body.tag === "TBAdt") d.private_ = true;
+          else this.diagnostics.push({ kind: "error", span: this.sp(n), message: "`@private` marks an ADT type definition — constructors are what it hides (aliases and refinements are transparent to their base; their boundary is `.parse`)" });
+        }
+        return d;
       }
       default: return null;
     }

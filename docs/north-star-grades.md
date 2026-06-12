@@ -22,7 +22,7 @@ remaining gap is a live *design* choice.
 
 | Field | Now | A+ exemplar(s) | What closes the gap | Gap is… |
 |---|---|---|---|---|
-| **Type core** | **A** *(2026-06)* | F★ / Liquid Haskell (SMT refinements); Idris / Lean (full dependent) | The old A− was the **conservative skip** — Velve bailed on hard obligations instead of discharging them. (**User generics shipped 2026-06**, SPEC §2.12 — implicit def-signature type vars, polymorphic at call sites / rigid in the body.) (**Proof-gradient surface live 2026-06**, SPEC §12.6–12.7 — `@total` + the `proofs: [...]` module scope; `total`/`exhaustive`/`handled` checkable, 3 of the 6 obligations.) **A− → A re-graded 2026-06** — this row's named next lever landed: **§5.1 constEval widening** (`constfold_total_test`/`_bad`) — the refinement folder executes `@total` predicates at check time, so the skip set shrinks by exactly the code that proved it terminates. The skip is now *opt-out-able per predicate* (mark it `@total`), which changes its character: what remains skipped is the un-asked-for frontier, not a refusal. Honest bound: this fold is also the *only* check a plain refined call gets (runtime enforcement is the explicit `T.parse` boundary), and `Number ≠ Nat` keeps it fuel-bounded. Remaining → A+: the **refined-type library** (`Natural`/`NonZero`/… — gated on module-private ctors, a language change) + Tier-2 Z3 for the semantic residue (§3.6 items 3, 5). | **Build** — next lever: the refined-type tier (needs module-private constructors first). |
+| **Type core** | **A** *(2026-06)* | F★ / Liquid Haskell (SMT refinements); Idris / Lean (full dependent) | The old A− was the **conservative skip** — Velve bailed on hard obligations instead of discharging them. (**User generics shipped 2026-06**, SPEC §2.12 — implicit def-signature type vars, polymorphic at call sites / rigid in the body.) (**Proof-gradient surface live 2026-06**, SPEC §12.6–12.7 — `@total` + the `proofs: [...]` module scope; `total`/`exhaustive`/`handled` checkable, 3 of the 6 obligations.) **A− → A re-graded 2026-06** — this row's named next lever landed: **§5.1 constEval widening** (`constfold_total_test`/`_bad`) — the refinement folder executes `@total` predicates at check time, so the skip set shrinks by exactly the code that proved it terminates. The skip is now *opt-out-able per predicate* (mark it `@total`), which changes its character: what remains skipped is the un-asked-for frontier, not a refusal. Honest bound: this fold is also the *only* check a plain refined call gets (runtime enforcement is the explicit `T.parse` boundary), and `Number ≠ Nat` keeps it fuel-bounded. Remaining → A+: the **refined-type library** (`Natural`/`NonZero`/… — **ungated 2026-06**: `@private type` shipped, SPEC §7.1, sealing ctors at the module boundary; the library is now a pure library add) + Tier-2 Z3 for the semantic residue (§3.6 items 3, 5). | **Build** — next lever: the refined-type tier (now unblocked). |
 | **UI / styling** | A | SwiftUI (ergonomics) + Elm (purity); **no shipping language** has accessibility-as-proof | Ceiling already above the field. **§2.1 duality closed** (paren-form elements), the **theme system shipped 4/4** (typed `Surface` tokens → `using` clause → derived `Theme` record → `theme` read-only reactive root: `std/color` now has a real consumer; accessibility-as-proof fires on token, `using`-surface, computed, and live-root colours), and **responsive is built end-to-end** — closed `Breakpoint`, `Clamp` band, the read-only `viewport` root, the `responsive` keyword, and the **prop-site auto-collapse** of a `Responsive(Length)` against the live `viewport.breakpoint` (re-collapsing on `setViewport`, the viewport sibling of `setTheme`). Re-graded A− → **A** (2026-06): the prior hold was "responsive/inputmap design-only" — responsive is shipped, and `inputmap` is an input/event item (event-row §3.2). Residual is polish (compile-time vs runtime cycle detection; §2.1 handler/spread tail), not a pillar. | **Build** — A→A+ is table-stakes breadth (§2), not a single lever. |
 | **Event / state** | A *(2026-06)* | Erlang/OTP + Temporal + XState — Velve already unifies all three | Both named gaps shipped 2026-06: per-stream **backpressure** (`drop`/`buffer N`/`block` at decl site, policy-exempt `Done`, `stream_policy_test`) and **`await`→step-goto** in machine steps (lowering fix, `machine_await_test` — the idiomatic stream-draining machine works). Re-graded A− → **A**. The `inputmap` **core shipped 2026-06** (SPEC §10.5, `inputmap_test`/`_bad`): typed pattern-match table over a stream, conflict analysis ("bound twice"/"shadowed" — the dual of exhaustiveness, as designed), labels retained, drain-loop runtime. **Help-as-derived-data shipped too** (`inputmap_help_test`/`_bad`): a dedicated `Inputmap` type + `help(map) : List({pattern, label})` — the auto-help differentiator's data layer, check-time-typed. **And `++` layering** (`inputmap_layer_test`/`_bad`): maps are values, `default ++ userOverrides` replaces-in-place/appends, cross-stream layering is a check error (the type carries the stream). **And chord-refinement literals** (`inputmap_chord_test`/`_bad`): `Push("Ctl+S")` is a check-time typo — the literal-pattern refinement fold, general to every match site. **And `keymap` sugar** (`keymap_test`/`_bad`): `keymap N` ≡ `inputmap N over Key`, proven by layering a keymap with a plain inputmap over `Key`. A→A+ residual: remaining breadth — std `Key` device library + physical-key prefix, focus-zone scoping, the *rendered* overlay element. | **Build** — inputmap breadth (the overlay element waits on the element-DSL render path; the Key library waits on a host keyboard source). |
 | **Error handling** | A+ *(2026-06)* | Rust (`Result`+`?`+`thiserror`); Swift typed `throws`; Zig inferred error sets | B→B+ was readability (ternary deleted). **B+→A** (SPEC §2.6, `error_adt_test`/`_bad`): named error ADTs — prelude `ParseError`, stringly-error use a check error, map-at-the-boundary convention; `try` soundness closed (`try_sound_test`/`_bad`). **A→A+ shipped 2026-06** (SPEC §2.13, `error_rows{,_match}_test`/`_bad`): **inferred error rows v1** — `Result T _` infers the raised ctor set with zero threading (the §4 hybrid: Zig ergonomics inside), named-ADT pins check ctor-set inclusion with escapees listed (reviewed contract at the edge), and rows are directly matchable with exhaustiveness over the **actual raised set** incl. "can never match" arms — the combination none of the references ship (Zig has no reviewed pin, Rust threads everything, Swift's `throws` set is declared not derived). **Ctor shadowing fixed 2026-06** (`ctor_shadow_test`/`_bad`): shared ctor names resolve by expected type in expression position and scrutinee type in patterns — declaration order no longer matters. **Late contributions fixed 2026-06** (`row_late_test`/`_bad`): a callee error type still unresolved at the `?` is re-judged at end of module — landed in the row or rejected, never silently dropped. **Pin fix-its shipped 2026-06** (`row_fixit_test`/`_bad`): failing pins name the smallest edit (re-pin with a covering ADT, or add the missing variants). S3 closed. Residuals (honest): mixed-arity shared names keep last-decl-wins (runtime-ambiguous — needs an eval redesign, not a rows slice); prose `parseInt`/`parseFloat` remain. **Row variables shipped 2026-06** (v2/S4b, SPEC §2.13 v2 block, `row_tails_test`/`_bad`): generic row defs with per-call-site rows — a callback's error var is a tail, the same def pins differently at each call, matches are exhaustive over *this* call's set. | **v2 done** (S4a fn-type ascriptions + S4b row tails + S4c effect tails shipped — the §4 convergence built at E1 scope); remaining residuals are the documented eval-side/prose items, not rows work. |
@@ -244,7 +244,7 @@ above, as built. `handled` also surfaced the second enforcement shape: it is sco
 like `exhaustive` — its fault is syntactic to the scope — where `total` is the call-graph
 obligation needing the downward gate.)*
 
-### 3.5 The one primitive to confirm — module-private constructors 🔴
+### 3.5 The one primitive to confirm — module-private constructors ✅ SHIPPED
 
 The entire construction tier is only *sound* if external code cannot reach a type's unchecked
 constructor (only `.parse` + closed ops). Velve has opaque/named types (the `UserId`/`Named`
@@ -255,10 +255,18 @@ add or a small language change. **Check this first** — it gates 3.3 and 3.4's 
 > **CONFIRMED (investigated 2026-06): it's a language change, not a library add.** The
 > resolver has no visibility mechanism at all — `collectDecls`/`registerAliases` put every
 > declaration, including those inside `module` blocks, into one flat global scope, and ADT
-> constructors resolve from anywhere. So the construction tier (item 3 below) needs a small
-> resolver feature (e.g. `module`-scoped ctor bindings with an explicit export list) before
-> the `Natural` library can be sound. Does NOT gate `@total` or the `Proof [...]` surface —
+> constructors resolve from anywhere. Does NOT gate `@total` or the `Proof [...]` surface —
 > totality and scope-proofs are checks on operations, not value invariants.
+
+> **SHIPPED (2026-06): `@private type`** (SPEC §7.1, `private_ctor_test`/`_bad`). An ADT
+> declared `@private` inside a module seals its constructors at the module boundary in both
+> directions — no forging by call, no representation-dependence by pattern — while the type
+> name stays public for signatures. Implementation matched the "small language change" read:
+> the resolver's scope stays flat; privacy is a use-site check on the ctor binding (a
+> `privateTo` tag checked against the enclosing-module stack), so shadowing and resolution
+> order are untouched. **The construction tier (item 3) is now ungated**: `Natural`/`NonZero`/
+> `Positive`/`InBounds` as a module of `@private` ADTs with `.parse`-style smart constructors
+> and closed ops is a pure library add from here.
 
 ### 3.6 Verdict + definition of done
 
@@ -287,8 +295,9 @@ the re-grade below argues the construct's A+, not cheaper proofs):
    exist. The per-def/per-block scopes and the Tier-2 obligations remain unbuilt.
 
 **Definition of done** (converts the A into "optionally good for whoever needs it"):
-1. ✅ ~~Confirm/add~~ **Confirmed** (2026-06, §3.5): module-private constructors are a small
-   language change (flat resolver scope today) — gates item 3 only, not `@total`/`Proof [...]`.
+1. ✅ ~~Confirm/add~~ **Confirmed AND SHIPPED** (2026-06, §3.5): module-private constructors
+   landed as `@private type` (SPEC §7.1, `private_ctor_test`/`_bad`) — ctors seal at the
+   module boundary in both directions, the type name stays public. Item 3 is ungated.
 2. ✅ **Tier-1 `@total` SHIPPED** (2026-06) — SPEC §12.6, `total_test`/`_bad`: structural
    decrease + downward call gate + bounded-construct rejection; mutual/closure/`n / 2`
    recursion conservatively rejected (Tier 2's job). The conservative-skip payback —
@@ -296,7 +305,8 @@ the re-grade below argues the construct's A+, not cheaper proofs):
    `constfold_total_test`/`_bad`): the totality promise is what makes running user code
    inside the checker safe, and it now does (fuel-bounded; decidable-pattern clause
    dispatch; bails on anything it can't decide).
-3. 🟡 Ship the **Tier-1 refined-type library** (`Natural`/`NonZero`/`Positive`/`InBounds`).
+3. 🟡 Ship the **Tier-1 refined-type library** (`Natural`/`NonZero`/`Positive`/`InBounds`) —
+   **ungated 2026-06**: `@private type` shipped (§3.5), so this is now a pure library add.
 4. ✅ **`Proof [...]` module scope SHIPPED** (2026-06) — SPEC §12.7, `proof_scope_test`/`_bad`:
    `proofs: [...]` rides the `capabilities:` grammar shape; the vocabulary is closed (the §3.4
    six) and **declared = enforced** — unknown or not-yet-checkable obligations are errors,
@@ -335,8 +345,8 @@ What this argument buys, precisely: the **Security row's A+** (the proof-gradien
 was its last named ingredient — §1) and the construct-level A+ for the gradient itself. The
 **Type-core row** moved separately, one slice later: its named gap was the conservative skip,
 and the promoted follow-on landed — **§5.1 constEval widening SHIPPED** (2026-06,
-`constfold_total_test`/`_bad`), re-grading that row A− → A (§1); item 3 (refined types, gated
-on module-private ctors) and Tier 2 are its remaining → A+ path. And permanently: Velve
+`constfold_total_test`/`_bad`), re-grading that row A− → A (§1); item 3 (refined types —
+ungated 2026-06, `@private type` shipped) and Tier 2 are its remaining → A+ path. And permanently: Velve
 will not, and shouldn't try to, win the field's A+ on *cheaper hard proofs* — that path runs
 straight through the readability the language exists to protect.
 
@@ -623,8 +633,8 @@ The most useful cut for prioritization:
   Most are gated on the **compiled backend** (`compiler-architecture-design.md`). The compiled
   target unblocks the most rows at once (Games + Animation entirely, the perf ceiling under
   everything).
-- **Live design choice still open** — Type-core (the gradient's *surface* shipped 2026-06;
-  what's open is the refined-type tier + module-private ctors and the finer proof scopes, §3),
+- **Live design choice still open** — Type-core (the gradient's *surface* and `@private type`
+  shipped 2026-06; what's open is the refined-type tier itself and the finer proof scopes, §3),
   Error-handling (the infer-and-pin hybrid + row inference, §4), Low-level (units-of-measure,
   §5).
 

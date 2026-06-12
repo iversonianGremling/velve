@@ -570,6 +570,30 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       for when they land. 3 of 6 obligations now checkable; remaining:
       `bounds`/`nonzero` (flow-sensitive fact env, §3.1 catch 1),
       `overflow` (sized types, §5).
+- [x] **`@private type` — module-private constructors (north-star §3.5,
+      the refined-type tier's soundness gate)**: ✅ DONE (2026-06, SPEC
+      §7.1, `private_ctor_test`/`_bad` — exactly 4 errors; baselines
+      unchanged except the two new rows; no grammar change — `@private`
+      rides the generic decorator rule like `@total` did). An ADT declared
+      `@private` inside a module seals its constructors at the module
+      boundary in BOTH directions: outside code can neither call the ctor
+      (forging a value that skipped validation) nor pattern-match it
+      (depending on the hidden representation); the type NAME stays public
+      for signatures. Validation at lower: `@private` on a def errors
+      (fn privacy not v1); on an alias/refinement errors (transparent to
+      base — their boundary is `.parse`); at resolve: needs an enclosing
+      module. Implementation matched the §3.5 "small language change"
+      read: resolver scope stays FLAT — Binding gains `privateTo`, the
+      Resolver tracks a moduleStack through both passes, and privacy is a
+      use-site check at the Var lookup + a new PCtor head lookup (patterns
+      never resolved their head before; typing catches unknown ctors, but
+      privacy had to). ast.ts DType += private_; lower.ts decorator_def
+      case applies it. **The §3.6 item-3 gate fell**: the refined-type
+      library (`Natural`/`NonZero`/`Positive`/`InBounds` as @private ADTs
+      + smart constructors + closed ops) is now a pure library add — the
+      Type-core row's named next lever, no longer blocked on language
+      work. Grade tables updated (no re-grade — the row moved to A last
+      slice; this unblocks its → A+ path).
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

@@ -186,7 +186,14 @@ export type Decl =
   | ({ tag: "DType";
        name: string;
        params: string[];
-       body: TypeBody }                                                       & Node)
+       body: TypeBody;
+       // `@private type T = …` inside a module (north-star §3.5): the type
+       // NAME stays public (usable in signatures anywhere), but the variant
+       // CONSTRUCTORS resolve only inside the declaring module — outside code
+       // can neither build nor match the representation, so the module's
+       // smart constructors are the only gate. The primitive the refined-type
+       // tier's soundness needs (a Natural nobody can forge).
+       private_?: boolean }                                                   & Node)
 
   | ({ tag: "DStore";
        name: string;

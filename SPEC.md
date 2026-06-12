@@ -50,6 +50,7 @@ means there is a green fixture exercising it under `checker/`.
 | Effect-typed builtin surface | ✅ Built (2026-06) | §12.5, `builtin_effects_test`/`_bad`: `setTheme`/`setViewport` charge `[ui]`, `externSource` and the network names charge `[io]` — the stdlib stops lying by omission, incl. through HOF tails. Decided ambient: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. |
 | Totality (`@total`, Tier 1) | ✅ Built (2026-06) | §12.6, `total_test`/`_bad`: opt-in structural termination — recursion must decrease at one position (ctor/tuple/record descent or `n - k` under a literal/comparison floor), totality flows down the call graph (total calls total + terminating builtins; HOFs need a checkable fn), `loop`/`await`/spawn/host rejected in total bodies. Mutual recursion, closure recursion, `n / 2` → conservative reject (Tier 2 `proof.terminates` is the future valve). First shipped obligation of the north-star §3 proof gradient. **§5.1 payoff shipped (2026-06, `constfold_total_test`/`_bad`)**: the refinement folder (§2.6) executes `@total` predicates at check time — fuel-bounded, conservative on anything undecidable — so the conservative-skip set shrinks by exactly the code that proved it terminates. |
 | Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`; `exhaustive` hardens clause-head gaps to errors in every edition. **`handled` shipped (2026-06, `proof_handled_test`/`_bad`)**: no silently discarded `Result` anywhere in the module — third checkable obligation, scope-local like `exhaustive`. Per-def/per-block scopes PROPOSED. |
+| Module-private constructors (`@private type`) | ✅ Built (2026-06) | §7.1, `private_ctor_test`/`_bad`: an ADT's constructors seal at the module boundary (no forging by call, no representation-dependence by pattern); the type name stays public. The soundness primitive for the refined-type tier (north-star §3.5 confirmed → shipped). Resolver scope stays flat — privacy is a use-site check. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | Call children (`card()` composition) | ✅ Built (2026-06) | §11.1, `call_child_test`/`_bad`: a bare lowercase component call is a `child` grammar form — composed views nest for real (closes the last children-flattening residual); a call child resolves, type-checks, and effect-checks like a call anywhere. |
@@ -1750,6 +1751,39 @@ module geometry
 
   def export circleArea(r: Number): Number -> pi * r ^ 2
 ```
+
+**Module-private constructors — `@private type`** *(SHIPPED 2026-06,
+`private_ctor_test`/`_bad`; north-star §3.5)*. An ADT declared `@private`
+inside a module seals its constructors at the module boundary — in **both
+directions**: outside code can neither *call* the constructor (forging a value
+that skipped validation) nor *match* it (depending on the representation the
+module hid). The type **name** stays public and is fine in any signature; the
+module's functions are the only gate:
+
+```
+module naturals
+  @private
+  type Natural
+    = Natural Number
+
+  def natural(n: Number): Result Natural String          -- the only gate in
+    if n >= 0 then Ok(Natural(n)) else Error("negative")
+
+  def natValue(n: Natural): Number
+    match n
+      | Natural(x) -> x
+
+def forge(): Natural
+  Natural(99)        -- error: constructor 'Natural' is private to module 'naturals'
+```
+
+This is the soundness primitive the refined-type tier needs (north-star §3.3):
+a `Natural` is ≥ 0 *by construction* exactly when nobody outside can construct
+one. Validation: `@private` needs an enclosing module, marks ADTs only
+(aliases/refinements are transparent to their base — their boundary is already
+`.parse`), and does not mark functions (v1). Mechanically the resolver's scope
+stays flat — privacy is a use-site check on the constructor binding, so
+shadowing and resolution order are unchanged.
 
 ### 7.2 Stores
 

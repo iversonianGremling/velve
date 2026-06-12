@@ -1,0 +1,41 @@
+-- `@private type` — module-private constructors (north-star §3.5, the
+-- primitive the refined-type tier's soundness needs). The type NAME stays
+-- public; the CONSTRUCTOR resolves only inside the declaring module, so the
+-- module's smart constructor is the only gate and a Natural cannot be forged.
+-- Everything below builds/matches Natural strictly inside the module, so this
+-- checks clean and runs; the _bad twin pins the outside-access rejections.
+@edition "2026.6"
+
+module naturals
+  @private
+  type Natural
+    = Natural Number
+
+  -- the only gate from raw Number: validates, then constructs
+  def natural(n: Number): Result Natural String
+    if n >= 0 then Ok(Natural(n)) else Error("negative")
+
+  def natValue(n: Natural): Number
+    match n
+      | Natural(x) -> x
+
+  -- closed op: Natural + Natural stays Natural by construction
+  def natAdd(a: Natural, b: Natural): Natural
+    Natural(natValue(a) + natValue(b))
+
+-- Outside the module: the type name is public (fine in signatures), values
+-- flow through the module's functions only.
+def describe(r: Result Natural String): String
+  match r
+    | Ok(n)    -> "nat {natValue(n)}"
+    | Error(e) -> "rejected: {e}"
+
+def main(): Effect [io] ()
+  println(describe(natural(3)))
+  println(describe(natural(0 - 1)))
+  match natural(4)
+    | Ok(a) ->
+      match natural(5)
+        | Ok(b)    -> println(natValue(natAdd(a, b)))
+        | Error(_) -> println("?")
+    | Error(_) -> println("?")

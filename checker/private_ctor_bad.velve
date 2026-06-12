@@ -1,0 +1,40 @@
+-- `@private type` rejections — exactly 4 errors. The constructor is sealed
+-- inside its module in BOTH directions (forging by call, depending-on-rep by
+-- pattern), and the marker itself is validated (needs a module; types only).
+@edition "2026.6"
+
+module naturals
+  @private
+  type Natural
+    = Natural Number
+
+  def natural(n: Number): Result Natural String
+    if n >= 0 then Ok(Natural(n)) else Error("negative")
+
+  def natValue(n: Natural): Number
+    match n
+      | Natural(x) -> x
+
+-- error 1: forging — calling the private constructor outside the module
+def forge(): Natural
+  Natural(99)
+
+-- error 2: representation leak — matching the private ctor outside the module
+def peek(r: Result Natural String): Number
+  match r
+    | Ok(Natural(x)) -> x
+    | Ok(_)          -> 0
+    | Error(_)       -> 0
+
+-- error 3: @private with no enclosing module — nothing to be private to
+@private
+type Loose
+  = Loose Number
+
+-- error 4: @private on a function — v1 hides constructors, not functions
+@private
+def secret(): Number
+  7
+
+def main(): Effect [io] ()
+  println(peek(natural(2)))

@@ -10,6 +10,11 @@ export interface Binding {
   name: string;
   kind: BindingKind;
   span: Span;
+  // `@private type` constructors (north-star §3.5): set to the declaring
+  // module's name. The binding still lives in the flat global scope — privacy
+  // is a USE check (referenced outside that module → error), not a separate
+  // scope, so shadowing and recall semantics stay exactly as they were.
+  privateTo?: string;
 }
 
 export interface Diagnostic {
@@ -62,6 +67,11 @@ class Resolver {
   private diagnostics: Diagnostic[]  = [];
   private snapshots: ScopeSnapshot[]  = [];
 
+  // The stack of enclosing module names during both passes — a `@private`
+  // constructor is usable anywhere inside its declaring module, including
+  // nested modules within it.
+  private moduleStack: string[] = [];
+
   run(mod: Module): ResolutionResult {
     const globals = new Scope();
     this.collectDecls(mod.decls, globals);
@@ -77,15 +87,22 @@ class Resolver {
         case "DFn":
           scope.define(decl.name, { name: decl.name, kind: "fn", span: decl.span });
           break;
-        case "DType":
+        case "DType": {
           scope.define(decl.name, { name: decl.name, kind: "type", span: decl.span });
-          // ADT constructors are callable names
+          const owner = this.moduleStack[this.moduleStack.length - 1];
+          if (decl.private_ && owner === undefined)
+            this.error(decl.span, `\`@private\` on type '${decl.name}' needs an enclosing module — privacy means "constructors resolve only inside the declaring module", and there is no module here to be inside of`);
+          // ADT constructors are callable names; a @private type's ctors carry
+          // their owning module (the type NAME above stays public).
           if (decl.body.tag === "TBAdt") {
             for (const v of decl.body.variants) {
-              scope.define(v.name, { name: v.name, kind: "ctor", span: v.span });
+              const b: Binding = { name: v.name, kind: "ctor", span: v.span };
+              if (decl.private_ && owner !== undefined) b.privateTo = owner;
+              scope.define(v.name, b);
             }
           }
           break;
+        }
         case "DStore":
           scope.define(decl.name, { name: decl.name, kind: "store", span: decl.span });
           for (const msg of decl.messages) {
@@ -119,7 +136,9 @@ class Resolver {
         case "DModule":
           // Flatten module contents into the outer scope for now.
           // Qualified access (particleSystem.fn) is not yet supported.
+          this.moduleStack.push(decl.name);
           this.collectDecls(decl.decls, scope);
+          this.moduleStack.pop();
           break;
       }
     }
@@ -129,7 +148,9 @@ class Resolver {
 
   private resolveDecl(decl: Decl, scope: Scope): void {
     if (decl.tag === "DModule") {
+      this.moduleStack.push(decl.name);
       for (const inner of decl.decls) this.resolveDecl(inner, scope);
+      this.moduleStack.pop();
       return;
     }
     if (decl.tag === "DSaga") {
@@ -263,6 +284,8 @@ class Resolver {
         const b = scope.lookup(expr.name);
         if (b) {
           this.resolutions.set(expr, b);
+          if (b.privateTo !== undefined && !this.moduleStack.includes(b.privateTo))
+            this.error(expr.span, `constructor '${expr.name}' is private to module '${b.privateTo}' — build the value through the module's functions instead`);
         } else if (!isBuiltin(expr.name)) {
           this.error(expr.span, `unresolved name: ${expr.name}`);
         }
@@ -454,9 +477,17 @@ class Resolver {
       case "PRecord":
         for (const f of pat.fields) this.bindPat(f.pat, scope);
         break;
-      case "PCtor":
+      case "PCtor": {
+        // Patterns never resolved their head name before (typing catches the
+        // unknown-ctor case), but privacy must: matching a @private ctor
+        // outside its module exposes — and lets callers depend on — the
+        // representation the module hid.
+        const b = scope.lookup(pat.name);
+        if (b?.privateTo !== undefined && !this.moduleStack.includes(b.privateTo))
+          this.error(pat.span, `constructor '${pat.name}' is private to module '${b.privateTo}' — it cannot be matched outside the module that hides it`);
         if (pat.inner) this.bindPat(pat.inner, scope);
         break;
+      }
       case "PTyped":
         scope.define(pat.name, { name: pat.name, kind: "var", span: pat.span });
         break;
