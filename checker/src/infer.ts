@@ -336,6 +336,13 @@ let REFINEMENTS = new Map<string, { params: string[]; baseRef: TypeRef; pred: Ex
 let FN_PARAMS = new Map<string, string[]>();
 // Full parameter slots (first clause) for named-argument / default resolution.
 let FN_SIGS = new Map<string, ParamSlot[]>();
+// Clauses of every `@total` function (decorator or module `proofs: [total]` —
+// DFn.total is set at lower time for both). `constEval` may apply these at
+// compile time (totality-design §5.1): the totality promise is what makes
+// running user code inside the type checker safe. Fuel-bounded anyway, because
+// `Number` ≠ `Nat` (`fact(-1)` passes the literal-floor rule yet diverges) —
+// out of fuel folds to undefined (conservative skip), never a hung compiler.
+let TOTAL_FNS = new Map<string, FnClause[]>();
 const ALIAS_RESOLVING = new Set<string>();   // cycle guard
 
 function resolveRef(ref: TypeRef, tp: Map<string, Type>, sagas?: Map<string, Type>): Type {
@@ -420,6 +427,7 @@ function registerAliases(decls: Decl[]): void {
         REFINEMENTS.set(decl.name, { params: decl.params, baseRef: decl.body.ref, pred: decl.body.pred });
     }
     else if (decl.tag === "DFn") {
+      if (decl.total) TOTAL_FNS.set(decl.name, decl.clauses);
       const clause = decl.clauses[0];
       if (clause) {
         FN_PARAMS.set(decl.name, clause.params.map(paramName));
@@ -492,7 +500,22 @@ function apcaLc(fg: string, bg: string): number | null {
   return Math.abs(out * 100);
 }
 
+// Fuel for `@total` function application during folding (totality-design §5.1).
+// Each application costs 1; exhaustion folds to undefined — a conservative skip,
+// identical to "not constant". This is the checker's own termination guarantee:
+// `Number` ≠ `Nat`, so a marker the structural pass accepts (`fact`) can still
+// diverge on a negative constant — out of fuel must never mean a hung compiler.
+const FOLD_FUEL = 100_000;
+let foldFuel = 0;
+
+// Public entry: every checker call site is a fresh top-level fold, so the
+// wrapper resets fuel; recursion inside the engine stays on `ceval`.
 export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undefined {
+  foldFuel = FOLD_FUEL;
+  return ceval(e, env);
+}
+
+function ceval(e: Expr, env: Map<string, ConstVal>): ConstVal | undefined {
   switch (e.tag) {
     case "Lit":
       if (e.lit.tag === "Num" || e.lit.tag === "Str" || e.lit.tag === "Bool") return e.lit.value;
@@ -503,14 +526,14 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
     case "Tuple": {
       const out: ConstVal[] = [];
       for (const el of e.elems) {
-        const v = constEval(el, env);
+        const v = ceval(el, env);
         if (v === undefined) return undefined;
         out.push(v);
       }
       return out;
     }
     case "UnOp": {
-      const x = constEval(e.expr, env);
+      const x = ceval(e.expr, env);
       if (x === undefined) return undefined;
       if (e.op === "!" && typeof x === "boolean") return !x;
       if (e.op === "-" && typeof x === "number")  return -x;
@@ -520,15 +543,15 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
       // Short-circuit logical operators so a non-constant operand on the dead side
       // doesn't sink the whole fold.
       if (e.op === "&&" || e.op === "||") {
-        const l = constEval(e.left, env);
+        const l = ceval(e.left, env);
         if (typeof l !== "boolean") return undefined;
         if (e.op === "&&" && !l) return false;
         if (e.op === "||" && l)  return true;
-        const r = constEval(e.right, env);
+        const r = ceval(e.right, env);
         return typeof r === "boolean" ? r : undefined;
       }
-      const l = constEval(e.left, env);
-      const r = constEval(e.right, env);
+      const l = ceval(e.left, env);
+      const r = ceval(e.right, env);
       if (l === undefined || r === undefined) return undefined;
       const nums = typeof l === "number" && typeof r === "number";
       switch (e.op) {
@@ -549,14 +572,14 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
     case "Call": {
       // listLength xs / length xs — folds a constant list for dependent bounds.
       if (e.fn.tag === "Var" && (e.fn.name === "listLength" || e.fn.name === "length") && e.args.length === 1) {
-        const xs = constEval(e.args[0]!, env);
+        const xs = ceval(e.args[0]!, env);
         if (Array.isArray(xs)) return xs.length;
         return undefined;
       }
       // matches(value, "regex") — the canonical String-refinement predicate.
       if (e.fn.tag === "Var" && e.fn.name === "matches" && e.args.length === 2) {
-        const subj = constEval(e.args[0]!, env);
-        const pat  = constEval(e.args[1]!, env);
+        const subj = ceval(e.args[0]!, env);
+        const pat  = ceval(e.args[1]!, env);
         if (typeof subj === "string" && typeof pat === "string") {
           try { return new RegExp(pat).test(subj); } catch { return undefined; }
         }
@@ -566,8 +589,8 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
       // both colours are constant hex strings; a non-literal background (resolved by
       // convergence, themed) stays unfolded → runtime/linter, per styles-design §14.1.
       if (e.fn.tag === "Var" && e.fn.name === "contrast" && e.args.length === 2) {
-        const fg = constEval(e.args[0]!, env);
-        const bg = constEval(e.args[1]!, env);
+        const fg = ceval(e.args[0]!, env);
+        const bg = ceval(e.args[1]!, env);
         if (typeof fg === "string" && typeof bg === "string") {
           const lc = apcaLc(fg, bg);
           return lc === null ? undefined : lc;
@@ -584,6 +607,63 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
         const c = foldColorCall(e.fn.name, e.args, env);
         if (c !== undefined) return c;
       }
+      // A user function that PROMISED termination folds by running its clauses
+      // (totality-design §5.1 — the payoff the @total slice deferred). Builtin
+      // folds above keep priority over a same-named user fn (least change).
+      // Positional calls only; every argument must itself fold.
+      if (e.fn.tag === "Var" && e.named.length === 0 && TOTAL_FNS.has(e.fn.name)) {
+        const argVals: ConstVal[] = [];
+        for (const a of e.args) {
+          const v = ceval(a, env);
+          if (v === undefined) return undefined;
+          argVals.push(v);
+        }
+        return applyTotalFn(TOTAL_FNS.get(e.fn.name)!, argVals);
+      }
+      return undefined;
+    }
+    // If/Match/Do fold so @total BODIES fold — these forms are the bread and
+    // butter of total functions (base case + decrease). They fold anywhere
+    // constEval runs, which is strictly more constants, never fewer.
+    case "If": {
+      const c = ceval(e.cond, env);
+      if (typeof c !== "boolean") return undefined;
+      if (c) return ceval(e.then, env);
+      return e.else_ ? ceval(e.else_, env) : undefined;   // no else → Unit, not a ConstVal
+    }
+    case "Match": {
+      const subj = ceval(e.subject, env);
+      if (subj === undefined) return undefined;
+      for (const br of e.branches) {
+        const benv = new Map(env);
+        const m = tryMatchConst(br.pat, subj, benv);
+        if (m === "unknown") return undefined;   // can't DECIDE the branch → can't skip it either
+        if (m === "no") continue;
+        if (br.guard) {
+          const g = ceval(br.guard, benv);
+          if (typeof g !== "boolean") return undefined;
+          if (!g) continue;
+        }
+        return ceval(br.body, benv);
+      }
+      return undefined;
+    }
+    case "Do": {
+      // The pure straight-line subset: immutable `let` bindings, value last.
+      // Anything else (mut, reassignment, control statements) sinks the fold.
+      const denv = new Map(env);
+      for (let i = 0; i < e.stmts.length; i++) {
+        const s = e.stmts[i]!;
+        const last = i === e.stmts.length - 1;
+        if (s.tag === "SExpr" && last) return ceval(s.expr, denv);
+        if (s.tag === "SBind" && s.declares && !s.mutable && s.pat.tag === "PVar" && !last) {
+          const v = ceval(s.value, denv);
+          if (v === undefined) return undefined;
+          denv.set(s.pat.name, v);
+          continue;
+        }
+        return undefined;
+      }
       return undefined;
     }
     case "Record": {
@@ -591,12 +671,12 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
       // first, then explicit fields override. Any non-constant field sinks the fold.
       const out: ConstRec = {};
       if (e.spread) {
-        const base = constEval(e.spread, env);
+        const base = ceval(e.spread, env);
         if (!base || typeof base !== "object" || Array.isArray(base)) return undefined;
         for (const k in base) out[k] = base[k]!;
       }
       for (const f of e.fields) {
-        const v = constEval(f.value, env);
+        const v = ceval(f.value, env);
         if (v === undefined) return undefined;
         out[f.name] = v;
       }
@@ -604,7 +684,7 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
     }
     case "Field": {
       // `theme.panel` over a constant record; `color.l` over a folded OKLCH triple.
-      const obj = constEval(e.obj, env);
+      const obj = ceval(e.obj, env);
       if (obj && typeof obj === "object" && !Array.isArray(obj)) return obj[e.field];
       const t = asLCH(obj);
       if (t) { const i = { l: 0, c: 1, h: 2 }[e.field]; if (i !== undefined) return t[i]; }
@@ -618,7 +698,7 @@ export function constEval(e: Expr, env: Map<string, ConstVal>): ConstVal | undef
 // one / an arg isn't constant. A Color is an OKLCH triple `[L,C,H]`; `toHex` maps a
 // triple → hex string. Shares ./color.ts with the runtime so the fold can't diverge.
 function foldColorCall(name: string, args: Expr[], env: Map<string, ConstVal>): ConstVal | undefined {
-  const v = (i: number) => constEval(args[i]!, env);
+  const v = (i: number) => ceval(args[i]!, env);
   const col = (i: number) => asLCH(v(i));
   const n   = (i: number) => { const x = v(i); return typeof x === "number" ? x : undefined; };
   switch (name) {
@@ -639,6 +719,72 @@ function foldColorCall(name: string, args: Expr[], env: Map<string, ConstVal>): 
     case "tints":      { const c = col(0), m = n(1); return c && m !== undefined ? cTints(c, m) : undefined; }
     case "ramp":       { const c = col(0), m = n(1); return c && m !== undefined ? cRamp(c, m) : undefined; }
     default: return undefined;
+  }
+}
+
+// Apply a `@total` function to constant arguments at compile time (§5.1).
+// Clause dispatch mirrors the runtime: first clause whose params all match.
+// The fold is CONSERVATIVE three ways — an undecidable pattern (ctor/atom: no
+// ConstVal representation) bails rather than skips; `where` bindings beyond
+// plain names bail; and a body form ceval can't fold (lambda, for, effects)
+// returns undefined, sinking the fold. Bail = "not constant" = runtime check,
+// exactly the pre-§5.1 behaviour, so widening can only ADD caught errors.
+function applyTotalFn(clauses: FnClause[], argVals: ConstVal[]): ConstVal | undefined {
+  if (--foldFuel <= 0) return undefined;
+  for (const clause of clauses) {
+    if (clause.params.length !== argVals.length) continue;
+    if (clause.params.some(p => p.default_ !== undefined || p.keywordOnly)) return undefined;
+    const env = new Map<string, ConstVal>();
+    let matched = true;
+    for (let i = 0; i < argVals.length; i++) {
+      const m = tryMatchConst(clause.params[i]!.pat, argVals[i]!, env);
+      if (m === "unknown") return undefined;
+      if (m === "no") { matched = false; break; }
+    }
+    if (!matched) continue;
+    for (const w of clause.where_) {
+      if (w.pat.tag !== "PVar") return undefined;
+      const v = ceval(w.value, env);
+      if (v === undefined) return undefined;
+      env.set(w.pat.name, v);
+    }
+    return ceval(clause.body, env);
+  }
+  return undefined;   // no clause matched — the runtime's error, not the folder's
+}
+
+// Decidable pattern match over a constant value. Three-valued on purpose:
+// "no" may skip a clause/branch; "unknown" (a pattern whose match status a
+// ConstVal can't witness — ctors, atoms, unit/duration literals) must sink the
+// WHOLE fold, because skipping an undecidable branch could select the wrong arm.
+function tryMatchConst(p: Pat, v: ConstVal, env: Map<string, ConstVal>): "yes" | "no" | "unknown" {
+  switch (p.tag) {
+    case "PWild":  return "yes";
+    case "PVar":   env.set(p.name, v); return "yes";
+    case "PTyped": env.set(p.name, v); return "yes";   // ascription already checked statically
+    case "PLit":
+      if (p.lit.tag === "Num" || p.lit.tag === "Str" || p.lit.tag === "Bool")
+        return v === p.lit.value ? "yes" : "no";
+      return "unknown";
+    case "PTuple": {
+      if (!Array.isArray(v)) return "unknown";
+      if (v.length !== p.elems.length) return "no";
+      for (let i = 0; i < p.elems.length; i++) {
+        const m = tryMatchConst(p.elems[i]!, v[i]!, env);
+        if (m !== "yes") return m;
+      }
+      return "yes";
+    }
+    case "PRecord": {
+      if (!v || typeof v !== "object" || Array.isArray(v)) return "unknown";
+      for (const f of p.fields) {
+        if (!(f.name in v)) return "unknown";
+        const m = tryMatchConst(f.pat, (v as ConstRec)[f.name]!, env);
+        if (m !== "yes") return m;
+      }
+      return "yes";
+    }
+    default: return "unknown";   // PCtor / PAtom — ConstVal carries no tag
   }
 }
 
@@ -1288,6 +1434,7 @@ export function infer(mod: Module, resolutions: ResolutionMap): InferResult {
   REFINEMENTS = new Map();
   FN_PARAMS = new Map();
   FN_SIGS = new Map();
+  TOTAL_FNS = new Map();
   ALIAS_RESOLVING.clear();
   ADT_CTORS = new Map();
   ROW_DEPS = [];

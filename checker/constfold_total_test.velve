@@ -1,0 +1,57 @@
+-- §5.1 constEval widening (totality-design): refinement predicates whose
+-- call-closure is @total fold at COMPILE time. Every refined call below passes
+-- its predicate, so this file checks clean and runs; the _bad twin pins the
+-- new compile-time rejections that prove the fold actually executes user code.
+@edition "2026.6"
+
+-- A simple total predicate: folds via clause application.
+@total
+def isEven(n: Number): Bool
+  n % 2 == 0
+
+type EvenNum = Number where isEven(value)
+
+def half(n: EvenNum): Number
+  n / 2
+
+-- A recursive total predicate: the fold runs the recursion (fuel-bounded).
+@total
+def factorial(n: Number): Number
+  match n
+    | 0 -> 1
+    | n -> n * factorial(n - 1)
+
+type AtMostFact4 = Number where value <= factorial(4)
+
+def rate(score: AtMostFact4): Number
+  score
+
+-- Multi-clause literal dispatch + let-block bodies both fold.
+@total
+def fib(0): Number -> 0
+@total
+def fib(1): Number -> 1
+@total
+def fib(n: Number): Number
+  fib(n - 1) + fib(n - 2)
+
+@total
+def withinFib(n: Number, k: Number): Bool
+  let limit = fib(k)
+  limit <= 100 && n <= limit
+
+type SmallFib = Number where withinFib(value, 10)
+
+def label(n: SmallFib): String
+  "fib-bounded"
+
+-- The conservative path is intact: a non-constant argument is NOT folded —
+-- `double` is unmarked, so `half(double(3))` skips to the runtime check (6 is even).
+def double(n: Number): Number
+  n * 2
+
+def main(): Effect [io] ()
+  println(half(4))
+  println(rate(24))
+  println(label(55))
+  println(half(double(3)))

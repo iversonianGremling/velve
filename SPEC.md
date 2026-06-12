@@ -48,7 +48,7 @@ means there is a green fixture exercising it under `checker/`.
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. **User-spelled rows built (E2, 2026-06, `effect_spell_test`/`_bad`)**: `..e` on param fn-types binds, in the Effect clause charges — user HOFs get the same per-call-site precision; unbound tails error. **Ascription coverage built (2026-06, `effect_ascribe_test`/`_bad`)**: a fn-type ascription must cover the value's row (returns + bindings, covariant-deep) — the erasure laundering hole is closed. |
 | Effect-typed builtin surface | ✅ Built (2026-06) | §12.5, `builtin_effects_test`/`_bad`: `setTheme`/`setViewport` charge `[ui]`, `externSource` and the network names charge `[io]` — the stdlib stops lying by omission, incl. through HOF tails. Decided ambient: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. |
-| Totality (`@total`, Tier 1) | ✅ Built (2026-06) | §12.6, `total_test`/`_bad`: opt-in structural termination — recursion must decrease at one position (ctor/tuple/record descent or `n - k` under a literal/comparison floor), totality flows down the call graph (total calls total + terminating builtins; HOFs need a checkable fn), `loop`/`await`/spawn/host rejected in total bodies. Mutual recursion, closure recursion, `n / 2` → conservative reject (Tier 2 `proof.terminates` is the future valve). First shipped obligation of the north-star §3 proof gradient. |
+| Totality (`@total`, Tier 1) | ✅ Built (2026-06) | §12.6, `total_test`/`_bad`: opt-in structural termination — recursion must decrease at one position (ctor/tuple/record descent or `n - k` under a literal/comparison floor), totality flows down the call graph (total calls total + terminating builtins; HOFs need a checkable fn), `loop`/`await`/spawn/host rejected in total bodies. Mutual recursion, closure recursion, `n / 2` → conservative reject (Tier 2 `proof.terminates` is the future valve). First shipped obligation of the north-star §3 proof gradient. **§5.1 payoff shipped (2026-06, `constfold_total_test`/`_bad`)**: the refinement folder (§2.6) executes `@total` predicates at check time — fuel-bounded, conservative on anything undecidable — so the conservative-skip set shrinks by exactly the code that proved it terminates. |
 | Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`; `exhaustive` hardens clause-head gaps to errors in every edition. Per-def/per-block scopes PROPOSED. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
@@ -188,7 +188,15 @@ its predicate. Two enforcement points:
   `Age = Number where 0 <= value && value <= 150` is a check error
   (`value 200 does not satisfy refinement 'Age'`); `birthday(0 + 150)` folds to the
   boundary `150` and passes. The folder covers literals, arithmetic, comparison and
-  logical operators, `!`/unary-minus, and `matches(value, "regex")`. Non-constant
+  logical operators, `!`/unary-minus, and `matches(value, "regex")` — **plus, since
+  2026-06, calls to `@total` user functions** (§12.6, totality-design §5.1): a
+  function that *proved* it terminates is safe to run at check time, so the folder
+  applies its clauses — multi-clause literal dispatch, `if`/`match`/straight-line
+  `let`-block bodies, recursion (fuel-bounded; exhaustion is a conservative skip,
+  because `Number ≠ Nat` leaves the promise a documented domain hole). The fold
+  stays conservative wherever it can't *decide*: ctor/atom patterns (no constant
+  representation), named-argument calls, `mut`/control statements, and any
+  unfoldable subexpression sink the whole fold rather than guess. Non-constant
   arguments (`birthday(someVar)`) are skipped — they type-check via the transparent
   base and are guarded at the runtime boundary instead. The same fold fires on
   **literal patterns** *(2026-06)*: a literal matched against a refined type that
@@ -2439,6 +2447,16 @@ The Tier-1 check is structural (no solver), the discipline total languages use:
 `factorial(-1)` type-checks total yet diverges at runtime — the integer-domain
 assumption is documented, not checked; the honest fix is a `Natural` refined
 type (north-star §3.3), not a cleverer syntactic rule.
+
+**The payoff (§5.1, SHIPPED 2026-06):** totality is what makes it *safe to run
+user code inside the type checker* — so the refinement folder (§2.6) now
+executes `@total` functions at check time. A predicate like
+`type EvenNum = Number where isEven(value)` with `@total def isEven` rejects
+`half(3)` at the call site instead of conservatively skipping. The fold is
+fuel-bounded (the `factorial(-1)` caveat above means the checker can't trust
+the promise unconditionally; out of fuel = conservative skip, never a hung
+compiler) and bails on anything it can't decide — see §2.6 for the exact
+foldable subset. Fixtures: `constfold_total_test` / `constfold_total_bad`.
 
 ### 12.7 The proof gradient — `proofs: [...]` (module scope SHIPPED)
 

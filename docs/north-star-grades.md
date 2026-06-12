@@ -22,7 +22,7 @@ remaining gap is a live *design* choice.
 
 | Field | Now | A+ exemplar(s) | What closes the gap | Gap is… |
 |---|---|---|---|---|
-| **Type core** | A− | F★ / Liquid Haskell (SMT refinements); Idris / Lean (full dependent) | The A− is the **conservative skip** — Velve bails on hard obligations instead of discharging them. A+ route = the **opt-in proof gradient** (§3): structural/constructive tiers + `Proof [...]` obligation sets (proofs as the dual of effects), Z3 as the opt-in floor. *Not* "add a solver." (**User generics shipped 2026-06**, SPEC §2.12 — implicit def-signature type vars, polymorphic at call sites / rigid in the body; closed a silent trap where `def idy(x: a): a` parsed but `idy(5)` errored.) (**Proof-gradient surface live 2026-06**, SPEC §12.6–12.7 — `@total` + the `proofs: [...]` module scope shipped, `total`/`exhaustive` checkable; the §3.6 re-grade claims the *construct's* A+, not this row's.) This row's named next lever: **§5.1 constEval widening** — fold refinement predicates whose call-closure is `@total`, shrinking the conservative-skip set the A− names. | **Design** — the skip is deliberate; A+ here means *gating* the frontier, not *refusing* it (§3.6). |
+| **Type core** | **A** *(2026-06)* | F★ / Liquid Haskell (SMT refinements); Idris / Lean (full dependent) | The old A− was the **conservative skip** — Velve bailed on hard obligations instead of discharging them. (**User generics shipped 2026-06**, SPEC §2.12 — implicit def-signature type vars, polymorphic at call sites / rigid in the body.) (**Proof-gradient surface live 2026-06**, SPEC §12.6–12.7 — `@total` + the `proofs: [...]` module scope, `total`/`exhaustive` checkable.) **A− → A re-graded 2026-06** — this row's named next lever landed: **§5.1 constEval widening** (`constfold_total_test`/`_bad`) — the refinement folder executes `@total` predicates at check time, so the skip set shrinks by exactly the code that proved it terminates. The skip is now *opt-out-able per predicate* (mark it `@total`), which changes its character: what remains skipped is the un-asked-for frontier, not a refusal. Honest bound: this fold is also the *only* check a plain refined call gets (runtime enforcement is the explicit `T.parse` boundary), and `Number ≠ Nat` keeps it fuel-bounded. Remaining → A+: the **refined-type library** (`Natural`/`NonZero`/… — gated on module-private ctors, a language change) + Tier-2 Z3 for the semantic residue (§3.6 items 3, 5). | **Build** — next lever: the refined-type tier (needs module-private constructors first). |
 | **UI / styling** | A | SwiftUI (ergonomics) + Elm (purity); **no shipping language** has accessibility-as-proof | Ceiling already above the field. **§2.1 duality closed** (paren-form elements), the **theme system shipped 4/4** (typed `Surface` tokens → `using` clause → derived `Theme` record → `theme` read-only reactive root: `std/color` now has a real consumer; accessibility-as-proof fires on token, `using`-surface, computed, and live-root colours), and **responsive is built end-to-end** — closed `Breakpoint`, `Clamp` band, the read-only `viewport` root, the `responsive` keyword, and the **prop-site auto-collapse** of a `Responsive(Length)` against the live `viewport.breakpoint` (re-collapsing on `setViewport`, the viewport sibling of `setTheme`). Re-graded A− → **A** (2026-06): the prior hold was "responsive/inputmap design-only" — responsive is shipped, and `inputmap` is an input/event item (event-row §3.2). Residual is polish (compile-time vs runtime cycle detection; §2.1 handler/spread tail), not a pillar. | **Build** — A→A+ is table-stakes breadth (§2), not a single lever. |
 | **Event / state** | A *(2026-06)* | Erlang/OTP + Temporal + XState — Velve already unifies all three | Both named gaps shipped 2026-06: per-stream **backpressure** (`drop`/`buffer N`/`block` at decl site, policy-exempt `Done`, `stream_policy_test`) and **`await`→step-goto** in machine steps (lowering fix, `machine_await_test` — the idiomatic stream-draining machine works). Re-graded A− → **A**. The `inputmap` **core shipped 2026-06** (SPEC §10.5, `inputmap_test`/`_bad`): typed pattern-match table over a stream, conflict analysis ("bound twice"/"shadowed" — the dual of exhaustiveness, as designed), labels retained, drain-loop runtime. **Help-as-derived-data shipped too** (`inputmap_help_test`/`_bad`): a dedicated `Inputmap` type + `help(map) : List({pattern, label})` — the auto-help differentiator's data layer, check-time-typed. **And `++` layering** (`inputmap_layer_test`/`_bad`): maps are values, `default ++ userOverrides` replaces-in-place/appends, cross-stream layering is a check error (the type carries the stream). **And chord-refinement literals** (`inputmap_chord_test`/`_bad`): `Push("Ctl+S")` is a check-time typo — the literal-pattern refinement fold, general to every match site. **And `keymap` sugar** (`keymap_test`/`_bad`): `keymap N` ≡ `inputmap N over Key`, proven by layering a keymap with a plain inputmap over `Key`. A→A+ residual: remaining breadth — std `Key` device library + physical-key prefix, focus-zone scoping, the *rendered* overlay element. | **Build** — inputmap breadth (the overlay element waits on the element-DSL render path; the Key library waits on a host keyboard source). |
 | **Error handling** | A+ *(2026-06)* | Rust (`Result`+`?`+`thiserror`); Swift typed `throws`; Zig inferred error sets | B→B+ was readability (ternary deleted). **B+→A** (SPEC §2.6, `error_adt_test`/`_bad`): named error ADTs — prelude `ParseError`, stringly-error use a check error, map-at-the-boundary convention; `try` soundness closed (`try_sound_test`/`_bad`). **A→A+ shipped 2026-06** (SPEC §2.13, `error_rows{,_match}_test`/`_bad`): **inferred error rows v1** — `Result T _` infers the raised ctor set with zero threading (the §4 hybrid: Zig ergonomics inside), named-ADT pins check ctor-set inclusion with escapees listed (reviewed contract at the edge), and rows are directly matchable with exhaustiveness over the **actual raised set** incl. "can never match" arms — the combination none of the references ship (Zig has no reviewed pin, Rust threads everything, Swift's `throws` set is declared not derived). **Ctor shadowing fixed 2026-06** (`ctor_shadow_test`/`_bad`): shared ctor names resolve by expected type in expression position and scrutinee type in patterns — declaration order no longer matters. **Late contributions fixed 2026-06** (`row_late_test`/`_bad`): a callee error type still unresolved at the `?` is re-judged at end of module — landed in the row or rejected, never silently dropped. **Pin fix-its shipped 2026-06** (`row_fixit_test`/`_bad`): failing pins name the smallest edit (re-pin with a covering ADT, or add the missing variants). S3 closed. Residuals (honest): mixed-arity shared names keep last-decl-wins (runtime-ambiguous — needs an eval redesign, not a rows slice); prose `parseInt`/`parseFloat` remain. **Row variables shipped 2026-06** (v2/S4b, SPEC §2.13 v2 block, `row_tails_test`/`_bad`): generic row defs with per-call-site rows — a callback's error var is a tail, the same def pins differently at each call, matches are exhaustive over *this* call's set. | **v2 done** (S4a fn-type ascriptions + S4b row tails + S4c effect tails shipped — the §4 convergence built at E1 scope); remaining residuals are the documented eval-side/prose items, not rows work. |
@@ -157,8 +157,8 @@ are **construct it** (smart-constructor `SortedList`, no solver, API ceremony) o
 structural** (recursion on a smaller arg, bounded loops) free and common-case; **Tier-2
 `proof.terminates`** Z3 fall-through for `n/2`-style measures. And `@total` *pays back into the
 type system*: a refinement predicate marked `@total` is **safe to fold every time** (totality
-§5.1), shrinking the conservative-skip set the grade is capped by — the cheapest type-core
-improvement on the board.
+§5.1) — **this payback SHIPPED 2026-06** (`constfold_total_test`/`_bad`): the folder now runs
+`@total` predicates at check time, the lever behind the row's A− → A re-grade (§1).
 
 **Correct-by-construction, concretely:** make `Natural` opaque; the only gate from raw `Number`
 is `Natural.parse(x) : Result(Natural, :negative)`; closed ops (`+`, `*`) return `Natural`;
@@ -288,8 +288,11 @@ the re-grade below argues the construct's A+, not cheaper proofs):
    language change (flat resolver scope today) — gates item 3 only, not `@total`/`Proof [...]`.
 2. ✅ **Tier-1 `@total` SHIPPED** (2026-06) — SPEC §12.6, `total_test`/`_bad`: structural
    decrease + downward call gate + bounded-construct rejection; mutual/closure/`n / 2`
-   recursion conservatively rejected (Tier 2's job). The conservative-skip payback (§5.1
-   constEval folding of `@total` predicates) is recorded in TODO as its own slice.
+   recursion conservatively rejected (Tier 2's job). The conservative-skip payback —
+   **§5.1 constEval folding of `@total` predicates — SHIPPED** (2026-06,
+   `constfold_total_test`/`_bad`): the totality promise is what makes running user code
+   inside the checker safe, and it now does (fuel-bounded; decidable-pattern clause
+   dispatch; bails on anything it can't decide).
 3. 🟡 Ship the **Tier-1 refined-type library** (`Natural`/`NonZero`/`Positive`/`InBounds`).
 4. ✅ **`Proof [...]` module scope SHIPPED** (2026-06) — SPEC §12.7, `proof_scope_test`/`_bad`:
    `proofs: [...]` rides the `capabilities:` grammar shape; the vocabulary is closed (the §3.4
@@ -325,11 +328,11 @@ defended by design prose; it's defended by fixtures (`total_test`/`_bad`,
    `handled` the cheapest next obligation on the board.
 
 What this argument buys, precisely: the **Security row's A+** (the proof-gradient integration
-was its last named ingredient — §1) and the construct-level A+ for the gradient itself. What
-it does **not** buy: the **Type-core row stays A−** — its named gap is the conservative skip,
-untouched until the promoted follow-on lands: **§5.1 constEval widening** (fold refinement
-predicates whose call-closure is `@total`), the designed next lever for that row, with item 3
-(refined types, gated on module-private ctors) and Tier 2 behind it. And permanently: Velve
+was its last named ingredient — §1) and the construct-level A+ for the gradient itself. The
+**Type-core row** moved separately, one slice later: its named gap was the conservative skip,
+and the promoted follow-on landed — **§5.1 constEval widening SHIPPED** (2026-06,
+`constfold_total_test`/`_bad`), re-grading that row A− → A (§1); item 3 (refined types, gated
+on module-private ctors) and Tier 2 are its remaining → A+ path. And permanently: Velve
 will not, and shouldn't try to, win the field's A+ on *cheaper hard proofs* — that path runs
 straight through the readability the language exists to protect.
 
@@ -630,12 +633,13 @@ The most useful cut for prioritization:
   because the features are unbuilt. The ceiling is real; the floor is "does not exist yet."
 - **A+ exemplar choices**: field/practitioner consensus, not controlled study — same caveat as
   `call-syntax-design.md §7`.
-- **§3 proof tiers + `Proof [...]`**: no longer design-on-design — Tier-1 `@total` and the
-  module-scope `Proof [...]` surface are built (2026-06, SPEC §12.6–12.7), and the
-  propagation/boundary rule (proofs flow down) survived compiler contact as the downward call
-  gate. Still theses: the refined-type tier, the finer scopes, and Tier-2 Z3. The
-  frontier-capability claim is sound on feature-composition; the *construct's* A+ is argued
-  (§3.6 re-grade); the type-core row's is not.
+- **§3 proof tiers + `Proof [...]`**: no longer design-on-design — Tier-1 `@total`, the
+  module-scope `Proof [...]` surface, and the §5.1 constEval payback are built (2026-06,
+  SPEC §12.6–12.7 / §2.6), and the propagation/boundary rule (proofs flow down) survived
+  compiler contact as the downward call gate. Still theses: the refined-type tier, the finer
+  scopes, and Tier-2 Z3. The frontier-capability claim is sound on feature-composition; the
+  *construct's* A+ is argued (§3.6 re-grade); the type-core row holds **A**, not A+ — its
+  remaining path is the refined-type tier + Tier 2.
 - **§4 hybrid + §5 redefinition**: rubric/mechanism reframings, *not* shipped work — they change
   *what we measure* and *how we'd build it*, not what exists. `ms*ms → Duration²` is a direct
   consequence of units-of-measure (F# is the existence proof).

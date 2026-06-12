@@ -520,6 +520,31 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       slice, corpus-wide inference), refined-type library (gated on
       module-private ctors — language change), per-def/per-block proof
       scopes (PROPOSED), Tier-2 Z3.
+- [x] **§5.1 constEval widening — fold `@total` predicates at check time
+      (the promoted follow-on; Type-core A− → A)**: ✅ DONE (2026-06,
+      SPEC §2.6 + §12.6, totality-design §9, `constfold_total_test`/`_bad`
+      — exactly 3 errors; baselines unchanged except the two new rows; no
+      grammar change). The totality promise is what makes running user code
+      inside the checker safe, so `constEval` now applies `@total` functions
+      (decorator or module `proofs: [total]` — both arrive via DFn.total) to
+      constant arguments: clause dispatch over a DECIDABLE pattern matcher
+      (literals/tuples/records; ctor/atom patterns sink the whole fold —
+      an undecidable branch can't be skipped, it could select the wrong
+      arm), bodies fold through if/match/straight-line immutable let blocks
+      and recursion. Fuel-bounded (100k applications) because Number ≠ Nat
+      (`factorial(-1)` must exhaust into a conservative skip, never hang
+      the checker); named-arg calls, defaults, mut, control statements,
+      module-const refs in bodies all bail. Engine: infer.ts — TOTAL_FNS
+      registered in registerAliases; constEval became a fuel-resetting
+      wrapper over the recursive `ceval`; new If/Match/Do fold cases +
+      applyTotalFn/tryMatchConst. Builtin folds keep name priority. Honest
+      find recorded in docs: runtime refinement enforcement is the explicit
+      `T.parse` boundary ONLY, so pre-§5.1 `half(3)` against an
+      `isEven(value)` refinement was accepted and ran unchecked — this fold
+      is the only check such calls get. Type-core re-graded A− → **A** in
+      both tables (north-star §1 + §3.6 closing block + §3.2/§10; TODO §1);
+      remaining → A+: refined-type library (gated on module-private ctors)
+      + Tier-2 Z3.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

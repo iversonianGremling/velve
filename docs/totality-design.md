@@ -2,8 +2,9 @@
 
 Status: **Tier 1 SHIPPED (2026-06)** — `checker/src/total.ts`, SPEC §12.6,
 `total_test`/`total_bad` fixtures. The structural check below is built as
-specced; see §9 for the as-built deltas. Tier 2 (`proof.terminates`) and the
-realtime-implied marker remain future work.
+specced; see §9 for the as-built deltas. **§5.1's payoff SHIPPED (2026-06)** —
+`constEval` folds `@total` predicates (`constfold_total_test`/`_bad`). Tier 2
+(`proof.terminates`) and the realtime-implied marker remain future work.
 
 This note proposes a `@total` marker: an opt-in
 promise, checked by the compiler, that a function always finishes (never loops
@@ -194,9 +195,23 @@ SPEC §12.6; fixtures `total_test.velve` (6 accepted shapes, runs) and
   passes the literal-floor rule and diverges at runtime. §3's blessed idiom
   assumes integer descent; the honest fix is `Natural` (north-star §3.3), not a
   cleverer syntactic rule.
-- **Deferred follow-on (recorded in TODO):** §5.1's payoff — folding refinement
-  predicates whose call-closure is `@total` — touches `constEval` corpus-wide
-  and ships as its own slice.
+- **§5.1's payoff SHIPPED (2026-06, the slice after the re-grade;
+  `constfold_total_test`/`_bad`):** `constEval` applies `@total` functions at
+  check time — the conservative-skip set shrinks by exactly the code that
+  proved it terminates. As built: clause dispatch runs over a *decidable*
+  pattern matcher (literals/tuples/records; a ctor or atom pattern has no
+  constant representation, so it sinks the whole fold — an undecidable branch
+  can never be *skipped*, that could select the wrong arm); bodies fold through
+  `if`/`match`/straight-line immutable `let` blocks and recursion; named-arg
+  calls, defaults, `mut`, control statements, and module-const references in
+  the body all bail. **Fuel-bounded (100k applications)** because of the
+  `Number ≠ Nat` caveat above — `factorial(-1)` at a constant call site must
+  exhaust fuel into a conservative skip, never hang the checker. Builtin folds
+  (`length`/`matches`/`contrast`/std-color) keep name priority over a
+  same-named user fn. Honest note: since runtime refinement enforcement is the
+  explicit `T.parse` boundary only, this fold is the *only* check a plain
+  refined call with foldable arguments gets — pre-§5.1, `half(3)` against
+  `EvenNum = Number where isEven(value)` was accepted and ran unchecked.
 - **Module scope (2026-06, the slice after):** `proofs: [total]` (SPEC §12.7)
   marks every def in a module implicitly `@total` at lower time — this engine
   is unchanged, the marker just arrives from the module head instead of a

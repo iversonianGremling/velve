@@ -1,0 +1,48 @@
+-- §5.1 constEval widening — the proof the fold RUNS user code: each rejection
+-- below requires executing a @total predicate at compile time (clause dispatch,
+-- recursion, multi-clause literal heads + a let block). Pre-§5.1 all three were
+-- conservative skips that deferred to the runtime check. Exactly 3 errors.
+@edition "2026.6"
+
+@total
+def isEven(n: Number): Bool
+  n % 2 == 0
+
+type EvenNum = Number where isEven(value)
+
+def half(n: EvenNum): Number
+  n / 2
+
+@total
+def factorial(n: Number): Number
+  match n
+    | 0 -> 1
+    | n -> n * factorial(n - 1)
+
+type AtMostFact4 = Number where value <= factorial(4)
+
+def rate(score: AtMostFact4): Number
+  score
+
+@total
+def fib(0): Number -> 0
+@total
+def fib(1): Number -> 1
+@total
+def fib(n: Number): Number
+  fib(n - 1) + fib(n - 2)
+
+@total
+def withinFib(n: Number, k: Number): Bool
+  let limit = fib(k)
+  limit <= 100 && n <= limit
+
+type SmallFib = Number where withinFib(value, 10)
+
+def label(n: SmallFib): String
+  "fib-bounded"
+
+def main(): Effect [io] ()
+  println(half(3))      -- error: isEven(3) folds to false
+  println(rate(25))     -- error: factorial(4) = 24 < 25, folded through recursion
+  println(label(89))    -- error: fib(10) = 55 < 89, folded through clause dispatch
