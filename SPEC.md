@@ -48,7 +48,7 @@ means there is a green fixture exercising it under `checker/`.
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. **User-spelled rows built (E2, 2026-06, `effect_spell_test`/`_bad`)**: `..e` on param fn-types binds, in the Effect clause charges — user HOFs get the same per-call-site precision; unbound tails error. **Ascription coverage built (2026-06, `effect_ascribe_test`/`_bad`)**: a fn-type ascription must cover the value's row (returns + bindings, covariant-deep) — the erasure laundering hole is closed. |
 | Effect-typed builtin surface | ✅ Built (2026-06) | §12.5, `builtin_effects_test`/`_bad`: `setTheme`/`setViewport` charge `[ui]`, `externSource` and the network names charge `[io]` — the stdlib stops lying by omission, incl. through HOF tails. Decided ambient: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. |
-| Totality (`@total`, Tier 1) | ✅ Built (2026-06) | §12.6, `total_test`/`_bad`: opt-in structural termination — recursion must decrease at one position (ctor/tuple/record descent or `n - k` under a literal/comparison floor), totality flows down the call graph (total calls total + terminating builtins; HOFs need a checkable fn), `loop`/`await`/spawn/host rejected in total bodies. Mutual recursion, closure recursion, `n / 2` → conservative reject (Tier 2 `proof.terminates` is the future valve). First shipped obligation of the north-star §3 proof gradient. **§5.1 payoff shipped (2026-06, `constfold_total_test`/`_bad`)**: the refinement folder (§2.6) executes `@total` predicates at check time — fuel-bounded, conservative on anything undecidable — so the conservative-skip set shrinks by exactly the code that proved it terminates. |
+| Totality (`@total`, Tier 1) | ✅ Built (2026-06) | §12.6, `total_test`/`_bad`: opt-in structural termination — recursion must decrease at one position (ctor/tuple/record descent or `n - k` under a literal/comparison floor), totality flows down the call graph (total calls total + terminating builtins; HOFs need a checkable fn), `loop`/`await`/spawn/host rejected in total bodies. Mutual recursion, closure recursion → conservative reject. **The Tier-2 valve opened (2026-06, `proof_terminates_test`/`_bad`)**: when the structural decrease is the only failure, Z3 proves a unit-decreasing floored measure from path facts — `halve(n / 2)` under `if n < 2`, non-constant `shrink(n - k, k)` under `k >= 1`; counterexamples in the errors. First shipped obligation of the north-star §3 proof gradient. **§5.1 payoff shipped (2026-06, `constfold_total_test`/`_bad`)**: the refinement folder (§2.6) executes `@total` predicates at check time — fuel-bounded, conservative on anything undecidable — so the conservative-skip set shrinks by exactly the code that proved it terminates. |
 | Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`; `exhaustive` hardens clause-head gaps to errors in every edition. **`handled` shipped (2026-06, `proof_handled_test`/`_bad`)**: no silently discarded `Result` anywhere in the module — third checkable obligation, scope-local like `exhaustive`. **`nonzero` shipped (2026-06, `proof_nonzero_test`/`_bad`)**: every `/` and `%` divisor proved nonzero via the flow-sensitive fact env — fourth checkable obligation. **Z3 back-end shipped one slice later (2026-06, `proof_nonzero_z3_test`/`_bad`)**: the floor's residue goes to Z3 as a refutation over the reals — the pinned `a != b ⟹ a - b != 0` case graduated from `_bad` to green; counterexample models in the errors; lazy load; floor fallback when uninstalled. Per-def/per-block scopes PROPOSED. |
 | Module-private constructors (`@private type`) | ✅ Built (2026-06) | §7.1, `private_ctor_test`/`_bad`: an ADT's constructors seal at the module boundary (no forging by call, no representation-dependence by pattern); the type name stays public. The soundness primitive for the refined-type tier (north-star §3.5 confirmed → shipped). Resolver scope stays flat — privacy is a use-site check. |
 | Refined-type library (Tier 1) | ✅ Built (2026-06) | §7.1, `refined_types_test`/`_bad`: `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — smart-constructor gates, closed ops, faulting ops through the gate; `divBy(n, NonZero)` makes division total and `getAt(xs, InBounds)` makes indexing safe **as type errors**, no solver. The library module is proof-carrying (`proofs: [total, exhaustive, handled]`). Pure library add — zero checker changes. Tier-1 bound: `InBounds` is not relational (Tier 1.5). |
@@ -2496,14 +2496,41 @@ The Tier-1 check is structural (no solver), the discipline total languages use:
   `await`, `go`/`send`/`resume`, `transaction`/`retry`, raw `@js{}`, and
   element trees (`@total` is for compute helpers). `for` over a finite
   collection terminates by construction and is fine.
-- **Out of Tier-1 scope by design** (conservative-reject; Tier 2
-  `proof.terminates` is the future escape valve): mutual recursion, recursion
-  through closures or fn parameters, non-structural measures like `n / 2`.
+- **Out of Tier-1 scope by design** (conservative-reject): mutual recursion,
+  recursion through closures or fn parameters. Non-structural measures like
+  `n / 2` were on this list until the Tier-2 valve below opened.
+
+**The Tier-2 Z3 measure check** *(2026-06, `proof_terminates_test`/`_bad`)* —
+the `proof.terminates` fall-through the tier design promised, automatic under
+`@total` (no new surface; the `std/proof` spelling stays proposed). When the
+structural decrease is a fn's **only** Tier-1 failure (any other walker error
+— closures, escapes, forbidden nodes, the call gate, mutual recursion — keeps
+the plain reject), the checker tries to prove per argument position that
+every recursive call **unit-decreases a floored measure**: with path facts F
+from the flow-sensitive fact env (§12.7 `nonzero`'s engine), measure param
+`n`, call argument `e`, both `F ⟹ e ≤ n − 1` and `F ⟹ n ≥ 0` as Z3
+refutation queries over the reals. One position where every call proves ⟹
+recursion depth is bounded by the measure at entry. Unit decrease is what
+makes this sound for float `Number`s — strict decrease alone is not
+well-founded (`n/2` walks 1, ½, ¼, … forever) — and it is exactly why
+`halve(n / 2)` proves under `if n < 2` (n ≥ 2 ⟹ n/2 ≤ n − 1) but not under
+`if n <= 0`: Z3's counterexample (`n = 1`) names the gap, in the error. The
+fact env makes **non-constant decreases** prove — `shrink(n - k, k)` under
+`k >= 1` — which no structural check can do; conversely `k > 0` fails with
+`k = 1/2` and `k != 0` fails with `k = -1`, each model pointing at the guard
+bug. A fractional fixed step (`n - 0.5`-by-fact) is conservatively rejected
+even though floats would terminate: the measure demands a whole step.
+Failures keep the Tier-1 error text with the Z3 detail appended; the LSP
+shows the conservative structural error (sync pipeline), the CLI verdict is
+authoritative; without `z3-solver` installed the floor error returns with an
+install hint.
 
 **Honest caveat:** `Number` is not `Nat`. The blessed numeric rule means
 `factorial(-1)` type-checks total yet diverges at runtime — the integer-domain
 assumption is documented, not checked; the honest fix is a `Natural` refined
-type (north-star §3.3), not a cleverer syntactic rule.
+type (north-star §3.3), not a cleverer syntactic rule. The Z3 measure check
+shares the family: at magnitudes ≥ 2^53, float rounding can absorb a unit
+decrease (`1e300 - 1 == 1e300`), so the proof is exact only below that.
 
 **The payoff (§5.1, SHIPPED 2026-06):** totality is what makes it *safe to run
 user code inside the type checker* — so the refinement folder (§2.6) now

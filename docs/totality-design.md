@@ -3,8 +3,15 @@
 Status: **Tier 1 SHIPPED (2026-06)** — `checker/src/total.ts`, SPEC §12.6,
 `total_test`/`total_bad` fixtures. The structural check below is built as
 specced; see §9 for the as-built deltas. **§5.1's payoff SHIPPED (2026-06)** —
-`constEval` folds `@total` predicates (`constfold_total_test`/`_bad`). Tier 2
-(`proof.terminates`) and the realtime-implied marker remain future work.
+`constEval` folds `@total` predicates (`constfold_total_test`/`_bad`).
+**Tier 2 SHIPPED (2026-06)** — `checker/src/terminates.ts` + `smt.ts`,
+`proof_terminates_test`/`_bad`: when the structural decrease is the only
+Tier-1 failure, Z3 proves a unit-decreasing floored measure from the
+flow-sensitive fact env (facts ⟹ arg ≤ n − 1 ∧ n ≥ 0, refuted over ℝ) —
+automatic under `@total`, no `proof.terminates` spelling needed (the
+std/proof surface stays proposed); counterexample models in the errors;
+mutual/closure recursion stay Tier-1 rejects. The realtime-implied marker
+remains future work.
 
 This note proposes a `@total` marker: an opt-in
 promise, checked by the compiler, that a function always finishes (never loops

@@ -17,7 +17,7 @@ import { Lowerer } from "./lower.js";
 import { resolve } from "./resolve.js";
 import { infer } from "./infer.js";
 import { checkExhaustiveness } from "./exhaust.js";
-import { checkTotality } from "./total.js";
+import { checkTotality, candidateFloorDiags } from "./total.js";
 import { checkHandled } from "./handled.js";
 import { checkNonZero, residueFloorDiags } from "./facts.js";
 import { typeToString } from "./types.js";
@@ -54,7 +54,8 @@ function analyze(uri: string, text: string): { analysis: Analysis; lspDiags: Ret
   const { resolutions, diagnostics: rd, snapshots, globals } = resolve(mod);
   const { types, diagnostics: id, nameToTypeString }         = infer(mod, resolutions);
   const ed                                                   = checkExhaustiveness(mod, types);
-  const td                                                   = checkTotality(mod, resolutions);
+  const tr                                                   = checkTotality(mod, resolutions);
+  const td                                                   = [...tr.diagnostics, ...candidateFloorDiags(tr.candidates)];
   const hd                                                   = checkHandled(mod, types);
   // The LSP pipeline is sync, so the nonzero residue surfaces as the
   // conservative floor errors; the CLI's Z3 verdict is authoritative.

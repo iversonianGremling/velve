@@ -1,0 +1,26 @@
+-- Z3 measure verdicts that stay errors (SPEC §12.6). Each error carries the
+-- counterexample that defeats the proof — the guard is the bug, and the
+-- model says exactly where.
+-- Expected: exactly 3 errors.
+@edition "2026.6"
+
+-- 1: the loose guard — n <= 0 admits n = 1, and 1/2 does not unit-decrease.
+@total
+def halveLoose(n: Number): Number
+  if n <= 0 then 0 else 1 + halveLoose(n / 2)
+
+-- 2: k > 0 is not k >= 1 — a fractional k (Z3 picks one) breaks the unit
+-- decrease. Over floats this can creep for thousands of steps; the measure
+-- check demands a whole step.
+@total
+def drift(n: Number, k: Number): Number
+  if n <= 0 then 0
+  else if k <= 0 then 0
+  else 1 + drift(n - k, k)
+
+-- 3: k != 0 admits NEGATIVE k, and n - (-1) grows.
+@total
+def wobble(n: Number, k: Number): Number
+  if n <= 0 then 0
+  else if k == 0 then 0
+  else 1 + wobble(n - k, k)

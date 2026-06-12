@@ -692,6 +692,38 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       named the SEMANTIC residue (`proof.terminates`, `proof.sorted`) +
       the Tier-1.5 witness; the solver those need is now live, the
       obligations themselves are not.
+- [x] **`proof.terminates` — the Z3 measure check for @total (north-star
+      §3.3 Tier 2, second slice)**: ✅ DONE (2026-06,
+      `checker/src/terminates.ts`, SPEC §12.6,
+      `proof_terminates_test`/`_bad` — 0 and exactly 3 errors; baselines
+      unchanged except the two new rows; `total_bad` holds at 8 with its
+      `hang`/`grow` now routed through Z3 and still failing). The valve
+      totality-design §3 promised, automatic under `@total` — no
+      `proof.terminates` spelling, the std/proof surface stays proposed.
+      Flow: total.ts's "no argument position structurally decreases"
+      failure becomes a MeasureCandidate when the walker raised nothing
+      else (closures/escapes/forbidden nodes/call gate/mutual recursion
+      keep the plain Tier-1 reject); terminates.ts re-walks each clause
+      with the fact env (facts.ts refactored to a visitor-based
+      `walkFacts` — the nonzero check now rides the same walker) and
+      builds per-position attempts: per recursive call, F ⟹ arg ≤ n − 1
+      (UNIT decrease) and F ⟹ n ≥ 0 (floor), as refutation queries; one
+      fully-UNSAT position ⟹ proved. Unit decrease over ℝ is the
+      soundness keystone for float Numbers (strict decrease alone is
+      Zeno); it is why `halve(n / 2)` proves under `if n < 2` but not
+      `if n <= 0` — and Z3's counterexample (n = 1) names the gap in the
+      error. Non-constant decreases prove (`shrink(n - k, k)` under
+      `k >= 1` — beyond any structural rule); `k > 0` fails with k = 1/2,
+      `k != 0` fails with k = -1, the model always pointing at the guard
+      bug; a fractional decrease known only by fact (k ∈ (0,1)) is
+      conservatively rejected — the measure demands a whole step. smt.ts
+      restructured around one primitive (a fact set that must be UNSAT)
+      serving both obligations in one lazy init. Honesty: ≥ 2^53 float
+      rounding can absorb a unit decrease (documented in SPEC §12.6 with
+      the Number ≠ Nat caveat); LSP shows the structural floor error.
+      Translatable fragment extended with division by nonzero literals.
+      NO re-grade: type-core holds A — remaining → A+ is now the semantic
+      case proper (`proof.sorted`/`SortedList`) + the Tier-1.5 witness.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

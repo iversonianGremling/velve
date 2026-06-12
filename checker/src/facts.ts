@@ -91,28 +91,41 @@ function walkDecls(decls: Decl[], inNonZero: boolean, out: NonZeroResult): void 
     }
     // v1 scope: function bodies, like `handled` (SPEC §12.7).
     if (inNonZero && d.tag === "DFn")
-      for (const [i, c] of d.clauses.entries()) {
-        // "Immutable names only" enforced up front: any name that is EVER a
-        // `mut` bind or a reassignment target anywhere in this clause never
-        // receives a fact — a nested loop iteration could change it between
-        // the test and the division.
-        currentMutated = new Set();
-        collectMutatedDeep(c.body, currentMutated);
-        walkExpr(c.body, clauseEnv(d.clauses, i), out);
-      }
+      for (const [i, c] of d.clauses.entries())
+        walkFacts(c.body, clauseEnv(d.clauses, i), (e, env) => {
+          if (e.tag === "BinOp" && (e.op === "/" || e.op === "%"))
+            proveDivisor(e.right, env, out);
+        });
   }
 }
 
+// The reusable fact-env walk: visits EVERY expression with the fact env in
+// force at that point. `proofs: [nonzero]` visits divisors; the @total Tier-2
+// measure check (terminates.ts) visits recursive calls. Handles the mutation
+// prepass itself, so callers just provide the seed env and a visitor.
+export function walkFacts(body: Expr, env0: Env, visit: FactVisitor): void {
+  const saved = currentVisit, savedMut = currentMutated;
+  currentVisit = visit;
+  currentMutated = new Set();
+  collectMutatedDeep(body, currentMutated);
+  try { walkExpr(body, env0); } finally { currentVisit = saved; currentMutated = savedMut; }
+}
+
+export type FactVisitor = (e: Expr, env: Env) => void;
+
 // ── Terms ─────────────────────────────────────────────────────────────────────
 
-// The solver-translatable fragment: names, numeric literals, + - * and unary
-// minus. Division is excluded (its own obligation), calls/fields are
-// uninterpreted functions — opaque to any solver (north-star §3.1 catch 2).
-function translatable(e: Expr): boolean {
+// The solver-translatable fragment: names, numeric literals, + - *, unary
+// minus, and division by a NONZERO literal. General division is excluded
+// (its own obligation); calls/fields are uninterpreted functions — opaque to
+// any solver (north-star §3.1 catch 2).
+export function translatable(e: Expr): boolean {
   switch (e.tag) {
     case "Var": return true;
     case "Lit": return e.lit.tag === "Num";
-    case "BinOp": return ["+", "-", "*"].includes(e.op) && translatable(e.left) && translatable(e.right);
+    case "BinOp":
+      if (e.op === "/" && (numLit(e.right) ?? 0) === 0) return false;
+      return ["+", "-", "*", "/"].includes(e.op) && translatable(e.left) && translatable(e.right);
     case "UnOp": return e.op === "-" && translatable(e.expr);
     default: return false;
   }
@@ -138,20 +151,21 @@ function numLit(e: Expr): number | null {
 
 // Synthesized AST nodes for facts that have no source expression (match
 // literals, clause heads, bind constants).
-function varE(name: string, span: Span): Expr { return { tag: "Var", name, span }; }
-function numE(value: number, span: Span): Expr { return { tag: "Lit", lit: { tag: "Num", value }, span }; }
+export function varE(name: string, span: Span): Expr { return { tag: "Var", name, span }; }
+export function numE(value: number, span: Span): Expr { return { tag: "Lit", lit: { tag: "Num", value }, span }; }
 
 // ── The fact environment ──────────────────────────────────────────────────────
 
 // Persistent: every extension copies, so sibling branches never see each
 // other's facts.
-type Env = Fact[];
+export type Env = Fact[];
 
-function mkFact(lhs: Expr, op: CmpOp, rhs: Expr): Fact {
+export function mkFact(lhs: Expr, op: CmpOp, rhs: Expr): Fact {
   return { lhs, op, rhs, names: termNames(rhs, termNames(lhs, new Set())) };
 }
 
 let currentMutated: Set<string> = new Set();
+let currentVisit: FactVisitor = () => {};
 
 // A syntax-only sweep for mutation targets, run once per clause. Generic
 // deep walk: the AST is plain data, and this only needs the two binding
@@ -242,7 +256,7 @@ function entailsNonZero(env: Env, name: string): boolean {
 // behind: if every other param of an earlier clause is irrefutable, that
 // clause WOULD have matched whenever position p held its literal — so by
 // clause `i`, position p's binder can't be that value.
-function clauseEnv(clauses: FnClause[], i: number): Env {
+export function clauseEnv(clauses: FnClause[], i: number): Env {
   let env: Env = [];
   const params = clauses[i]?.params ?? [];
   for (const [p, param] of params.entries()) {
@@ -286,7 +300,7 @@ function proveDivisor(d: Expr, env: Env, out: NonZeroResult): void {
   else out.diagnostics.push(floorError(d));
 }
 
-function walkBranch(subject: Expr, b: Branch, negatives: Fact[], env: Env, out: NonZeroResult): void {
+function walkBranch(subject: Expr, b: Branch, negatives: Fact[], env: Env): void {
   let inner = env;
   const subjName = subject.tag === "Var" ? subject.name : null;
   const pat = b.pat;
@@ -307,106 +321,106 @@ function walkBranch(subject: Expr, b: Branch, negatives: Fact[], env: Env, out: 
     inner = killPat(inner, pat);  // ctor/tuple/record binders carry no facts
   }
   if (b.guard) {
-    walkExpr(b.guard, inner, out);
+    walkExpr(b.guard, inner);
     inner = factsFromCond(b.guard, true, inner);
   }
-  walkExpr(b.body, inner, out);
+  walkExpr(b.body, inner);
 }
 
-function walkExpr(e: Expr, env: Env, out: NonZeroResult): void {
+function walkExpr(e: Expr, env: Env): void {
+  currentVisit(e, env);
   switch (e.tag) {
     case "Lit": case "Var": case "JSExpr": case "Continue": case "Machine":
       return;
     case "BinOp":
-      walkExpr(e.left, env, out);
-      walkExpr(e.right, env, out);
-      if (e.op === "/" || e.op === "%") proveDivisor(e.right, env, out);
+      walkExpr(e.left, env);
+      walkExpr(e.right, env);
       return;
     case "If": {
-      walkExpr(e.cond, env, out);
-      walkExpr(e.then, factsFromCond(e.cond, true, env), out);
-      if (e.else_) walkExpr(e.else_, factsFromCond(e.cond, false, env), out);
+      walkExpr(e.cond, env);
+      walkExpr(e.then, factsFromCond(e.cond, true, env));
+      if (e.else_) walkExpr(e.else_, factsFromCond(e.cond, false, env));
       return;
     }
     case "Match": case "Await": {
       const subject = e.tag === "Match" ? e.subject : e.expr;
-      walkExpr(subject, env, out);
+      walkExpr(subject, env);
       const subjName = subject.tag === "Var" ? subject.name : null;
       const negatives: Fact[] = [];
       for (const b of e.branches) {
-        walkBranch(subject, b, negatives, env, out);
+        walkBranch(subject, b, negatives, env);
         if (b.pat.tag === "PLit" && b.pat.lit.tag === "Num" && !b.guard && subjName !== null)
           negatives.push(mkFact(varE(subjName, b.pat.span), "!=", numE(b.pat.lit.value, b.pat.span)));
       }
       return;
     }
     case "Do": case "Loop": case "Try": case "Transaction": case "Retry": {
-      if (e.tag === "Retry") { if (e.count) walkExpr(e.count, env, out); if (e.delay) walkExpr(e.delay, env, out); }
-      if (e.tag === "Transaction" && e.config) walkExpr(e.config, env, out);
+      if (e.tag === "Retry") { if (e.count) walkExpr(e.count, env); if (e.delay) walkExpr(e.delay, env); }
+      if (e.tag === "Transaction" && e.config) walkExpr(e.config, env);
       const stmts = e.tag === "Transaction" ? e.body : e.stmts;
       let cur = env;
-      for (const s of stmts) cur = walkStmt(s, cur, out);
+      for (const s of stmts) cur = walkStmt(s, cur);
       return;
     }
     case "For": {
       let cur = env;
       for (const c of e.clauses) {
-        if (c.tag === "Gen") { walkExpr(c.iter, cur, out); cur = killPat(cur, c.binding); }
-        else { walkExpr(c.cond, cur, out); cur = factsFromCond(c.cond, true, cur); }
+        if (c.tag === "Gen") { walkExpr(c.iter, cur); cur = killPat(cur, c.binding); }
+        else { walkExpr(c.cond, cur); cur = factsFromCond(c.cond, true, cur); }
       }
-      walkExpr(e.body, cur, out);
+      walkExpr(e.body, cur);
       return;
     }
     case "Lambda": {
       // Facts on enclosing immutable names survive into the body (the name
       // can't change between the test and any later call); the lambda's own
       // params shadow.
-      walkExpr(e.body, e.params.reduce((env2, p) => killPat(env2, p.pat), env), out);
+      walkExpr(e.body, e.params.reduce((env2, p) => killPat(env2, p.pat), env));
       return;
     }
     case "Call":
-      walkExpr(e.fn, env, out);
-      for (const a of e.args) walkExpr(a, env, out);
-      for (const n of e.named) walkExpr(n.value, env, out);
+      walkExpr(e.fn, env);
+      for (const a of e.args) walkExpr(a, env);
+      for (const n of e.named) walkExpr(n.value, env);
       return;
     case "UnOp": case "Propagate": case "Go": case "Resume": case "Drop":
     case "AddrOf": case "Deref":
-      return walkExpr(e.expr, env, out);
+      return walkExpr(e.expr, env);
     case "PropWith":
-      walkExpr(e.expr, env, out); walkExpr(e.alt, env, out); return;
-    case "Field": return walkExpr(e.obj, env, out);
+      walkExpr(e.expr, env); walkExpr(e.alt, env); return;
+    case "Field": return walkExpr(e.obj, env);
     case "Index":
-      walkExpr(e.obj, env, out); walkExpr(e.index, env, out); return;
+      walkExpr(e.obj, env); walkExpr(e.index, env); return;
     case "Range":
-      walkExpr(e.from, env, out); walkExpr(e.to, env, out); return;
+      walkExpr(e.from, env); walkExpr(e.to, env); return;
     case "Tuple": case "List":
-      for (const el of e.elems) walkExpr(el, env, out); return;
+      for (const el of e.elems) walkExpr(el, env); return;
     case "Record":
-      for (const f of e.fields) walkExpr(f.value, env, out);
-      if (e.spread) walkExpr(e.spread, env, out);
+      for (const f of e.fields) walkExpr(f.value, env);
+      if (e.spread) walkExpr(e.spread, env);
       return;
-    case "TypeTest": return walkExpr(e.expr, env, out);
+    case "TypeTest": return walkExpr(e.expr, env);
     case "Element": {
-      if (e.content) walkExpr(e.content, env, out);
-      for (const p of e.props) walkExpr(p.value, env, out);
-      for (const c of e.children) walkExpr(c, env, out);
+      if (e.content) walkExpr(e.content, env);
+      for (const p of e.props) walkExpr(p.value, env);
+      for (const c of e.children) walkExpr(c, env);
       return;
     }
     case "Handler":
-      return walkExpr(e.body, e.param ? kill(env, e.param) : env, out);
+      return walkExpr(e.body, e.param ? kill(env, e.param) : env);
     case "Break":
-      if (e.value) walkExpr(e.value, env, out);
+      if (e.value) walkExpr(e.value, env);
       return;
-    case "Send": return walkExpr(e.msg, env, out);
+    case "Send": return walkExpr(e.msg, env);
   }
 }
 
 // Returns the env the NEXT statement sees: a plain `let` adds an equality
 // fact when the value is translatable; `mut`/reassignment kills.
-function walkStmt(s: Stmt, env: Env, out: NonZeroResult): Env {
+function walkStmt(s: Stmt, env: Env): Env {
   switch (s.tag) {
     case "SBind": {
-      walkExpr(s.value, env, out);
+      walkExpr(s.value, env);
       let next = killPat(env, s.pat);
       if ((s.pat.tag === "PVar" || s.pat.tag === "PTyped")
           && !s.mutable && s.declares && translatable(s.value)
@@ -414,15 +428,15 @@ function walkStmt(s: Stmt, env: Env, out: NonZeroResult): Env {
         next = addFact(next, mkFact(varE(s.pat.name, s.pat.span), "==", s.value));
       return next;
     }
-    case "SExpr": walkExpr(s.expr, env, out); return env;
+    case "SExpr": walkExpr(s.expr, env); return env;
     case "SAssign": {
-      walkExpr(s.value, env, out);
+      walkExpr(s.value, env);
       // A write through `xs[i] =` / `p.* =` can't invalidate name facts;
       // a bare-name target would be SBind. Still: be safe on Var targets.
       return s.target.tag === "Var" ? kill(env, s.target.name) : env;
     }
     case "SBreak": case "SReturn":
-      if (s.value) walkExpr(s.value, env, out);
+      if (s.value) walkExpr(s.value, env);
       return env;
   }
 }

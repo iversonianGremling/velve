@@ -1,0 +1,26 @@
+-- The Tier-2 Z3 measure check for @total (SPEC §12.6, north-star §3.3) — the
+-- `proof.terminates` fall-through totality-design §3 promised. When the
+-- structural check is a fn's ONLY failure, Z3 proves per recursive call that
+-- one argument position UNIT-DECREASES a floored measure (facts ⟹ arg ≤ n−1
+-- and n ≥ 0, refuted over the reals). `halve` is Tier 1's pinned valve case:
+-- n/2 is no structural decrease, but `if n < 2` proves n ≥ 2 ⟹ n/2 ≤ n − 1.
+-- `shrink` decreases by a NON-CONSTANT k — beyond any structural check — and
+-- proves from the k >= 1 guard. Note the guards earn the proof: `if n <= 0`
+-- would NOT prove halve (Z3's counterexample is n = 1).
+-- Expected: clean; runs.
+@edition "2026.6"
+
+@total
+def halve(n: Number): Number
+  if n < 2 then 0 else 1 + halve(n / 2)
+
+@total
+def shrink(n: Number, k: Number): Number
+  if n <= 0 then 0
+  else if k < 1 then 0
+  else 1 + shrink(n - k, k)
+
+def main(): Effect [io] ()
+  println(halve(40))
+  println(shrink(10, 3))
+  println(shrink(10, 0.5))

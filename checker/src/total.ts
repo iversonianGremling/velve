@@ -88,17 +88,32 @@ interface FnReport {
   decreaseErrored: boolean;    // a decrease-family error was already emitted
 }
 
-export function checkTotality(mod: Module, resolutions: ResolutionMap): Diagnostic[] {
+// A fn whose ONLY Tier-1 failure is the decrease check, with no other walker
+// error: a candidate for the Tier-2 Z3 measure fall-through (terminates.ts).
+// `span` is the offending recursive call, kept for the floor error.
+export interface MeasureCandidate { decl: DFn; span: import("./span.js").Span }
+
+export interface TotalityResult { diagnostics: Diagnostic[]; candidates: MeasureCandidate[] }
+
+// The sync fallback (the LSP, and the CLI when z3-solver is missing): each
+// candidate as the Tier-1 decrease error it would have been.
+export function candidateFloorDiags(candidates: MeasureCandidate[]): Diagnostic[] {
+  return candidates.map(c => ({ kind: "error" as const, span: c.span,
+    message: `@total function '${c.decl.name}' may not terminate — no argument position structurally decreases across every recursive call` }));
+}
+
+export function checkTotality(mod: Module, resolutions: ResolutionMap): TotalityResult {
   const diags: Diagnostic[] = [];
+  const candidates: MeasureCandidate[] = [];
   const fns = new Map<string, DFn>();
   collectFns(mod.decls, fns);
 
   const totalNames = new Set([...fns.values()].filter(d => d.total).map(d => d.name));
-  if (totalNames.size === 0) return diags;
+  if (totalNames.size === 0) return { diagnostics: diags, candidates };
 
   const reports = new Map<string, FnReport>();
   for (const name of totalNames) {
-    reports.set(name, checkFn(fns.get(name)!, totalNames, resolutions, diags));
+    reports.set(name, checkFn(fns.get(name)!, totalNames, resolutions, diags, candidates));
   }
 
   // Mutual recursion: the per-fn gate lets total→total calls through, so two
@@ -111,7 +126,7 @@ export function checkTotality(mod: Module, resolutions: ResolutionMap): Diagnost
         message: `@total function '${name}' may not terminate — mutual recursion is not supported by the Tier-1 structural check (restructure as one function or drop @total)` });
     }
   }
-  return diags;
+  return { diagnostics: diags, candidates };
 }
 
 function collectFns(decls: Decl[], out: Map<string, DFn>): void {
@@ -139,12 +154,13 @@ function reachesSelfThroughOthers(start: string, reports: Map<string, FnReport>,
 
 // ── Per-function check ────────────────────────────────────────────────────────
 
-function checkFn(decl: DFn, totalNames: Set<string>, resolutions: ResolutionMap, diags: Diagnostic[]): FnReport {
+function checkFn(decl: DFn, totalNames: Set<string>, resolutions: ResolutionMap, diags: Diagnostic[], candidates: MeasureCandidate[]): FnReport {
   const report: FnReport = {
     recCalls: [], floorWitness: new Set(),
     calledFns: new Set(), decreaseErrored: false,
   };
   if (decl.clauses.length === 0) return report;
+  const diagsAtEntry = diags.length;
 
   const arity = decl.clauses[0]!.params.length;
   if (!decl.clauses.every(c => c.params.length === arity)) {
@@ -178,9 +194,15 @@ function checkFn(decl: DFn, totalNames: Set<string>, resolutions: ResolutionMap,
   }
   if (measurePos === -1) {
     const bad = report.recCalls[0]!;
-    diags.push({ kind: "error", span: bad.span,
-      message: `@total function '${decl.name}' may not terminate — no argument position structurally decreases across every recursive call` });
+    // Tier-2 fall-through: if the decrease check is the ONLY failure, hand
+    // the fn to the Z3 measure check (terminates.ts) instead of erroring —
+    // it errors there if no position proves. Any other walker error
+    // (closures, escapes, forbidden nodes, the call gate) keeps this a
+    // plain Tier-1 reject.
     report.decreaseErrored = true;
+    if (diags.length === diagsAtEntry) candidates.push({ decl, span: bad.span });
+    else diags.push({ kind: "error", span: bad.span,
+      message: `@total function '${decl.name}' may not terminate — no argument position structurally decreases across every recursive call` });
     return report;
   }
   // Base case: some path through some clause must end without recursing. A

@@ -10,7 +10,8 @@ import { checkBorrows } from "./borrow.js";
 import { checkTotality } from "./total.js";
 import { checkHandled } from "./handled.js";
 import { checkNonZero } from "./facts.js";
-import { dischargeNonZero } from "./smt.js";
+import { buildMeasureJobs } from "./terminates.js";
+import { discharge } from "./smt.js";
 import { Evaluator } from "./eval.js";
 import { RuntimeError } from "./value.js";
 import { analyzeTweaks } from "./tweaks.js";
@@ -39,13 +40,16 @@ if (cmd === "check") {
   const { diagnostics: inferDiags, types } = infer(mod, resolutions);
   const exhaustDiags = checkExhaustiveness(mod, types);
   const borrowDiags = checkBorrows(mod, types);
-  const totalDiags = checkTotality(mod, resolutions);
+  const { diagnostics: totalDiags, candidates } = checkTotality(mod, resolutions);
   const handledDiags = checkHandled(mod, types);
-  // The nonzero floor is sync; what it couldn't settle goes to Z3 (smt.ts).
+  // The sync floors hand their residue to Z3 (smt.ts): unproved-but-
+  // translatable divisors, and @total fns whose only failure was the
+  // structural decrease (the Tier-2 measure check).
   const { diagnostics: nonZeroDiags, residue } = checkNonZero(mod);
-  const smtDiags = await dischargeNonZero(residue);
+  const { diagnostics: measureDiags, jobs } = buildMeasureJobs(candidates, resolutions);
+  const smtDiags = await discharge(residue, jobs);
 
-  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags, ...smtDiags];
+  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags, ...measureDiags, ...smtDiags];
   console.log(`${types.size} expressions typed, ${resolutions.size} names resolved`);
   if (allDiags.length === 0) {
     console.log("no errors");

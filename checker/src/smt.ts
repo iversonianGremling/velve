@@ -1,62 +1,77 @@
-// The Tier-2 Z3 back-end (north-star §3.3): discharges the `nonzero` residue
-// the interval floor couldn't settle (facts.ts). Per obligation, the query is
-// REFUTATION over the reals: assert every path fact, assert `divisor == 0`,
-// and UNSAT means no value assignment satisfies both — the divisor is proved
-// nonzero on that path. SAT yields a counterexample (surfaced in the error),
-// UNKNOWN is a conservative error.
+// The Tier-2 Z3 back-end (north-star §3.3). One primitive serves every
+// obligation: a set of facts that must be UNSAT over the reals.
 //
-// The solver only ever REMOVES errors the floor would have raised — a sat or
-// unknown verdict produces the same class of error the LSP's floor fallback
-// shows — so wiring Z3 in can never accept code the floor-only pipeline
-// would (it accepts strictly more, errors strictly less).
+//   • `nonzero` residue (facts.ts): path facts ∧ divisor == 0 — UNSAT means
+//     the divisor is proved nonzero on that path.
+//   • `@total` measure jobs (terminates.ts): per recursive call, path facts
+//     ∧ ¬(arg ≤ param − 1), and path facts ∧ param < 0 — both UNSAT for one
+//     argument position means the fn unit-decreases a floored measure.
+//
+// SAT yields a counterexample (surfaced in the error), UNKNOWN is a
+// conservative error. The solver only ever REMOVES errors the sync floor
+// would have raised — a sat/unknown verdict produces the same class of error
+// the LSP's floor fallback shows — so wiring Z3 in can never accept code the
+// floor-only pipeline would (it accepts strictly more, errors strictly less).
 //
 // z3-solver loads LAZILY (the WASM init is ~120ms and spawns worker threads)
-// and only here, so a check with an empty residue never pays for it; the CLI
-// terminates the worker threads afterward or Node would never exit. If the
-// package isn't installed, every obligation falls back to the floor error
-// with an install hint appended — conservative, never a crash.
+// and only here, so a check with nothing to discharge never pays for it; the
+// CLI terminates the worker threads afterward or Node would never exit. If
+// the package isn't installed, everything falls back to the floor error with
+// an install hint appended — conservative, never a crash.
 import type { Expr } from "./ast.js";
 import type { Diagnostic } from "./resolve.js";
 import type { Obligation, Fact } from "./facts.js";
-import { residueFloorDiags } from "./facts.js";
+import { residueFloorDiags, mkFact, numE } from "./facts.js";
+import type { MeasureJob } from "./terminates.js";
+import { measureFailDiag } from "./terminates.js";
 
-export async function dischargeNonZero(residue: Obligation[]): Promise<Diagnostic[]> {
-  if (residue.length === 0) return [];
+export async function discharge(residue: Obligation[], jobs: MeasureJob[]): Promise<Diagnostic[]> {
+  if (residue.length === 0 && jobs.length === 0) return [];
   let z3: typeof import("z3-solver");
   try {
     z3 = await import("z3-solver");
   } catch {
-    return residueFloorDiags(residue).map(d => ({ ...d,
-      message: `${d.message} [z3-solver is not installed — \`npm install\` in checker/ enables the Tier-2 solver fall-through]` }));
+    const hint = " [z3-solver is not installed — `npm install` in checker/ enables the Tier-2 solver fall-through]";
+    return [
+      ...residueFloorDiags(residue).map(d => ({ ...d, message: d.message + hint })),
+      ...jobs.map(j => measureFailDiag(j.fnName, j.span, hint)),
+    ];
   }
   const { Context, em } = await z3.init();
   const Z3 = Context("main");
   const diags: Diagnostic[] = [];
   try {
     for (const ob of residue) {
-      const names = new Set<string>();
-      for (const f of ob.facts) for (const n of f.names) names.add(n);
-      collectNames(ob.divisor, names);
-      const consts = new Map([...names].map(n => [n, Z3.Real.const(n)] as const));
-
-      const solver = new Z3.Solver();
-      for (const f of ob.facts) solver.add(cmp(Z3, f, consts));
-      const divisor = term(Z3, ob.divisor, consts);
-      solver.add(divisor.eq(Z3.Real.val(0)));
-
-      const verdict = await solver.check();
-      if (verdict === "unsat") continue;  // proved nonzero on this path
-      let detail: string;
-      if (verdict === "sat") {
-        const model = solver.model();
-        const example = [...consts.entries()]
-          .map(([n, c]) => `${n} = ${model.eval(c, true).toString()}`).join(", ");
-        detail = `Z3 found a zero divisor consistent with every fact on this path (${example})`;
-      } else {
-        detail = "Z3 returned unknown — conservatively rejected";
-      }
+      const r = await checkUnsat(Z3, [...ob.facts, mkFact(ob.divisor, "==", numE(0, ob.span))]);
+      if (r.verdict === "unsat") continue;  // proved nonzero on this path
+      const detail = r.verdict === "sat"
+        ? `Z3 found a zero divisor consistent with every fact on this path (${r.example})`
+        : "Z3 returned unknown — conservatively rejected";
       diags.push({ kind: "error", span: ob.span,
         message: `proof obligation 'nonzero': cannot prove the divisor nonzero — ${detail} (the module declares proofs: [nonzero])` });
+    }
+
+    for (const job of jobs) {
+      let detail = "";
+      let proved = false;
+      for (const attempt of job.attempts) {
+        let ok = true;
+        for (const q of attempt.queries) {
+          const r = await checkUnsat(Z3, q);
+          if (r.verdict !== "unsat") {
+            ok = false;
+            // Keep the FIRST attempt's counterexample — earlier positions are
+            // the likelier intended measure, so their model names the bug.
+            if (detail === "")
+              detail = r.verdict === "sat"
+                ? ` (at parameter ${attempt.pos + 1} e.g. ${r.example})`
+                : ` (Z3 returned unknown at parameter ${attempt.pos + 1})`;
+            break;
+          }
+        }
+        if (ok) { proved = true; break; }
+      }
+      if (!proved) diags.push(measureFailDiag(job.fnName, job.span, detail));
     }
   } finally {
     em.PThread.terminateAllThreads();
@@ -71,12 +86,20 @@ export async function dischargeNonZero(residue: Obligation[]): Promise<Diagnosti
 type Ctx = any;
 type Arith = any;
 
-function collectNames(e: Expr, into: Set<string>): void {
-  switch (e.tag) {
-    case "Var": into.add(e.name); break;
-    case "BinOp": collectNames(e.left, into); collectNames(e.right, into); break;
-    case "UnOp": collectNames(e.expr, into); break;
-  }
+// Assert every fact; UNSAT proves the conjunction impossible. SAT returns a
+// model over the mentioned names as the counterexample.
+async function checkUnsat(Z3: Ctx, facts: Fact[]): Promise<{ verdict: string; example?: string }> {
+  const names = new Set<string>();
+  for (const f of facts) for (const n of f.names) names.add(n);
+  const consts = new Map([...names].map(n => [n, Z3.Real.const(n)] as const));
+  const solver = new Z3.Solver();
+  for (const f of facts) solver.add(cmp(Z3, f, consts));
+  const verdict = await solver.check();
+  if (verdict !== "sat") return { verdict };
+  const model = solver.model();
+  const example = [...consts.entries()]
+    .map(([n, c]) => `${n} = ${model.eval(c, true).toString()}`).join(", ");
+  return { verdict, example };
 }
 
 // Both functions only ever see the `translatable` fragment (facts.ts) — the
@@ -92,6 +115,7 @@ function term(Z3: Ctx, e: Expr, consts: Map<string, Arith>): Arith {
       if (e.op === "+") return l.add(r);
       if (e.op === "-") return l.sub(r);
       if (e.op === "*") return l.mul(r);
+      if (e.op === "/") return l.div(r);  // divisor is a nonzero literal (translatable)
       break;
     }
     case "UnOp":
