@@ -22,14 +22,14 @@ remaining gap is a live *design* choice.
 
 | Field | Now | A+ exemplar(s) | What closes the gap | Gap is… |
 |---|---|---|---|---|
-| **Type core** | A− | F★ / Liquid Haskell (SMT refinements); Idris / Lean (full dependent) | The A− is the **conservative skip** — Velve bails on hard obligations instead of discharging them. A+ route = the **opt-in proof gradient** (§3): structural/constructive tiers + `Proof [...]` obligation sets (proofs as the dual of effects), Z3 as the opt-in floor. *Not* "add a solver." (**User generics shipped 2026-06**, SPEC §2.12 — implicit def-signature type vars, polymorphic at call sites / rigid in the body; closed a silent trap where `def idy(x: a): a` parsed but `idy(5)` errored.) | **Design** — the skip is deliberate; A+ here means *gating* the frontier, not *refusing* it (§3.6). |
+| **Type core** | A− | F★ / Liquid Haskell (SMT refinements); Idris / Lean (full dependent) | The A− is the **conservative skip** — Velve bails on hard obligations instead of discharging them. A+ route = the **opt-in proof gradient** (§3): structural/constructive tiers + `Proof [...]` obligation sets (proofs as the dual of effects), Z3 as the opt-in floor. *Not* "add a solver." (**User generics shipped 2026-06**, SPEC §2.12 — implicit def-signature type vars, polymorphic at call sites / rigid in the body; closed a silent trap where `def idy(x: a): a` parsed but `idy(5)` errored.) (**Proof-gradient surface live 2026-06**, SPEC §12.6–12.7 — `@total` + the `proofs: [...]` module scope shipped, `total`/`exhaustive` checkable; the §3.6 re-grade claims the *construct's* A+, not this row's.) This row's named next lever: **§5.1 constEval widening** — fold refinement predicates whose call-closure is `@total`, shrinking the conservative-skip set the A− names. | **Design** — the skip is deliberate; A+ here means *gating* the frontier, not *refusing* it (§3.6). |
 | **UI / styling** | A | SwiftUI (ergonomics) + Elm (purity); **no shipping language** has accessibility-as-proof | Ceiling already above the field. **§2.1 duality closed** (paren-form elements), the **theme system shipped 4/4** (typed `Surface` tokens → `using` clause → derived `Theme` record → `theme` read-only reactive root: `std/color` now has a real consumer; accessibility-as-proof fires on token, `using`-surface, computed, and live-root colours), and **responsive is built end-to-end** — closed `Breakpoint`, `Clamp` band, the read-only `viewport` root, the `responsive` keyword, and the **prop-site auto-collapse** of a `Responsive(Length)` against the live `viewport.breakpoint` (re-collapsing on `setViewport`, the viewport sibling of `setTheme`). Re-graded A− → **A** (2026-06): the prior hold was "responsive/inputmap design-only" — responsive is shipped, and `inputmap` is an input/event item (event-row §3.2). Residual is polish (compile-time vs runtime cycle detection; §2.1 handler/spread tail), not a pillar. | **Build** — A→A+ is table-stakes breadth (§2), not a single lever. |
 | **Event / state** | A *(2026-06)* | Erlang/OTP + Temporal + XState — Velve already unifies all three | Both named gaps shipped 2026-06: per-stream **backpressure** (`drop`/`buffer N`/`block` at decl site, policy-exempt `Done`, `stream_policy_test`) and **`await`→step-goto** in machine steps (lowering fix, `machine_await_test` — the idiomatic stream-draining machine works). Re-graded A− → **A**. The `inputmap` **core shipped 2026-06** (SPEC §10.5, `inputmap_test`/`_bad`): typed pattern-match table over a stream, conflict analysis ("bound twice"/"shadowed" — the dual of exhaustiveness, as designed), labels retained, drain-loop runtime. **Help-as-derived-data shipped too** (`inputmap_help_test`/`_bad`): a dedicated `Inputmap` type + `help(map) : List({pattern, label})` — the auto-help differentiator's data layer, check-time-typed. **And `++` layering** (`inputmap_layer_test`/`_bad`): maps are values, `default ++ userOverrides` replaces-in-place/appends, cross-stream layering is a check error (the type carries the stream). **And chord-refinement literals** (`inputmap_chord_test`/`_bad`): `Push("Ctl+S")` is a check-time typo — the literal-pattern refinement fold, general to every match site. **And `keymap` sugar** (`keymap_test`/`_bad`): `keymap N` ≡ `inputmap N over Key`, proven by layering a keymap with a plain inputmap over `Key`. A→A+ residual: remaining breadth — std `Key` device library + physical-key prefix, focus-zone scoping, the *rendered* overlay element. | **Build** — inputmap breadth (the overlay element waits on the element-DSL render path; the Key library waits on a host keyboard source). |
 | **Error handling** | A+ *(2026-06)* | Rust (`Result`+`?`+`thiserror`); Swift typed `throws`; Zig inferred error sets | B→B+ was readability (ternary deleted). **B+→A** (SPEC §2.6, `error_adt_test`/`_bad`): named error ADTs — prelude `ParseError`, stringly-error use a check error, map-at-the-boundary convention; `try` soundness closed (`try_sound_test`/`_bad`). **A→A+ shipped 2026-06** (SPEC §2.13, `error_rows{,_match}_test`/`_bad`): **inferred error rows v1** — `Result T _` infers the raised ctor set with zero threading (the §4 hybrid: Zig ergonomics inside), named-ADT pins check ctor-set inclusion with escapees listed (reviewed contract at the edge), and rows are directly matchable with exhaustiveness over the **actual raised set** incl. "can never match" arms — the combination none of the references ship (Zig has no reviewed pin, Rust threads everything, Swift's `throws` set is declared not derived). **Ctor shadowing fixed 2026-06** (`ctor_shadow_test`/`_bad`): shared ctor names resolve by expected type in expression position and scrutinee type in patterns — declaration order no longer matters. **Late contributions fixed 2026-06** (`row_late_test`/`_bad`): a callee error type still unresolved at the `?` is re-judged at end of module — landed in the row or rejected, never silently dropped. **Pin fix-its shipped 2026-06** (`row_fixit_test`/`_bad`): failing pins name the smallest edit (re-pin with a covering ADT, or add the missing variants). S3 closed. Residuals (honest): mixed-arity shared names keep last-decl-wins (runtime-ambiguous — needs an eval redesign, not a rows slice); prose `parseInt`/`parseFloat` remain. **Row variables shipped 2026-06** (v2/S4b, SPEC §2.13 v2 block, `row_tails_test`/`_bad`): generic row defs with per-call-site rows — a callback's error var is a tail, the same def pins differently at each call, matches are exhaustive over *this* call's set. | **v2 done** (S4a fn-type ascriptions + S4b row tails + S4c effect tails shipped — the §4 convergence built at E1 scope); remaining residuals are the documented eval-side/prose items, not rows work. |
 | **Low-level** | B− | Rust (borrow + sized types); Zig (comptime) | Four numeric stories that never met + gpu/audio/std-low sketches. A+ = **F#-style units-of-measure** as the general mechanism + sized types built on it. See §5. | **Design** — the unifying note (TODO §3.4 🔴) is unwritten. |
 | **Games** | C+ / A− | Bevy ECS; Unity DOTS | **100% gated on the compiled target** — a tree-walker can't hold 60fps. A+ = compiled backend + frame clock + `@interaction`. | **Build.** |
 | **Animation** | C / A | SwiftUI animation; Framer Motion | `animated` + motion-policy chokepoint is unique, unbuilt. Ceiling is **A** not A+ — see §8 (choreography breadth). Blocked on `frames` + reconciler. | **Build + undesigned breadth.** |
-| **Security** | A *(2026-06)* | Capability-secure: Austral, Pony, Koka/Unison; IFC: Jif / Flow Caml | Taint-at-parse is the right cut. A+ = make `Effect` **enforcement** real (TODO §3.6). **The mechanism now is** (2026-06): direct calls checked (`effects_test`, pure-hole edition-gated) and the HOF laundering route closed (SPEC §12.4, `hof_effects_test`/`_bad` — latent effects of a function argument charge the call that supplies it; aliasing doesn't launder; fires for untyped and typed callees alike). **Effect tails shipped 2026-06** (S4c, SPEC §12.4 effect-tails block, `effect_tails_test`/`_bad`): tailed builtin HOF signatures charge the argument's row precisely per call site, and the conservative rule defers to them — the effect-rows ingredient at E1 scope. **A− → A re-graded 2026-06** (SPEC §12.5, `builtin_effects_test`/`_bad`): the named coverage gap is closed — the effectful runtime builtins charge their capability (`setTheme`/`setViewport` `[ui]`, `externSource` + network `[io]`), including through S4c tails (`pmap(setViewport)` charges `[ui]` in a pure def), so the stdlib no longer lies by omission. Decided ambient line: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. **E2 user-spelled effect rows shipped 2026-06** (SPEC §12.4 E2 block, `effect_spell_test`/`_bad`): `..e` in the Effect bracket — param position binds, clause position charges — gives user HOFs the same per-call-site precision as tailed builtins, including the spellable identity pattern (uncharged keep, row preserved); unbound tails error. **Ascription effect-coverage shipped 2026-06** (`effect_ascribe_test`/`_bad`): the erasure laundering hole is closed — a fn-type ascription (def return or binding) must COVER the value's row, checked covariant-deep (record fields, list elems, Stream/Async); over-approximation legal; the check even caught and fixed a genuine erasure in `effect_tails_test`'s own `keep`. **`@total` shipped 2026-06** (SPEC §12.6, `total_test`/`_bad`) — the proof gradient's first checked obligation: structural decrease + the DOWNWARD call gate (a total fn may only call total code — effect enforcement's dual, run in reverse), with conservative rejection of mutual/closure recursion. **`Proof [...]` module scope shipped 2026-06** (SPEC §12.7, `proof_scope_test`/`_bad`): `proofs: [total, exhaustive]` rides the `capabilities:` shape — closed vocabulary, declared = enforced (unknown/not-yet-checkable obligations are errors, never silent skips), `total` implicitly @total-marks every module def, `exhaustive` hardens clause heads in every edition. The proof gradient is now a live surface with per-obligation rollout. Remaining → A+: the §3 re-grade (the A+ argument over the shipped surface), per-def/per-block scopes (PROPOSED), and honesty that ambient stdout is a *decided* hole, not an oversight. | **Re-grade** (§3.6 items 1, 2, 4 ✅ — argue the A+). |
+| **Security** | **A+** *(2026-06)* | Capability-secure: Austral, Pony, Koka/Unison; IFC: Jif / Flow Caml | Taint-at-parse is the right cut. A+ = make `Effect` **enforcement** real (TODO §3.6). **The mechanism now is** (2026-06): direct calls checked (`effects_test`, pure-hole edition-gated) and the HOF laundering route closed (SPEC §12.4, `hof_effects_test`/`_bad` — latent effects of a function argument charge the call that supplies it; aliasing doesn't launder; fires for untyped and typed callees alike). **Effect tails shipped 2026-06** (S4c, SPEC §12.4 effect-tails block, `effect_tails_test`/`_bad`): tailed builtin HOF signatures charge the argument's row precisely per call site, and the conservative rule defers to them — the effect-rows ingredient at E1 scope. **A− → A re-graded 2026-06** (SPEC §12.5, `builtin_effects_test`/`_bad`): the named coverage gap is closed — the effectful runtime builtins charge their capability (`setTheme`/`setViewport` `[ui]`, `externSource` + network `[io]`), including through S4c tails (`pmap(setViewport)` charges `[ui]` in a pure def), so the stdlib no longer lies by omission. Decided ambient line: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. **E2 user-spelled effect rows shipped 2026-06** (SPEC §12.4 E2 block, `effect_spell_test`/`_bad`): `..e` in the Effect bracket — param position binds, clause position charges — gives user HOFs the same per-call-site precision as tailed builtins, including the spellable identity pattern (uncharged keep, row preserved); unbound tails error. **Ascription effect-coverage shipped 2026-06** (`effect_ascribe_test`/`_bad`): the erasure laundering hole is closed — a fn-type ascription (def return or binding) must COVER the value's row, checked covariant-deep (record fields, list elems, Stream/Async); over-approximation legal; the check even caught and fixed a genuine erasure in `effect_tails_test`'s own `keep`. **`@total` shipped 2026-06** (SPEC §12.6, `total_test`/`_bad`) — the proof gradient's first checked obligation: structural decrease + the DOWNWARD call gate (a total fn may only call total code — effect enforcement's dual, run in reverse), with conservative rejection of mutual/closure recursion. **`Proof [...]` module scope shipped 2026-06** (SPEC §12.7, `proof_scope_test`/`_bad`): `proofs: [total, exhaustive]` rides the `capabilities:` shape — closed vocabulary, declared = enforced (unknown/not-yet-checkable obligations are errors, never silent skips), `total` implicitly @total-marks every module def, `exhaustive` hardens clause heads in every edition. The proof gradient is now a live surface with per-obligation rollout. **A → A+ re-graded 2026-06** (the §3.6 re-grade): the field's exemplars ship *one* gradient — capability security, effects flowing up (Austral/Pony/Koka). Velve now ships the **dual pair under one declaration shape**: `capabilities:` up, `proofs:` down, both closed vocabularies, both declared = enforced, with every known laundering route closed on the effect side (direct/HOF/tails/ascription/builtins/user rows) and per-obligation rollout live on the proof side — a shape none of the exemplars has. Honesty owed and hereby on record: **ambient stdout is a *decided* hole** — `print`/`println` are an uncharged observation channel (SPEC §12.5), which a strict capability reading (Austral) would charge; that's a documented ergonomics trade, not an oversight. Residual is breadth, not enforcement: per-def/per-block proof scopes stay PROPOSED — and for *security* specifically the module is the trust boundary, so the shipped scope is the security-relevant one. | **Hold** — remaining items (finer proof scopes, refined types, Tier 2) are §3 type-core work, not security gaps. |
 
 ---
 
@@ -223,7 +223,7 @@ enumerable taxonomy of *runtime faults we can statically forbid*, not open-ended
 | `nonzero` / `arith` | div-by-zero, partial arithmetic | refinement + path facts | needs flow env |
 | `overflow` | silent numeric overflow | sized types (§5) | needs §5 |
 | `exhaustive` | incomplete match | already built | **yes** |
-| `handled` | unpropagated error | error rows (§4) | needs §4 |
+| `handled` | unpropagated error | error rows (§4) | needed §4 — **shipped 2026-06**; cheapest next obligation |
 
 What does **not** go in the list: value invariants like `sorted`/`positive` — those stay
 **types** (`SortedList`, `Natural`), because they're properties of *values*, not *operations*.
@@ -269,7 +269,8 @@ proof gradient itself**: readable-by-default, frontier-on-demand, declared exact
 all-on; Rust's `forbid(unsafe)` has no proof). `Proof [...]` — proofs as the dual of
 capabilities — is the construct that embodies it.
 
-Two honest reasons it's an A+ *thesis*, not a delivered A+:
+Two honest reasons the *type-core row's* A+ is still not delivered (they bound the claim —
+the re-grade below argues the construct's A+, not cheaper proofs):
 1. **The hard-proof floor still costs what F★ costs.** Under `Proof [...]`, a listed obligation
    outside the SMT-tractable set (nonlinear, uninterpreted functions) is now a hard error —
    lemmas, timeouts. The construct buys *coherence and access*, **not cheaper hard proofs**; on
@@ -299,9 +300,38 @@ Two honest reasons it's an A+ *thesis*, not a delivered A+:
    Per-def `Proof [obligation] T` and per-block `@proof[...]{}` remain PROPOSED in SPEC.
 5. 🟢 Z3 **Tier-2** + relational witnesses — later, opt-in, for the semantic residue.
 
-Do 1 → 2 → 4 and the type system *is* the opt-in spectrum, and the A+ thesis becomes
-arguable. It will not, and shouldn't try to, win the field's A+ on *cheaper hard proofs* —
-that path runs straight through the readability the language exists to protect.
+Items 1, 2, and 4 are done (2026-06), so the type system *is* now the opt-in spectrum and
+the argument is owed.
+
+**Re-grade (2026-06) — the A+ argued over the shipped surface.** This is no longer a thesis
+defended by design prose; it's defended by fixtures (`total_test`/`_bad`,
+`proof_scope_test`/`_bad`):
+
+1. **The vocabulary held.** Two slices of compiler contact (`@total`, then `proofs: [...]`)
+   added zero obligations and renamed none — the §3.4 fault taxonomy survived implementation
+   exactly as written. A closed vocabulary that survives building is the strongest available
+   evidence it was the right cut (the §5.4 capability list passed the same test).
+2. **The rollout promise is kept, loudly.** "The grade moves per-obligation" was the §3.4
+   pitch; as built, a declared obligation without a checker is a *lower error*, never a
+   silent skip — so at every point in the rollout the surface cannot promise more than the
+   compiler enforces. That property is what makes a partially-implemented gradient *sound*
+   rather than aspirational.
+3. **The direction rule survived contact.** Proofs-flow-down wasn't prose: it is the downward
+   call gate in `total.ts`, and the module scope reuses that engine untouched —
+   `proofs: [total]` is enforcement arriving from the module head, not an annotation.
+4. **Every unshipped obligation has a named blocker — and one has since unblocked.**
+   `bounds`/`nonzero` wait on the flow-sensitive fact env (§3.1 catch 1); `overflow` waits on
+   sized types (§5); `handled` waited on §4 error rows, which shipped (2026-06) — making
+   `handled` the cheapest next obligation on the board.
+
+What this argument buys, precisely: the **Security row's A+** (the proof-gradient integration
+was its last named ingredient — §1) and the construct-level A+ for the gradient itself. What
+it does **not** buy: the **Type-core row stays A−** — its named gap is the conservative skip,
+untouched until the promoted follow-on lands: **§5.1 constEval widening** (fold refinement
+predicates whose call-closure is `@total`), the designed next lever for that row, with item 3
+(refined types, gated on module-private ctors) and Tier 2 behind it. And permanently: Velve
+will not, and shouldn't try to, win the field's A+ on *cheaper hard proofs* — that path runs
+straight through the readability the language exists to protect.
 
 ---
 
@@ -586,7 +616,8 @@ The most useful cut for prioritization:
   Most are gated on the **compiled backend** (`compiler-architecture-design.md`). The compiled
   target unblocks the most rows at once (Games + Animation entirely, the perf ceiling under
   everything).
-- **Live design choice still open** — Type-core (the proof gradient + `Proof [...]` spec, §3),
+- **Live design choice still open** — Type-core (the gradient's *surface* shipped 2026-06;
+  what's open is the refined-type tier + module-private ctors and the finer proof scopes, §3),
   Error-handling (the infer-and-pin hybrid + row inference, §4), Low-level (units-of-measure,
   §5).
 
@@ -599,9 +630,12 @@ The most useful cut for prioritization:
   because the features are unbuilt. The ceiling is real; the floor is "does not exist yet."
 - **A+ exemplar choices**: field/practitioner consensus, not controlled study — same caveat as
   `call-syntax-design.md §7`.
-- **§3 proof tiers + `Proof [...]`**: *theses*, design-on-design, none built; the propagation/boundary rules
-  especially is unproven against a compiler. The frontier-capability claim is sound on
-  feature-composition; the *A+* claim is contingent on the coherence work, not on adding power.
+- **§3 proof tiers + `Proof [...]`**: no longer design-on-design — Tier-1 `@total` and the
+  module-scope `Proof [...]` surface are built (2026-06, SPEC §12.6–12.7), and the
+  propagation/boundary rule (proofs flow down) survived compiler contact as the downward call
+  gate. Still theses: the refined-type tier, the finer scopes, and Tier-2 Z3. The
+  frontier-capability claim is sound on feature-composition; the *construct's* A+ is argued
+  (§3.6 re-grade); the type-core row's is not.
 - **§4 hybrid + §5 redefinition**: rubric/mechanism reframings, *not* shipped work — they change
   *what we measure* and *how we'd build it*, not what exists. `ms*ms → Duration²` is a direct
   consequence of units-of-measure (F# is the existence proof).

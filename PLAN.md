@@ -493,9 +493,33 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       errors; run-mode refuses it (vocabulary errors are lower-stage —
       correct: a module promising an unknown obligation shouldn't run).
       Baseline diff = the two new fixture rows. North-star §3.6 items 1, 2,
-      4 ✅. NEXT (slice 3): the §3 + Security row re-grade (argue the A+
-      over the shipped surface); per-def `Proof [obligation] T` only if
-      wanted.
+      4 ✅.
+- [x] **§3 + Security re-grade (proof-gradient slice 3, completes the plan)**:
+      ✅ DONE (2026-06, docs-only — no code, no fixtures, baselines untouched
+      by construction). Security row A → **A+** in both grade tables
+      (north-star §1, TODO §1): the field's exemplars ship ONE gradient
+      (capability security, effects up — Austral/Pony/Koka); Velve ships the
+      dual pair under one declaration shape, both closed vocabularies, both
+      declared = enforced, every known effect-laundering route closed +
+      per-obligation proof rollout live. The §3.6 re-grade block argues the
+      construct's A+ on four grounds: vocabulary held through two slices of
+      compiler contact (zero obligations added/renamed); rollout promise
+      kept loudly (no-checker obligations are errors, never skips — a
+      partially-implemented gradient that's SOUND); the direction rule
+      survived contact (proofs-flow-down IS the downward gate, reused
+      untouched by the module scope); every unshipped obligation has a named
+      blocker — and `handled`'s (§4 error rows) has since shipped, making it
+      the cheapest next obligation (§3.4 table updated). Honesty items: the
+      ambient-stdout DECIDED hole is now on record in both Security rows;
+      §10 evidence basis updated (the gradient is no longer "design-on-design,
+      none built"); §9 reading guide updated. Explicitly NOT bought: the
+      Type-core row stays A− — its named gap (the conservative skip) is
+      untouched; its promoted next lever is §5.1 constEval widening (fold
+      predicates whose call-closure is @total), now named in the Type-core
+      row itself. Remaining recorded levers after this plan: §5.1 (own
+      slice, corpus-wide inference), refined-type library (gated on
+      module-private ctors — language change), per-def/per-block proof
+      scopes (PROPOSED), Tier-2 Z3.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →
