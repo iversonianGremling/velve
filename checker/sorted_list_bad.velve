@@ -1,0 +1,59 @@
+-- The SortedList boundary, violated four ways. Expected: exactly 4 errors —
+--   1. forging a "sorted" list by calling the private ctor outside the module
+--   2. reading the representation by pattern outside the module
+--   3. passing a raw (unsorted!) list where slMin demands the witness
+--   4. declaring `proofs: [sorted]` — the §3.4 split, enforced: sortedness is
+--      a VALUE invariant, so it lives as a type (SortedList), never in the
+--      scope-obligation vocabulary (those forbid operation faults)
+-- Each violation is its own def so nothing cascades.
+@edition "2026.6"
+
+module sorted
+  proofs: [total, exhaustive, handled]
+
+  @private
+  type SortedList
+    = SortedList List(Number)
+
+  def pairOk(p: (Number, Number)): Bool
+    match p
+      | (a, b) -> a <= b
+
+  def isSorted(xs: List(Number)): Bool
+    if length(xs) <= 1 then true else all(pairOk, zip(xs, tail(xs)))
+
+  def sortedList(xs: List(Number)): Result SortedList String
+    if isSorted(xs) then Ok(SortedList(xs)) else Error("not sorted")
+
+  def slValues(s: SortedList): List(Number)
+    match s
+      | SortedList(xs) -> xs
+
+  def slMin(s: SortedList): Result Number String
+    if length(slValues(s)) >= 1 then Ok(head(slValues(s))) else Error("empty")
+
+-- 1. Forge: an unsorted "SortedList" by direct construction. (error)
+def forge(): List(Number)
+  slValues(SortedList([3, 1, 2]))
+
+-- 2. Representation-dependence: matching the private ctor outside. (error)
+def peek(): Number
+  match sortedList([1, 2])
+    | Ok(SortedList(xs)) -> length(xs)
+    | Error(_)           -> 0
+
+-- 3. Raw list where the witness is demanded: head of [3, 1, 2] is 3, not the
+-- minimum — exactly the lie the type exists to make unwritable. (error)
+def sneak(): Result Number String
+  slMin([3, 1, 2])
+
+-- 4. 'sorted' is not an operation fault, so it is not in the vocabulary —
+-- value invariants stay types. (error)
+module wrongTier
+  proofs: [sorted]
+
+  def fine(): Number
+    1
+
+def main(): Number
+  fine()

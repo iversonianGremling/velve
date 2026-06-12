@@ -758,6 +758,36 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       NO re-grade: type-core holds A — the → A+ residue was never bounds;
       it remains `proof.sorted`/`SortedList` + the Tier-1.5 witness, and
       the cheap side-tracks are now spent.
+- [x] **`SortedList` — the semantic archetype, construct-it route
+      (north-star §3.2)**: ✅ DONE (2026-06, SPEC §7.1,
+      `sorted_list_test`/`_bad` — 0 errors + runs, and exactly 4 errors;
+      baselines unchanged except the new fixture rows). Sortedness has no
+      structural proxy, so the no-solver option is the smart constructor:
+      the order check (`isSorted` — `all` over `zip(xs, tail(xs))` adjacent
+      pairs) runs exactly once at the gate, and every closed op preserves
+      the invariant BY CONSTRUCTION. Two sound gates: `sortedList` PARSES
+      (rejects unsorted — never silently sorts) and `fromAny` sorts — as
+      built by `foldl(slInsert, SortedList([]), xs)`, construction never
+      touching the representation (also dodged a live infer/eval `sortBy`
+      arg-order disagreement: infer types `sortBy(xs, keyFn)`, eval expects
+      `sortBy(cmp, xs)` — pre-existing, noted, not this slice's fix).
+      Closed ops: `slInsert` filter-split (`<= x`, x, `> x` — never
+      re-sorted, never re-checked), `slMerge`. Payoff op `slMin`: O(1)
+      `head`, only "the minimum" on sorted input — a CORRECTNESS
+      precondition (vs `divBy`/`getAt`'s safety), made unforgeable.
+      Proof-carrying (`proofs: [total, exhaustive, handled]`); pure
+      library add, zero checker changes (second time the §3.5 prediction
+      held exactly). `_bad` pins forge-by-call, match-by-pattern,
+      raw-list-where-witness-demanded, PLUS the doctrinal fourth:
+      `proofs: [sorted]` is a vocabulary error — the §3.4
+      operations/values split enforced, not just documented. The
+      `proof.sorted` Z3 spelling stays a proposed ALTERNATIVE (zero
+      ceremony, readability tax), no longer the only path. NO re-grade:
+      type-core holds A — remaining → A+ is now exactly ONE item, the
+      Tier-1.5 relational witness (`Index(xs)`); a `bounds`+`terminates`
+      binary-search showcase is the natural fixture once it lands
+      (fractional-index float semantics make its measure facts a slice of
+      their own — probed, deliberately not rushed into this one).
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

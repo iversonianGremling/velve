@@ -52,6 +52,7 @@ means there is a green fixture exercising it under `checker/`.
 | Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`; `exhaustive` hardens clause-head gaps to errors in every edition. **`handled` shipped (2026-06, `proof_handled_test`/`_bad`)**: no silently discarded `Result` anywhere in the module — third checkable obligation, scope-local like `exhaustive`. **`nonzero` shipped (2026-06, `proof_nonzero_test`/`_bad`)**: every `/` and `%` divisor proved nonzero via the flow-sensitive fact env — fourth checkable obligation. **Z3 back-end shipped one slice later (2026-06, `proof_nonzero_z3_test`/`_bad`)**: the floor's residue goes to Z3 as a refutation over the reals — the pinned `a != b ⟹ a - b != 0` case graduated from `_bad` to green; counterexample models in the errors; lazy load; floor fallback when uninstalled. **`bounds` shipped (2026-06, `proof_bounds_test`/`_bad`)**: every list index read proved `0 ≤ i < length(xs)` — fifth checkable obligation; `length(xs)` on an immutable name becomes an Int-sorted solver symbol (`≥ 0` asserted), so `xs[length(xs) - 1]` under `length(xs) > 0` proves; two queries per read, the error names which side leaked with the model. Not-checkable-yet is down to `arith`/`overflow`. Per-def/per-block scopes PROPOSED. |
 | Module-private constructors (`@private type`) | ✅ Built (2026-06) | §7.1, `private_ctor_test`/`_bad`: an ADT's constructors seal at the module boundary (no forging by call, no representation-dependence by pattern); the type name stays public. The soundness primitive for the refined-type tier (north-star §3.5 confirmed → shipped). Resolver scope stays flat — privacy is a use-site check. |
 | Refined-type library (Tier 1) | ✅ Built (2026-06) | §7.1, `refined_types_test`/`_bad`: `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — smart-constructor gates, closed ops, faulting ops through the gate; `divBy(n, NonZero)` makes division total and `getAt(xs, InBounds)` makes indexing safe **as type errors**, no solver. The library module is proof-carrying (`proofs: [total, exhaustive, handled]`). Pure library add — zero checker changes. Tier-1 bound: `InBounds` is not relational (Tier 1.5). |
+| `SortedList` — the semantic archetype | ✅ Built (2026-06) | §7.1, `sorted_list_test`/`_bad`: sortedness has no structural proxy (north-star §3.2), so it ships by the construct-it route — order checked once at the gate (`sortedList` rejects, `fromAny` folds the closed insert), closed ops (`slInsert` filter-split, `slMerge`) preserve it by construction, and `slMin` is O(1) `head` whose *correctness* precondition the type makes unforgeable. Proof-carrying module; pure library add — zero checker changes. The `_bad` twin's doctrinal pin: `proofs: [sorted]` is a vocabulary error — value invariants stay types. `where proof.sorted` (Tier 2) stays PROPOSED. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | Call children (`card()` composition) | ✅ Built (2026-06) | §11.1, `call_child_test`/`_bad`: a bare lowercase component call is a `child` grammar form — composed views nest for real (closes the last children-flattening residual); a call child resolves, type-checks, and effect-checks like a call anywhere. |
@@ -1808,6 +1809,28 @@ witness-token primitive (north-star §3.3). Until multi-file imports resolve
 (§14), the library travels by inclusion; `refined_types_test.velve` is its
 reference source.
 
+**`SortedList` — the semantic archetype** *(SHIPPED 2026-06,
+`sorted_list_test`/`_bad`; north-star §3.2)*. Sortedness is the canonical
+property with **no structural proxy** — a `@sorted` verification marker would
+fall straight to a solver every time — so the no-solver option is the
+**construct-it route**: the order check runs exactly once, at the gate, and
+every closed op preserves the invariant by construction. Two sound gates:
+`sortedList(xs)` *parses* (rejects an unsorted list rather than silently
+sorting it — `Result SortedList String`) and `fromAny(xs)` *sorts* — as built,
+by folding the closed insert (`foldl(slInsert, SortedList([]), xs)`), so even
+construction never touches the representation. Closed ops: `slInsert` is a
+filter-split (everything `<= x`, then `x`, then everything `> x` — never
+re-sorted, never re-checked) and `slMerge` stays in the type. The payoff op is
+`slMin`: O(1) `head`, which is only "the minimum" on **sorted** input — unlike
+`divBy`/`getAt`, the invariant here guards *correctness*, not safety, and the
+type makes that precondition unforgeable. The module is proof-carrying
+(`proofs: [total, exhaustive, handled]`). The `_bad` twin pins the three
+boundary violations plus a **doctrinal** fourth: `proofs: [sorted]` is a
+vocabulary error — sortedness is a *value* invariant, so it lives as a type,
+never in the scope-obligation vocabulary (§12.7's operations/values split,
+enforced). The Tier-2 spelling (`List(a) where proof.sorted value`) remains
+PROPOSED (§std/proof).
+
 ### 7.2 Stores
 
 Owns mutable state. Three explicit sections:
@@ -3075,7 +3098,10 @@ Real-time guaranteed. No allocations inside kernel. No GC. Compiled mode only.
 
 ### std/proof — PROPOSED
 
-Optional theorem prover integration (Z3, CVC5):
+Optional theorem prover integration (Z3, CVC5). (The *constructive* route for
+sortedness shipped 2026-06 as the `SortedList` library, §7.1 — the
+`where proof.sorted` spelling below is the Tier-2 alternative for code that
+can't pay the API ceremony.)
 
 ```
 type SortedList(a) = List(a) where proof.sorted value
