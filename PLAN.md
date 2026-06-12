@@ -455,6 +455,24 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       effect_tails_test's `keep` (S4c-era) — fixture corrected to spell
       `(String -> Effect [io] String)`. Baseline diff = the new bad
       fixture only.
+- [x] **Tier-1 `@total` structural totality (proof-gradient slice 1)**: ✅ DONE
+      (2026-06, SPEC §12.6, totality-design §9 as-built, `total_test`/`_bad`).
+      The north-star §3 gradient's first checked obligation: `@total def f`
+      (parses via the existing decorator rule — zero grammar changes) is held
+      to its promise by a standalone syntactic pass (`total.ts`): recursion
+      must decrease at ONE position (ctor/tuple/record destructuring descent,
+      or `n - k` under a literal/comparison floor with a recursion-free path),
+      and totality flows DOWN the call graph — total calls only total fns +
+      terminating builtins; HOF builtins need a checkable fn (lambda /
+      local-let lambda / total name); `loop`/`await`/spawn/host/elements
+      rejected in total bodies. Conservative rejects (pinned in `_bad`, 8
+      errors): mutual recursion (cycle pass, one error per fn), closure
+      recursion, fn-param calls, non-total builtins. §3.5 finding recorded:
+      module-private ctors = language change (flat resolver scope) — gates
+      the refined-type tier only. Deferred follow-on: §5.1 constEval folding
+      of @total predicates (corpus-wide, own slice). Baseline diff = the two
+      new fixture rows. NEXT (slice 2): the `Proof [...]` module-scope
+      surface (`proofs: [total, exhaustive]` mirroring `capabilities:`).
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

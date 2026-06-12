@@ -1,0 +1,57 @@
+@edition "2026.6"
+
+-- Tier-1 structural totality (totality-design §3, SHIPPED): `@total def …` is an
+-- opt-in, checked promise that the function terminates. The checker accepts the
+-- shapes total languages bless — a recursion-free body, numeric `n - k` descent
+-- under a literal base, match-rebinding descent, and structural descent into a
+-- constructor payload — and lets total fns call total fns, terminating builtins,
+-- and HOF builtins fed total lambdas. Expected: clean; runs.
+
+-- No recursion at all: trivially total (the call gate still applies).
+@total
+def damage(hp: Number, hit: Number): Number
+  if hit > hp then 0 else hp - hit
+
+-- Numeric descent with literal base CLAUSES (the fib idiom).
+@total
+def fib(0): Number -> 0
+def fib(1): Number -> 1
+def fib(n: Number): Number -> fib(n - 1) + fib(n - 2)
+
+-- Numeric descent via match-REBINDING: the branch binder `n` aliases the param,
+-- the literal branch is both base case and floor.
+@total
+def factorial(n: Number): Number
+  match n
+    | 0 -> 1
+    | n -> n * factorial(n - 1)
+
+type Tree
+  = Leaf Number
+  | Node (Tree, Tree)
+
+-- STRUCTURAL descent: `a`/`b` are bound inside the ctor payload of `t`, so each
+-- recursive call walks a strictly smaller tree. `Leaf` is the base branch.
+@total
+def sumTree(t: Tree): Number
+  match t
+    | Leaf(n)      -> n
+    | Node((a, b)) -> sumTree(a) + sumTree(b)
+
+-- Totality flows DOWN the call graph: a total fn may call other total fns…
+@total
+def gauge(n: Number): Number
+  damage(100, n)
+
+-- …and HOF builtins, when the function they're handed is checkable: a lambda's
+-- body is walked under the same rules, and a local `let`-bound lambda is too.
+@total
+def doubled(xs: List(Number)): List(Number)
+  let bump = fn x -> x + 1
+  map(fn x -> bump(x) * 2, xs)
+
+def main(): Number
+  let t = sumTree(Node((Leaf(1), Node((Leaf(2), Leaf(3))))))
+  println("fib={fib(10)} fact={factorial(5)} tree={t}")
+  println("gauge={gauge(30)} doubled={doubled([1, 2, 3])}")
+  fib(10)

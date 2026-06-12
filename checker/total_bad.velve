@@ -1,0 +1,46 @@
+@edition "2026.6"
+
+-- Tier-1 totality guardrails (totality-design §3): every way to break the
+-- `@total` promise that the structural check can see. Expected: 8 errors.
+
+-- 1. No progress: the recursive argument never shrinks.
+@total
+def hang(n: Number): Number -> hang(n)
+
+-- 2. Wrong direction: `n + 1` grows.
+@total
+def grow(n: Number): Number -> grow(n + 1)
+
+-- 3. A bare `loop` is unbounded inside @total.
+@total
+def spin(): Number
+  mut i = 0
+  loop
+    i = i + 1
+    if i == 6
+      break
+  i
+
+-- 4. Totality flows down: a total fn may not call an unmarked one.
+def helper(n: Number): Number -> n + 1
+
+@total
+def caller(): Number -> helper(3)
+
+-- 5 + 6. Mutual recursion: each fn passes the other's call gate (both @total),
+-- but together they can loop — the Tier-1 check rejects the cycle, one per fn.
+@total
+def even(n: Number): Number -> odd(n - 1)
+
+@total
+def odd(n: Number): Number -> even(n - 1)
+
+-- 7. HOF laundering: handing a non-total fn to `map` lets the callee call it.
+@total
+def launder(xs: List(Number)): List(Number) -> map(helper, xs)
+
+-- 8. A builtin outside the terminating set (pmap spawns parallel work).
+@total
+def nap(xs: List(Number)): List(Number) -> pmap(xs, fn x -> x + 1)
+
+def main(): Number -> 1

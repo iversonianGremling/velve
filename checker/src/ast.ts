@@ -175,7 +175,13 @@ export type Decl =
        // tier — affine `mut`, pointers (`.&`/`.*`), and lifetimes are only legal
        // here. Default (false/undefined) is the GC'd high-level tier where those
        // are rejected and `mut` is a plain reassignable binding (no move-tracking).
-       lowLevel?: boolean }                                                  & Node)
+       lowLevel?: boolean;
+       // `@total def …` — Tier-1 structural totality (totality-design §3): an
+       // opt-in, checked promise that the function terminates. A standalone
+       // marker, NOT a pseudo-effect (totality-design §6 DECIDED) — it shares
+       // only the call-gate *shape* with effects, run in the opposite direction
+       // (totality flows DOWN the call graph: a total fn may only call total code).
+       total?: boolean }                                                     & Node)
 
   | ({ tag: "DType";
        name: string;

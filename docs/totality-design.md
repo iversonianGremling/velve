@@ -1,6 +1,11 @@
 # Totality — functions that are guaranteed to finish
 
-Status: **DESIGN — not built.** This note proposes a `@total` marker: an opt-in
+Status: **Tier 1 SHIPPED (2026-06)** — `checker/src/total.ts`, SPEC §12.6,
+`total_test`/`total_bad` fixtures. The structural check below is built as
+specced; see §9 for the as-built deltas. Tier 2 (`proof.terminates`) and the
+realtime-implied marker remain future work.
+
+This note proposes a `@total` marker: an opt-in
 promise, checked by the compiler, that a function always finishes (never loops
 forever). It generalizes two things velve already does in isolation — the acyclic
 convergence graph (styles §6) and the `proof.terminates` line in the realtime
@@ -126,11 +131,11 @@ not call a partial one.** So the two compose — the strongest guarantee is a pu
 total function (`Effect []` + `@total`): no side effects *and* finishes. That pair
 is exactly what a refinement predicate or an audio kernel wants.
 
-> **DECIDE:** whether `@total` is a standalone marker or folds into the effect row
-> as a pseudo-effect (a function is `partial` the way it is `[network]`). The row
-> framing unifies the two gates but stretches "effect" to mean "non-termination,"
-> which isn't a side effect. Recommend a **standalone marker** for honest naming;
-> share the call-gate machinery underneath.
+> **DECIDED (as built, 2026-06): standalone marker.** `@total` is not a
+> pseudo-effect — non-termination isn't a side effect, and the two gates run in
+> opposite directions (effects flow *up* to callers; totality flows *down* into
+> callees, north-star §3.4). The call-gate *shape* is shared; the machinery is a
+> separate pass (`total.ts`), not the effect checker.
 
 ---
 
@@ -160,4 +165,35 @@ the same gating cadence used for the pure-calls-effectful gate.
 **Evidence basis:** termination is already enforced in two shipped/-proposed
 corners (convergence acyclicity is built and cycle-checked, styles §6.6;
 `proof.terminates` and the no-alloc kernel are written into SPEC std/proof and
-std/audio). This note generalizes them; it is not yet built.
+std/audio). This note generalizes them; Tier 1 is now built (below).
+
+---
+
+## 9. As built (2026-06) — Tier 1 deltas
+
+Shipped as `checker/src/total.ts` (a standalone syntactic pass beside
+`exhaust.ts`, keyed on the resolver's bindings, run after borrow checking);
+SPEC §12.6; fixtures `total_test.velve` (6 accepted shapes, runs) and
+`total_bad.velve` (8 pinned rejections). Deltas from the sketch above:
+
+- **No list patterns exist in velve**, so "the tail of a list" isn't a spellable
+  measure. Structural descent is ctor-payload / tuple-element / record-field
+  destructuring (clause heads and `match` branches over a param alias); numeric
+  descent is `x - k` for positive literal `k`. `n / 2` stays Tier 2, as specced.
+- **Mutual recursion is rejected** (one error per fn in the cycle): each fn
+  passes the other's total→total call gate, so a dedicated cycle pass catches
+  what the per-fn decrease check can't see. Restructure or drop the marker.
+- **HOF builtins** (`map`/`filter`/`foldl`/…) are allowed iff the fn argument is
+  a lambda, a local `let`-bound lambda, or a known-total name — the latent-effect
+  rule's shape (SPEC §12.4) run in reverse. Recursion *inside* a lambda is
+  rejected (the structural check can't bound closure calls). Calling a fn
+  *parameter* is rejected (argument totality unknown — Tier 2's job).
+- **Element trees are rejected** in total bodies, not just IO: `@total` is for
+  the compute helpers of §4, and elements pull in handlers and convergence.
+- **The `Number`-domain caveat is documented, not patched**: `factorial(-1)`
+  passes the literal-floor rule and diverges at runtime. §3's blessed idiom
+  assumes integer descent; the honest fix is `Natural` (north-star §3.3), not a
+  cleverer syntactic rule.
+- **Deferred follow-on (recorded in TODO):** §5.1's payoff — folding refinement
+  predicates whose call-closure is `@total` — touches `constEval` corpus-wide
+  and ships as its own slice.

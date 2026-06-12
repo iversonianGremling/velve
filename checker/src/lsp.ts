@@ -17,6 +17,7 @@ import { Lowerer } from "./lower.js";
 import { resolve } from "./resolve.js";
 import { infer } from "./infer.js";
 import { checkExhaustiveness } from "./exhaust.js";
+import { checkTotality } from "./total.js";
 import { typeToString } from "./types.js";
 import { findExprAt } from "./find.js";
 import type { Expr, Module } from "./ast.js";
@@ -51,13 +52,14 @@ function analyze(uri: string, text: string): { analysis: Analysis; lspDiags: Ret
   const { resolutions, diagnostics: rd, snapshots, globals } = resolve(mod);
   const { types, diagnostics: id, nameToTypeString }         = infer(mod, resolutions);
   const ed                                                   = checkExhaustiveness(mod, types);
+  const td                                                   = checkTotality(mod, resolutions);
 
   const analysis: Analysis = { mod, types, resolutions, snapshots, globals, nameToTypeString, tree };
   cache.set(uri, analysis);
 
   return {
     analysis,
-    lspDiags: [...ld, ...rd, ...id, ...ed].map(toLspDiag),
+    lspDiags: [...ld, ...rd, ...id, ...ed, ...td].map(toLspDiag),
   };
 }
 

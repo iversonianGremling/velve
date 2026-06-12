@@ -48,6 +48,7 @@ means there is a green fixture exercising it under `checker/`.
 | Named error ADTs / structured `parse` errors | ✅ Built | §2.6; prelude `ParseError { expected, got, detail }`, returned by `T.parse` / `parseNumber` / `Json.parse` (runtime); `error_adt_test`/`_bad`. Residual: `parseInt`/`parseFloat`/`String.toNumber` errors are still `String`; inferred error *rows* are the separate A+ design (north-star §4). |
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. **User-spelled rows built (E2, 2026-06, `effect_spell_test`/`_bad`)**: `..e` on param fn-types binds, in the Effect clause charges — user HOFs get the same per-call-site precision; unbound tails error. **Ascription coverage built (2026-06, `effect_ascribe_test`/`_bad`)**: a fn-type ascription must cover the value's row (returns + bindings, covariant-deep) — the erasure laundering hole is closed. |
 | Effect-typed builtin surface | ✅ Built (2026-06) | §12.5, `builtin_effects_test`/`_bad`: `setTheme`/`setViewport` charge `[ui]`, `externSource` and the network names charge `[io]` — the stdlib stops lying by omission, incl. through HOF tails. Decided ambient: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. |
+| Totality (`@total`, Tier 1) | ✅ Built (2026-06) | §12.6, `total_test`/`_bad`: opt-in structural termination — recursion must decrease at one position (ctor/tuple/record descent or `n - k` under a literal/comparison floor), totality flows down the call graph (total calls total + terminating builtins; HOFs need a checkable fn), `loop`/`await`/spawn/host rejected in total bodies. Mutual recursion, closure recursion, `n / 2` → conservative reject (Tier 2 `proof.terminates` is the future valve). First shipped obligation of the north-star §3 proof gradient. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | Call children (`card()` composition) | ✅ Built (2026-06) | §11.1, `call_child_test`/`_bad`: a bare lowercase component call is a `child` grammar form — composed views nest for real (closes the last children-flattening residual); a call child resolves, type-checks, and effect-checks like a call anywhere. |
@@ -1231,11 +1232,15 @@ value is String
 @deprecated
 @idempotent
 @kernel
+@total
 @audioKernel sampleRate=44100 bufferSize=256
 
 def myFunc(): ()
   ...
 ```
+
+`@total` is checked (Tier-1 structural totality, §12.6); `@low`/`@kernel` gate
+the low-level tier (§2.11). The rest are currently inert annotations.
 
 ---
 
@@ -2381,6 +2386,58 @@ either.
 Deterministic renders/introspection (`html`, `uiModel`, `analyze`,
 `sandbox`, `interactive`, `domHost`, `journalOf`) stay pure: same input,
 same string, no host mutation.
+
+### 12.6 Totality — `@total` (Tier 1 SHIPPED)
+
+`@total def f …` is an opt-in, checked promise that `f` terminates
+(totality-design; the first obligation of the north-star §3 proof gradient).
+Functions are partial by default — nothing changes for unmarked code, and the
+only escape hatch is not marking the function.
+
+```
+@total
+def factorial(n: Number): Number
+  match n
+    | 0 -> 1
+    | n -> n * factorial(n - 1)     -- accepted: n - 1 under a literal base
+
+@total
+def hang(n: Number): Number -> hang(n)   -- error: may not terminate
+```
+
+The Tier-1 check is structural (no solver), the discipline total languages use:
+
+- **Recursion must make progress** at one fixed argument position, on every
+  recursive call: either **structurally** (the argument is a binder destructured
+  out of that parameter — a ctor payload, tuple element, or record field, from
+  the clause head or a `match` over the parameter) or **numerically** (`x - k`
+  for a positive literal `k`, where `x` aliases the parameter — `match n | n ->`
+  rebinding counts). A numeric measure additionally needs a **floor witness**: a
+  literal base clause (`def fib(0)`), a literal `match` branch, or a comparison
+  over the parameter in an `if`/guard. And some path must end: a clause or
+  branch that does not recurse.
+- **Totality flows DOWN the call graph** (the dual of effects, which flow up): a
+  total fn may call only `@total` fns and builtins in the terminating set.
+  Constructors, math, string/list compute, and `print`/`println` qualify;
+  anything that waits, spawns, or reaches the host (`sleep`, `pmap`,
+  `parallel`, `stream*`, `externSource`, `setTheme`/`setViewport`, …) does not.
+  HOF builtins (`map`, `filter`, `foldl`, …) iterate a finite collection, so
+  they're allowed exactly when the function handed to them is checkable: a
+  lambda (its body is walked under the same rules), a local `let`-bound lambda,
+  or a known-total name — the same shape as the latent-effect rule (§12.4), run
+  in reverse.
+- **Unbounded constructs are rejected** inside a total body: bare `loop`,
+  `await`, `go`/`send`/`resume`, `transaction`/`retry`, raw `@js{}`, and
+  element trees (`@total` is for compute helpers). `for` over a finite
+  collection terminates by construction and is fine.
+- **Out of Tier-1 scope by design** (conservative-reject; Tier 2
+  `proof.terminates` is the future escape valve): mutual recursion, recursion
+  through closures or fn parameters, non-structural measures like `n / 2`.
+
+**Honest caveat:** `Number` is not `Nat`. The blessed numeric rule means
+`factorial(-1)` type-checks total yet diverges at runtime — the integer-domain
+assumption is documented, not checked; the honest fix is a `Natural` refined
+type (north-star §3.3), not a cleverer syntactic rule.
 
 ```
 velve new my-app    -- scaffold new project

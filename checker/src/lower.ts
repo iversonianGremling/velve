@@ -141,6 +141,8 @@ export class Lowerer {
     const fnSigs   = new Map<string, N>();
     // Function names opted into the low-level tier via `@low`/`@kernel def …`.
     const lowLevelFns = new Set<string>();
+    // Function names that promised totality via `@total def …` (totality-design §3).
+    const totalFns = new Set<string>();
     type Item = { kind: "fn"; name: string } | { kind: "other"; node: N };
     const order: Item[] = [];
     const seen = new Set<string>();
@@ -155,11 +157,17 @@ export class Lowerer {
         ? node.namedChildren.filter(c => c.type === "decorator").map(d => d.namedChild(0)?.text ?? "")
         : [];
       const isLow = decoNames.some(d => d === "low" || d === "kernel");
+      const isTotal = decoNames.includes("total");
+      // `@total` promises termination of a FUNCTION — on a type def it's meaningless.
+      if (isTotal && inner.type !== "function_def") {
+        this.diagnostics.push({ kind: "error", span: this.sp(node), message: "`@total` marks a function definition" });
+      }
 
       if (inner.type === "function_def") {
         const name = inner.namedChild(0)?.text ?? "?";
         if (!seen.has(name)) { seen.add(name); fnGroups.set(name, []); order.push({ kind: "fn", name }); }
         if (isLow) lowLevelFns.add(name);
+        if (isTotal) totalFns.add(name);
         fnGroups.get(name)!.push(inner);
       } else if (inner.type === "function_sig") {
         const name = inner.namedChild(0)?.text ?? "?";
@@ -173,7 +181,7 @@ export class Lowerer {
     const decls: Decl[] = [];
     for (const item of order) {
       if (item.kind === "fn") {
-        decls.push(this.lowerFnGroup(item.name, fnGroups.get(item.name)!, fnSigs.get(item.name) ?? null, lowLevelFns.has(item.name)));
+        decls.push(this.lowerFnGroup(item.name, fnGroups.get(item.name)!, fnSigs.get(item.name) ?? null, lowLevelFns.has(item.name), totalFns.has(item.name)));
       } else {
         const d = this.lowerTopDecl(item.node);
         if (d) decls.push(d);
@@ -302,11 +310,11 @@ export class Lowerer {
 
   // ── Functions ───────────────────────────────────────────────────────────────
 
-  private lowerFnGroup(name: string, nodes: N[], sigNode: N | null, lowLevel = false): Decl {
+  private lowerFnGroup(name: string, nodes: N[], sigNode: N | null, lowLevel = false, total = false): Decl {
     const sig = sigNode ? this.lowerFnSig(sigNode) : null;
     const clauses = nodes.map(n => this.lowerFnClause(n));
     const span = (nodes[0] ?? sigNode)!;
-    return { tag: "DFn", name, sig, clauses, lowLevel, span: this.sp(span) };
+    return { tag: "DFn", name, sig, clauses, lowLevel, total, span: this.sp(span) };
   }
 
   private lowerFnSig(n: N): FnSig {
