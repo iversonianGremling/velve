@@ -1,0 +1,22 @@
+-- Tier-2 Z3 verdicts that stay errors (SPEC §12.7). Z3 only removes errors
+-- it can refute — an insufficient guard gets a concrete counterexample in
+-- the message, and an uninterpreted divisor (a call result — north-star §3.1
+-- catch 2) never reaches the solver at all.
+-- Expected: exactly 3 errors.
+@edition "2026.6"
+
+module leaky_div
+  proofs: [nonzero]
+
+  -- 1: >= admits equality — Z3 answers sat with a model where a = b.
+  def leaky(n: Number, a: Number, b: Number): Number
+    if a >= b then n / (a - b) else 0
+
+  -- 2: no facts at all — a + b can be anything, including 0.
+  def blind(n: Number, a: Number, b: Number): Number
+    n / (a + b)
+
+  -- 3: opaque to any solver: a call result is an uninterpreted function, so
+  -- it stays the conservative floor error (the fix is the NonZero witness).
+  def opaque(n: Number, xs: List(Number)): Number
+    n / length(xs)

@@ -1,0 +1,36 @@
+-- The Tier-2 Z3 fall-through (north-star §3.3, SPEC §12.7): divisors the
+-- interval floor can't settle go to Z3 as a refutation query over the reals
+-- (facts ∧ divisor == 0 unsat ⟹ proved). `wide` is the exact case
+-- `proof_nonzero_bad.velve` pinned as the floor's residue when `nonzero`
+-- first shipped — one slice later it graduates here, verbatim. The solver
+-- only ever REMOVES floor errors, never accepts what it can refute; the LSP
+-- still shows the conservative floor for these.
+-- Expected: clean; runs.
+@edition "2026.6"
+
+module solver_div
+  proofs: [nonzero]
+
+  -- The graduated pin: a != b ⟹ a - b != 0.
+  def wide(n: Number, a: Number, b: Number): Number
+    if a != b then n / (a - b) else 0
+
+  -- Strict order: a > b ⟹ a - b != 0.
+  def gap(n: Number, a: Number, b: Number): Number
+    if a > b then n / (a - b) else 0
+
+  -- Linear arithmetic over one guard, two divisors: d > 1 proves both
+  -- d - 1 != 0 and 2 * d != 0.
+  def shrink(n: Number, d: Number): Number
+    if d > 1 then n / (d - 1) + n / (2 * d) else 0
+
+  -- Nonlinear, no guard at all: d * d + 1 has no real root.
+  def smooth(n: Number, d: Number): Number
+    n / (d * d + 1)
+
+def main(): Effect [io] ()
+  println(wide(10, 7, 2))
+  println(wide(10, 3, 3))
+  println(gap(9, 5, 2))
+  println(shrink(12, 4))
+  println(smooth(10, 3))

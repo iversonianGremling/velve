@@ -10,6 +10,7 @@ import { checkBorrows } from "./borrow.js";
 import { checkTotality } from "./total.js";
 import { checkHandled } from "./handled.js";
 import { checkNonZero } from "./facts.js";
+import { dischargeNonZero } from "./smt.js";
 import { Evaluator } from "./eval.js";
 import { RuntimeError } from "./value.js";
 import { analyzeTweaks } from "./tweaks.js";
@@ -40,9 +41,11 @@ if (cmd === "check") {
   const borrowDiags = checkBorrows(mod, types);
   const totalDiags = checkTotality(mod, resolutions);
   const handledDiags = checkHandled(mod, types);
-  const nonZeroDiags = checkNonZero(mod);
+  // The nonzero floor is sync; what it couldn't settle goes to Z3 (smt.ts).
+  const { diagnostics: nonZeroDiags, residue } = checkNonZero(mod);
+  const smtDiags = await dischargeNonZero(residue);
 
-  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags];
+  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags, ...smtDiags];
   console.log(`${types.size} expressions typed, ${resolutions.size} names resolved`);
   if (allDiags.length === 0) {
     console.log("no errors");

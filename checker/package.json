@@ -14,7 +14,8 @@
     "tree-sitter": "^0.25.0",
     "tree-sitter-velve": "file:..",
     "vscode-languageserver": "^9.0.1",
-    "vscode-languageserver-textdocument": "^1.0.11"
+    "vscode-languageserver-textdocument": "^1.0.11",
+    "z3-solver": "^4.16.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

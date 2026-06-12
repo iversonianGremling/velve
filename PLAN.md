@@ -649,12 +649,49 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       Scope-local like `exhaustive`/`handled` (no downward gate). Checker
       changes: facts.ts (new), lower.ts PROOF_CHECKABLE + message,
       index.ts/lsp.ts wiring; `proof_scope_bad` untouched (it pins
-      `bounds` as the not-checkable example). NOT done — and blocked on a
-      user-approved dependency: the **Z3 back-end** (`z3-solver` npm
-      install was permission-denied this session); the hook is exactly
-      `entailsNonZero` + `proveDivisor`. No re-grade: type-core holds A;
+      `bounds` as the not-checkable example). The Z3 back-end was blocked
+      on the dependency at ship time — it landed the NEXT slice (below),
+      once the user installed `z3-solver`. No re-grade: type-core holds A;
       this is groundwork named inside its remaining → A+ path, not the
       path itself.
+- [x] **The Tier-2 Z3 back-end for `nonzero` (north-star §3.3 tier 2,
+      first slice)**: ✅ DONE (2026-06, `checker/src/smt.ts`, SPEC §12.7,
+      `proof_nonzero_z3_test`/`_bad` — 0 and exactly 3 errors; baseline
+      diff: the two new rows plus `proof_nonzero_bad` 6 → 5, the
+      deliberate graduation). Two-tier discharge as designed: facts.ts
+      went symbolic (facts are now comparisons between translatable
+      TERMS — names, numeric literals, `+`/`-`/`*`/unary minus — not just
+      name-vs-constant; the interval floor reads the constant subset),
+      and divisors the floor can't settle but CAN translate become a
+      residue `checkNonZero` returns; the CLI awaits
+      `dischargeNonZero(residue)` — per obligation: assert every path
+      fact, assert divisor == 0, UNSAT over ℝ ⟹ proved; SAT surfaces the
+      **counterexample model** in the error (`a = 0.0, b = 0.0`); UNKNOWN
+      conservative. The case the floor slice pinned in
+      `proof_nonzero_bad` (`if a != b then n / (a - b)`) GRADUATED to the
+      z3 green fixture verbatim — floor-pin-graduate is the
+      per-obligation rollout working at the solver tier; the green
+      fixture also proves strict-order guards, one guard covering two
+      divisors, and guard-free nonlinear `d * d + 1`. Soundness work this
+      slice: a per-clause prepass collects every `mut`/reassignment
+      target so facts never attach to mutable names (closes a nested-loop
+      invalidation hole the v1 floor had); the solver only ever REMOVES
+      floor errors, never accepts what it can refute. Ops/honesty:
+      z3-solver loads lazily (~120 ms init, measured; empty residue
+      never pays), worker threads terminated after discharge or Node
+      hangs; missing package degrades to floor errors + install hint;
+      the LSP (sync pipeline) shows the conservative floor, the CLI is
+      authoritative; Z3 reasons over ℝ not IEEE doubles — benign for
+      this obligation (gradual underflow: `a - b == 0` iff `a == b`
+      for doubles; overflow to ±Infinity is nonzero). Uninterpreted
+      divisors (`length(xs)`, projections) stay floor errors — §3.1
+      catch 2 is structural, the witness types remain their answer.
+      Checker changes: smt.ts (new), facts.ts rewrite, index.ts await,
+      lsp.ts floor surface; `z3-solver` added to checker/package.json
+      (user-installed). No re-grade: type-core holds A — the row's → A+
+      named the SEMANTIC residue (`proof.terminates`, `proof.sorted`) +
+      the Tier-1.5 witness; the solver those need is now live, the
+      obligations themselves are not.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →
