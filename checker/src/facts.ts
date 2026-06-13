@@ -828,7 +828,25 @@ function walkExpr(e: Expr, env: Env): void {
       return;
     case "If": {
       walkExpr(e.cond, env);
-      walkExpr(e.then, factsFromCond(e.cond, true, env));
+      let thenEnv = factsFromCond(e.cond, true, env);
+      // Return-gate SEED through the `if … is Ok(j)` form — the if-dual of
+      // walkBranch's `match gate(xs,i) | Ok(j) ->` seed. When the scrutinee is a
+      // gate whose signature returns `Result Index(length(xs)) e`, the Ok-binder
+      // `j` carries `0 <= j < length(xs)` into the then-branch, so the licensed
+      // read `xs[j]` needs no guard.
+      if (e.cond.tag === "TypeTest" && e.cond.binder
+          && e.cond.against.tag === "TRNamed" && e.cond.against.name === "Ok"
+          && (e.cond.binder.tag === "PVar" || e.cond.binder.tag === "PTyped")) {
+        const ret = WITNESS_RETURNS.get(e.cond.expr);
+        if (ret && ret.list !== null) {
+          const span = e.cond.binder.span;
+          const lenE: Expr = { tag: "Call", fn: varE("length", span),
+                               args: [varE(ret.list, span)], named: [], span };
+          thenEnv = addFact(thenEnv, mkFact(varE(e.cond.binder.name, span), ">=", numE(0, span)));
+          thenEnv = addFact(thenEnv, mkFact(varE(e.cond.binder.name, span), "<", lenE));
+        }
+      }
+      walkExpr(e.then, thenEnv);
       if (e.else_) walkExpr(e.else_, factsFromCond(e.cond, false, env));
       return;
     }

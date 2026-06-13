@@ -885,6 +885,20 @@ export class Evaluator {
       case "Match":  return await this.evalMatch(expr.subject, expr.branches, env);
 
       case "If": {
+        // `if x is Ok(a)` — evaluate the scrutinee once, match the ctor pattern,
+        // and bind the payload into the then-branch scope on success.
+        if (expr.cond.tag === "TypeTest" && expr.cond.binder && expr.cond.against.tag === "TRNamed") {
+          const v = await this.evalExpr(expr.cond.expr, env);
+          const ctorPat: Pat = { tag: "PCtor", name: expr.cond.against.name, inner: expr.cond.binder, span: expr.cond.span };
+          const bindings = matchPat(ctorPat, v);
+          if (bindings) {
+            const thenEnv = env.child();
+            for (const [k, bv] of bindings) thenEnv.define(k, bv);
+            return await this.evalExpr(expr.then, thenEnv);
+          }
+          if (expr.else_) return await this.evalExpr(expr.else_, env);
+          return { tag: "VUnit" };
+        }
         const cond = await this.evalExpr(expr.cond, env);
         if (cond.tag !== "VBool") throw new RuntimeError(`if condition must be Bool, got ${display(cond)}`);
         if (cond.v) return await this.evalExpr(expr.then, env);

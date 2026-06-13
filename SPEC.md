@@ -1404,6 +1404,24 @@ x is Ok
 value is String
 ```
 
+A type test may carry a **payload binder** — `x is Ok(a)` — which, as the
+condition of an `if`, binds the matched constructor's payload by name on the
+success path (flow narrowing, 2026-06, `is_narrow_test`/`_bad`):
+
+```
+if checkBounds(xs, i) is Ok(j)
+  xs[j]        -- `j` is the payload, in scope here only
+else
+  -1           -- `j` is NOT in scope here, nor after the `if`
+```
+
+The binder lives in the then-branch alone: a reference to it in the else-branch
+or after the `if` is an unresolved name. It also feeds the fact environment, so
+the `Ok`-binder of a return-gate (`Result Index(length(xs)) e`) carries the
+witness facts and the licensed read `xs[j]` needs no guard — the `if`-form dual
+of the `match … | Ok(j) ->` seed (§2.7). A bare `x is Ok(a)` outside an `if` is
+still just the Bool test, with `a` unbound.
+
 ### 3.20 Decorators
 
 The marker set is CLOSED (2026-06, `vocab_cleanup_test`/`_bad`) — two axes plus

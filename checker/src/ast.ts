@@ -64,7 +64,7 @@ export type Expr =
   | ({ tag: "Propagate";  expr: Expr }                                         & Node)   // expr?
   | ({ tag: "PropWith";   expr: Expr; alt: Expr }                              & Node)   // expr?: alt
   | ({ tag: "Await";      expr: Expr; branches: Branch[] }                     & Node)
-  | ({ tag: "TypeTest";   expr: Expr; against: TypeRef }                       & Node)   // expr is Rect
+  | ({ tag: "TypeTest";   expr: Expr; against: TypeRef; binder: Pat | null }   & Node)   // expr is Rect / expr is Ok(a)
   | ({ tag: "Element";    name: string; content: Expr | null; props: Prop[]; children: Expr[] } & Node)
   | ({ tag: "Handler";    event: string; param: string | null; body: Expr }    & Node)   // on onInput e -> …Click -> body
   | ({ tag: "Break";      value: Expr | null }                                & Node)

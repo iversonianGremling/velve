@@ -16888,6 +16888,10 @@
           "named": true
         },
         {
+          "type": "pattern",
+          "named": true
+        },
+        {
           "type": "pipe_expr",
           "named": true
         },

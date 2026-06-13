@@ -1323,9 +1323,18 @@ export class Lowerer {
 
       // ── misc ──
       case "type_test": {
-        const [expr] = n.namedChildren;
+        const exprNode = n.namedChildren[0];
         const upper = n.namedChildren.find(c => c.type === "upper_id");
-        return { tag: "TypeTest", expr: expr ? this.lowerExpr(expr) : this.err(span), against: { tag: "TRNamed", name: upper?.text ?? "?", args: [] }, span };
+        // Optional `(pattern)` payload binder — the C2 flow-narrowing seed. Pick
+        // the pattern node, but never the LHS expr (a literal LHS is a patKind too).
+        const patNode = n.namedChildren.find(c => c !== exprNode && isPatKind(c.type));
+        return {
+          tag: "TypeTest",
+          expr: exprNode ? this.lowerExpr(exprNode) : this.err(span),
+          against: { tag: "TRNamed", name: upper?.text ?? "?", args: [] },
+          binder: patNode ? this.lowerPat(patNode) : null,
+          span,
+        };
       }
       case "for_expr": return this.lowerForExpr(n, span);
       case "for_child": return this.lowerForChild(n, span);

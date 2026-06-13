@@ -399,10 +399,18 @@ Phase D's neutral IR being the down payment). The proof vocabulary closes.
     yet — a `didChange` re-analyzes the whole open program. NOT a graded north-star
     row (the board tracks language design, not tooling) → no re-grade.
     *C1 complete.*
-- **C2. `is Ok(a)` payload binding / flow narrowing** *(1 slice)*. The
-  optional PLAN box: `if x is Ok(a)` binds the payload in the then-branch
-  (and feeds the fact env — cheap synergy with A1's binder seeding;
-  sequence C2 after A1 to reuse the mechanism).
+- **C2. `is Ok(a)` payload binding / flow narrowing — DONE 2026-06**
+  (`is_narrow_test`/`is_narrow_bad`). `if x is Ok(a)` binds the payload in
+  the then-branch (and **only** there — a leak into else/after is an
+  unresolved name), reusing `checkPat`/`matchPat`/`bindPat` end-to-end; the
+  new surface is one AST field (`TypeTest.binder`) threaded through
+  lower/resolve/infer/eval/facts. The promised synergy landed: the `Ok`-binder
+  of a return-gate carries the witness facts, so `if checkBounds(xs,i) is
+  Ok(j)` licenses `xs[j]` with no guard — the `if`-dual of A1's `match … |
+  Ok(j) ->` seed. Grammar cost (the glued `(` races `call`) resolved with a
+  `postfix`+dynamic-precedence binder alternative and declared conflicts; the
+  no-binder `is` test parses identically (pre-existing corpus byte-identical
+  through the regen). NOT a graded row → no re-grade.
 - **C3. Convergence-cycle pre-flag** — PLAN's own annotation says lowest
   ROI. **Recommendation: cut it** unless a real fixture motivates it;
   carrying it forever as an unchecked box is worse than deciding.

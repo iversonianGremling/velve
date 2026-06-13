@@ -67,6 +67,17 @@ export default grammar({
 
   conflicts: $ => [
     [$.identifier_expr, $.call],
+    // The `is Ctor(payload)` binder races `call` and every prefix-operator rule
+    // for the glued `(` / the `is` boundary; a positive dynamic precedence on the
+    // binder alternative of `type_test` picks it when a payload is present.
+    [$.type_test, $.call],
+    [$.type_test, $.unary_expr],
+    [$.type_test, $.drop_expr],
+    [$.type_test, $.go_expr],
+    [$.type_test, $.resume_expr],
+    [$.type_test, $.lazy_expr],
+    [$.type_test, $.await_expr],
+    [$.type_test, $.binary_expr],
     [$.simple_type, $.identifier_expr],
     [$.type_var, $.identifier_expr],
     [$.type_or_expr, $.grouped],
@@ -1268,11 +1279,23 @@ export default grammar({
       ']',
     )),
 
-    type_test: $ => prec.left('comparative', seq(
-      $._expr,
-      'is',
-      $.upper_id,
-    )),
+    // `expr is Ctor` is a constructor-tag / type test (Bool). The `Ctor(pattern)`
+    // form carries the C2 payload binder: `if x is Ok(a)` binds `a` to the payload
+    // in the then-branch (and feeds the fact env). The binder is in-scope only on
+    // the success path of an enclosing `if` — a bare `x is Ok(a)` elsewhere is
+    // still just the Bool test, with `a` unbound.
+    //
+    // The glued payload `(` must lex as `token.immediate('(')` (in expr context the
+    // lexer otherwise prefers it for `call`), so the binder alternative inevitably
+    // races `call` (`(x is Ok)(a)`) and the prefix-operator rules (`-x is …`). Both
+    // races are declared conflicts; the binder alternative is `postfix` (== `call`)
+    // with a positive DYNAMIC precedence, so it wins exactly when a `(payload)` is
+    // actually present. No-binder `is` tests keep their `comparative` precedence
+    // and parse identically to before.
+    type_test: $ => choice(
+      prec.left('comparative', seq($._expr, 'is', $.upper_id)),
+      prec.dynamic(1, prec.left('postfix', seq($._expr, 'is', $.upper_id, token.immediate('('), $.pattern, ')'))),
+    ),
 
     // Record literal. The 2026.6 canonical opener is `#{` — it makes records
     // unambiguous from `{ … }` blocks (dissolving the comma-`:` vs semicolon-`=`

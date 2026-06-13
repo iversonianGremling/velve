@@ -754,6 +754,35 @@ dimension machinery generalize?
   NOT a graded north-star row (the board tracks language design, not tooling) → no
   re-grade. **C1 complete.**
 
+- [x] 🟢 **Phase C2 — `if x is Ok(a)` payload binding + flow narrowing — DONE
+  2026-06** (`is_narrow_test`/`is_narrow_bad`; `grammar.js` + `src/{lower,resolve,
+  infer,eval,facts}.ts`). The `is` type-test gained an optional payload binder:
+  `if x is Ok(a)` binds the matched constructor's payload by name on the success
+  path of the `if`, and **only** there. The binder reuses the full machinery
+  already in place — `checkPat`'s constructor-payload resolution (Result / Async /
+  outcome / user ADT) types it, `matchPat` binds it at eval, `bindPat` scopes it —
+  so the slice is mostly a new AST field (`TypeTest.binder`) wired through the five
+  passes. Two facets ship green: **binding** (`if s is Circle(r)` → `r` is the
+  Circle's radius, on a user ADT) and the **fact-env SEED** — `if checkBounds(xs,i)
+  is Ok(j)` carries the return-gate witness onto `j`, so the licensed read `xs[j]`
+  needs no guard, the `if`-form dual of A1's `match … | Ok(j) ->` seed (facts.ts).
+  The guardrail (`is_narrow_bad`, 2 errors) pins the scope boundary that makes it
+  sound: a reference to the binder in the else-branch or after the `if` is an
+  unresolved name — you cannot read a payload that may not exist.
+
+  **Grammar cost, honestly.** The glued payload `(` must lex as `token.immediate('(')`
+  in expression position, so it inherently races `call` (`(x is Ok)(a)`) and every
+  prefix/binary operator for the `is` boundary. Resolved by giving the binder
+  alternative `postfix` static precedence (== `call`) with a positive **dynamic**
+  precedence, plus declared conflicts (`type_test` × `call`/`unary_expr`/`drop`/`go`/
+  `resume`/`lazy`/`await`/`binary_expr`) — so the binder wins exactly when a
+  `(payload)` is present, and the no-binder `is` test keeps its `comparative`
+  precedence and parses **identically** to before. Proven: the pre-existing corpus is
+  **byte-identical** through the parser regen (stash-rebuild-diff EMPTY). Baseline
+  232→234 (the two new fixtures), 0 CRASH; LSP smoke still 8/8. NOT a graded
+  north-star row (flow narrowing is a control-flow ergonomic; the fact env it feeds
+  is already A+ Type core) → no re-grade.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

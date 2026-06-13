@@ -361,11 +361,20 @@ class Resolver {
         break;
       }
 
-      case "If":
+      case "If": {
         this.resolveExpr(expr.cond, scope);
-        this.resolveExpr(expr.then, scope);
+        // `if x is Ok(a)` binds the payload `a` on the success path only — the
+        // then-branch gets a child scope carrying the binder; else/after do not.
+        let thenScope = scope;
+        if (expr.cond.tag === "TypeTest" && expr.cond.binder) {
+          thenScope = new Scope(scope);
+          this.bindPat(expr.cond.binder, thenScope);
+          this.snapshots.push({ span: expr.then.span, scope: thenScope });
+        }
+        this.resolveExpr(expr.then, thenScope);
         if (expr.else_) this.resolveExpr(expr.else_, scope);
         break;
+      }
 
       case "Do": {
         const finalScope = this.resolveBlock(expr.stmts, scope);

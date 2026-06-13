@@ -1,0 +1,23 @@
+-- Phase C2 guardrail: the `if x is Ok(a)` payload binder is in scope ONLY on
+-- the success path. It must not leak into the else-branch, nor outlive the `if`.
+-- Each leak below is an unresolved name — the scoping boundary that makes the
+-- narrowing sound (you cannot read a payload that may not exist).
+-- Expected: errors on every `r` outside the then-branch.
+@edition "2026.6"
+
+type Shape
+  = Circle Number
+  | Square Number
+
+-- LEAK 1: `r` referenced in the else-branch — never bound there.
+def elseLeak(s: Shape): Number
+  if s is Circle(r)
+    r
+  else
+    r + 1
+
+-- LEAK 2: `r` referenced after the `if` — the binder does not outlive it.
+def afterLeak(s: Shape): Number
+  if s is Circle(r)
+    0
+  r

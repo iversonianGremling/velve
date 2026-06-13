@@ -5151,25 +5151,70 @@
       }
     },
     "type_test": {
-      "type": "PREC_LEFT",
-      "value": "comparative",
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "SYMBOL",
-            "name": "_expr"
-          },
-          {
-            "type": "STRING",
-            "value": "is"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "upper_id"
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "PREC_LEFT",
+          "value": "comparative",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_expr"
+              },
+              {
+                "type": "STRING",
+                "value": "is"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "upper_id"
+              }
+            ]
           }
-        ]
-      }
+        },
+        {
+          "type": "PREC_DYNAMIC",
+          "value": 1,
+          "content": {
+            "type": "PREC_LEFT",
+            "value": "postfix",
+            "content": {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_expr"
+                },
+                {
+                  "type": "STRING",
+                  "value": "is"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "upper_id"
+                },
+                {
+                  "type": "IMMEDIATE_TOKEN",
+                  "content": {
+                    "type": "STRING",
+                    "value": "("
+                  }
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "pattern"
+                },
+                {
+                  "type": "STRING",
+                  "value": ")"
+                }
+              ]
+            }
+          }
+        }
+      ]
     },
     "record_literal": {
       "type": "CHOICE",
@@ -7732,6 +7777,38 @@
     [
       "identifier_expr",
       "call"
+    ],
+    [
+      "type_test",
+      "call"
+    ],
+    [
+      "type_test",
+      "unary_expr"
+    ],
+    [
+      "type_test",
+      "drop_expr"
+    ],
+    [
+      "type_test",
+      "go_expr"
+    ],
+    [
+      "type_test",
+      "resume_expr"
+    ],
+    [
+      "type_test",
+      "lazy_expr"
+    ],
+    [
+      "type_test",
+      "await_expr"
+    ],
+    [
+      "type_test",
+      "binary_expr"
     ],
     [
       "simple_type",

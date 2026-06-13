@@ -2868,7 +2868,19 @@ class Inferrer {
 
       case "If": {
         unify(this.inferExpr(expr.cond, env), { tag: "Prim", kind: "Bool" }, this.ctx, expr.span, "if condition");
-        const thenT = this.inferExpr(expr.then, env);
+        // Flow narrowing: `if x is Ok(a)` binds the payload in the then-branch.
+        // Reconstruct the constructor pattern `Ok(a)` and check it against the
+        // scrutinee's type, reusing checkPat's full ctor-payload resolution
+        // (Result/Async/outcome/ADT). The binder lives in a child scope so it
+        // can't leak into the else-branch or beyond.
+        let thenEnv = env;
+        if (expr.cond.tag === "TypeTest" && expr.cond.binder && expr.cond.against.tag === "TRNamed") {
+          thenEnv = env.child();
+          const subjT = this.ctx.subst.apply(this.inferExpr(expr.cond.expr, env));
+          const ctorPat: Pat = { tag: "PCtor", name: expr.cond.against.name, inner: expr.cond.binder, span: expr.cond.span };
+          this.checkPat(ctorPat, subjT, thenEnv);
+        }
+        const thenT = this.inferExpr(expr.then, thenEnv);
         if (expr.else_) unify(thenT, this.inferExpr(expr.else_, env), this.ctx, expr.span, "if/else branches must agree");
         return this.ctx.subst.apply(thenT);
       }

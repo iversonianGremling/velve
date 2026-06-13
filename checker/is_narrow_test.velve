@@ -1,0 +1,48 @@
+-- Phase C2: `if x is Ok(a)` — payload binding + flow narrowing. The `is` test
+-- gains an optional payload binder: on the success path of an `if`, the matched
+-- constructor's payload is bound by name in the then-branch (and nowhere else).
+-- Two facets:
+--   • BINDING: `if s is Circle(r)` binds `r` to the radius — typed from the
+--     scrutinee's constructor (here a user ADT), usable only in the then-branch;
+--   • SEED: `if checkBounds(xs,i) is Ok(j)` carries the return-gate witness onto
+--     `j`, so the licensed read `xs[j]` needs no guard — the if-dual of the
+--     `match gate(xs,i) | Ok(j) ->` seed (see index_gate_test).
+-- Expected: clean; runs.
+@edition "2026.6"
+
+type Index n = Number where 0 <= value && value < n
+
+type Shape
+  = Circle Number
+  | Square Number
+
+module geo
+  proofs: [bounds]
+
+  -- BINDING on a user ADT: `r` is the Circle's radius on the success path; the
+  -- else-branch can't see it (that leak is is_narrow_bad).
+  def radius(s: Shape): Number
+    if s is Circle(r)
+      r
+    else
+      0
+
+  -- THE GATE (mirrors index_gate_test): `Ok(i)` lives on the guarded path, so
+  -- the gate proves its own payload in range for `xs`.
+  def checkBounds(xs: List(Number), i: Number): Result Index(length(xs)) String
+    if i >= 0 && i < length(xs) then Ok(i) else Error("out of bounds")
+
+  -- THE SEED via the if-binder: `j` carries the witness facts, so `xs[j]` is
+  -- licensed with no guard — the exact synergy with A1's binder seeding.
+  def lookup(xs: List(Number), i: Number): Number
+    if checkBounds(xs, i) is Ok(j)
+      xs[j]
+    else
+      -1
+
+def main(): Effect [io] ()
+  println(radius(Circle(7)))    -- 7
+  println(radius(Square(3)))    -- 0
+  let xs = [10, 20, 30, 40]
+  println(lookup(xs, 2))        -- 30
+  println(lookup(xs, 9))        -- -1
