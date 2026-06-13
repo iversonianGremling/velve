@@ -1,0 +1,13 @@
+-- C1(ii) GUARDRAIL: the module import graph must be acyclic (compiler-architecture
+-- design — a clean DAG keeps the graph summarizable). This file imports its
+-- partner, which imports back — the loader's DFS detects the back-edge and
+-- rejects it rather than looping forever. (Recursion WITHIN a module is fine;
+-- this is about the file graph.) Pairs with import_cycle_b_bad.velve.
+-- Expected: error — cyclic import.
+@edition "2026.6"
+
+import { fromB } from "./import_cycle_b_bad"
+
+module cycA
+  def fromA(n: Number): Number
+    fromB(n) + 1

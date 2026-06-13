@@ -1,0 +1,11 @@
+-- C1(ii) eval-loading diamond: the shared LEAF module, imported by two siblings
+-- AND by the entry. The loader must load it exactly once (dedup by abspath) so a
+-- diamond doesn't double-merge its decls. Clean standalone (no main).
+@edition "2026.6"
+
+module base
+  def double(n: Number): Number
+    n * 2
+
+  def inc(n: Number): Number
+    n + 1

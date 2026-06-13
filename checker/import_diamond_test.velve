@@ -1,0 +1,16 @@
+-- C1(ii) GREEN: a multi-file program that RUNS across a transitive diamond.
+-- entry → {diamond_a, diamond_b, diamond_base}; diamond_a → diamond_base;
+-- diamond_b → diamond_base. The leaf is reachable three ways but loads once.
+-- Proves eval loading composes beyond C1(i)'s single hop: values flow across
+-- four files at runtime, and dedup means the shared leaf's defs aren't doubled.
+-- Expected: clean; runs (prints 12, 7, 20).
+@edition "2026.6"
+
+import { quad } from "./diamond_a"
+import { incTwice } from "./diamond_b"
+import { double } from "./diamond_base"
+
+def main(): Effect [io] ()
+  println(quad(3))      -- double(double(3)) = 12
+  println(incTwice(5))  -- inc(inc(5))       = 7
+  println(double(10))   -- 20

@@ -1,0 +1,8 @@
+-- C1(ii): the other arm of the diamond — also imports the shared leaf.
+@edition "2026.6"
+
+import { inc } from "./diamond_base"
+
+module geomB
+  def incTwice(n: Number): Number
+    inc(inc(n))

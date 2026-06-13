@@ -321,8 +321,15 @@ Phase D's neutral IR being the down payment). The proof vocabulary closes.
     exception, `import js` foreign interop, is opaque by design). Side benefit:
     `import_refined_test`'s *check* now depends on the loader too. Two small
     AST flags (`foreign`, `named`) carry the brace/`js` info lowering discarded.
-  - **(ii)** eval loading + CLI multi-file entry — largely falls out of (i)
-    (the merge already makes `run` work end-to-end on the consumer).
+  - **(ii) eval loading + CLI multi-file entry — DONE 2026-06**
+    (`import_diamond_test` + `diamond_{base,a,b}`; `import_cycle_{a,b}_bad`). It
+    largely fell out of (i) — `run` already drives the merged program — but the
+    fixtures earned their keep: the diamond (entry → {a,b,base}; a→base; b→base)
+    proves transitive eval loading + single-merge dedup (runs `12/7/20` across
+    four files), and the cyclic pair proves the DAG guard. Writing them found a
+    real bug: the entry path was its own `onStack`/`loaded` key verbatim
+    (relative) while deps resolve to absolute paths, so a cycle back through the
+    entry double-merged it; fixed by normalizing the entry to absolute.
   - **(iii)** `std/` on disk — `std/refined`, `std/sorted`, later `std/units` —
     and the corpus migrated off inclusion. Selective visibility (only the listed
     names, vs the current flatten-on-merge) is a tightening here. LSP follows.

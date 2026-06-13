@@ -1,0 +1,10 @@
+-- C1(ii) GUARDRAIL, partner half (see import_cycle_a_bad.velve): closes the cycle.
+-- Checked from either end, the loader reports the cyclic import.
+-- Expected: error — cyclic import.
+@edition "2026.6"
+
+import { fromA } from "./import_cycle_a_bad"
+
+module cycB
+  def fromB(n: Number): Number
+    fromA(n) + 2

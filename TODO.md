@@ -636,6 +636,23 @@ dimension machinery generalize?
   unshipped `std/gpu`/`std/audio`/`std/low` now fail honestly — already red from
   a syntax error). This also makes `import_refined_test`'s *check* depend on the
   loader (remove it → "cannot resolve import './import_refined_lib'").
+  **C1(ii) eval loading + CLI multi-file entry — DONE 2026-06**
+  (`import_diamond_test` + helpers `diamond_base`/`diamond_a`/`diamond_b`;
+  `import_cycle_a_bad`/`import_cycle_b_bad`). It largely fell out of (i) — `run`
+  already drives the merged program (`run` evals all merged decls then calls the
+  entry's `main`; a library's `main` is harmlessly shadowed since entry decls
+  merge last) — BUT writing the fixtures earned their keep by surfacing a real
+  loader bug. The diamond (entry → {a, b, base}; a → base; b → base) proves eval
+  loading composes transitively and the shared leaf merges ONCE (dedup by
+  abspath); it runs `12 / 7 / 20` across four files. The cyclic pair proves the
+  DAG guard fires. **Bug found + fixed:** the entry path was used as its own
+  `onStack`/`loaded` key verbatim (relative, as the CLI passed it) while
+  `resolveLocal` produces absolute paths — so a cycle back through the *entry*
+  (a→b→a) didn't match, the back-edge went undetected, and the entry loaded +
+  merged TWICE (the `ast` dump showed `cycA` duplicated). Fixed by normalizing
+  the entry to absolute (`load(resolvePath(entryFile))`); the cycle is now
+  caught at the true back-edge and every file merges once. Also hardened the DFS
+  to push the current file onto the stack for the duration of its own load.
 
 ---
 

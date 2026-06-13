@@ -55,11 +55,16 @@ export function loadProgram(entryFile: string): LoadResult {
   // dependency's decls land before the file that needs them), and return the
   // file's own decls. Returns the lowered Module so the entry keeps its edition.
   function load(file: string): Module {
+    // The current file joins the DFS stack for the duration of its own load, so
+    // a dependency that imports back into it (directly or transitively) is caught
+    // as a cycle BEFORE we recurse — including a cycle through the entry file.
+    onStack.add(file);
     let src: string;
     try {
       src = readFileSync(file, "utf8");
     } catch {
       // Reported against the importer via the DImport span (see caller).
+      onStack.delete(file);
       return { source: file, decls: [], edition: "2026.1" } as Module;
     }
     const tree = parser.parse(src);
@@ -73,8 +78,8 @@ export function loadProgram(entryFile: string): LoadResult {
       const dep = resolveLocal(file, decl.path);
       // This import is satisfied by merged decls, not its own binding path.
       decl.local = true;
-      if (loaded.has(dep)) continue;
-      if (onStack.has(dep)) {
+      if (loaded.has(dep)) continue;     // diamond: already merged once
+      if (onStack.has(dep)) {            // back-edge: a cycle in the import graph
         diagnostics.push({ kind: "error", span: decl.span,
           message: `cyclic import of '${decl.path}' — the module import graph must be acyclic (recursion within a module is fine; a cycle between files is not)` });
         continue;
@@ -86,16 +91,19 @@ export function loadProgram(entryFile: string): LoadResult {
           message: `cannot resolve import '${decl.path}' — no file at ${dep}` });
         continue;
       }
-      onStack.add(dep);
       const depMod = load(dep);
-      onStack.delete(dep);
       loaded.add(dep);
       merged.push(...depMod.decls);
     }
+    onStack.delete(file);
     return mod;
   }
 
-  const entry = load(entryFile);
+  // Normalize the entry to an absolute path so its `onStack`/`loaded` key matches
+  // the absolute paths `resolveLocal` produces — otherwise a cycle back through
+  // the entry (a → b → a) wouldn't be recognized as the same file, and the entry
+  // would load (and merge) twice.
+  const entry = load(resolvePath(entryFile));
   // Entry decls come last: a top-level expression in the entry may reference
   // anything an imported module exported.
   merged.push(...entry.decls);

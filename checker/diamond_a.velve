@@ -1,0 +1,10 @@
+-- C1(ii): a mid-level module that itself imports the leaf — proves the loader
+-- resolves a dependency's OWN imports relative to that dependency (transitive
+-- loading, depth 2). Clean standalone (loader pulls in ./diamond_base).
+@edition "2026.6"
+
+import { double } from "./diamond_base"
+
+module geomA
+  def quad(n: Number): Number
+    double(double(n))
