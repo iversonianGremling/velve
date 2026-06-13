@@ -65,7 +65,9 @@ open questions:
 The fact environment (`facts.ts`), Z3 back-end (`smt.ts`), and the
 `proofs: [...]` vocabulary (`total bounds nonzero arith overflow exhaustive
 handled`; 6 of 7 checkable — `arith` shipped 2026-06, only `overflow` waits on
-Phase B) are live. The Tier-1.5 relational witness
+Phase B; `exhaustive` became always-on 2026-06, `vocab_cleanup_test`/`_bad` —
+enforced regardless of declaration, the word kept for intent/back-compat) are
+live. The Tier-1.5 relational witness
 (`Index(length(xs))` dependent-refinement params: callers prove from path
 facts, callees assume their signatures) just shipped. What's left in-arc:
 

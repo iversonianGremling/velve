@@ -158,6 +158,18 @@ export class Lowerer {
         : [];
       const isLow = decoNames.some(d => d === "low" || d === "kernel");
       const isTotal = decoNames.includes("total");
+      // The marker set is closed (SPEC §3.20): two axes only — `@low`/`@kernel`
+      // (low-level tier) and `@private` (ADT constructors), plus `@total`
+      // (function totality, the function-scope shorthand for `proofs: [total]`).
+      // The formerly-inert annotations (`@deprecated`/`@idempotent`/
+      // `@audioKernel`) are pruned — an unknown decorator is an error, never a
+      // silent no-op (the same "declared = enforced" discipline as `proofs:`).
+      for (const dn of decoNames) {
+        if (!Lowerer.KNOWN_DECORATORS.has(dn)) {
+          this.diagnostics.push({ kind: "error", span: this.sp(node),
+            message: `unknown decorator '@${dn}' — the markers are @low/@kernel (low-level tier), @total (function totality), @private (ADT constructors)` });
+        }
+      }
       // `@total` promises termination of a FUNCTION — on a type def it's meaningless.
       if (isTotal && inner.type !== "function_def") {
         this.diagnostics.push({ kind: "error", span: this.sp(node), message: "`@total` marks a function definition" });
@@ -317,6 +329,10 @@ export class Lowerer {
   // effect work closed must not reappear here).
   private static readonly PROOF_VOCAB = new Set(["total", "bounds", "nonzero", "arith", "overflow", "exhaustive", "handled"]);
   private static readonly PROOF_CHECKABLE = new Set(["total", "exhaustive", "handled", "nonzero", "bounds", "arith"]);
+  // The closed marker set (SPEC §3.20). Two axes — `@low`/`@kernel` (tier) and
+  // `@private` (ADT constructors) — plus `@total` (function totality). Anything
+  // else is rejected; the old inert annotations are gone.
+  private static readonly KNOWN_DECORATORS = new Set(["low", "kernel", "total", "private"]);
 
   private lowerProofs(node: N | undefined): string[] {
     if (!node) return [];

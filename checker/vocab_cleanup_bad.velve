@@ -1,0 +1,30 @@
+-- The cleanup's rejections (SPEC §3.20, §12.7). Always-on exhaustiveness: a
+-- multi-clause-head gap is a hard error in EVERY edition — there is NO @edition
+-- pragma here, so this is baseline 2026.1, where the gap used to be only a
+-- warning and `proofs: [exhaustive]` was needed to harden it. And the marker
+-- set is closed: the formerly-inert annotations are unknown-decorator errors.
+-- Expected: exactly 3 errors.
+
+type Light
+  = Red
+  | Yellow
+  | Green
+
+-- 1: clause-head gap (Green unhandled), no declaration, baseline edition — an
+-- error now (was a warning before always-on; no `proofs: [exhaustive]` needed).
+def rank(Red): Number    -> 0
+def rank(Yellow): Number -> 1
+
+-- 2: a pruned inert annotation — unknown decorator, not a silent no-op.
+@idempotent
+def pacify(): Number
+  0
+
+-- 3: another pruned annotation, this one on a type def.
+@deprecated
+type Stale
+  = A
+  | B
+
+def main(): Number
+  rank(Red)

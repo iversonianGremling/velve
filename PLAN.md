@@ -970,6 +970,27 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       Regenerate deterministic; baselines = the two new rows only (no corpus
       file uses `effects` as an identifier — the keyword-extraction concern was
       empirically clean).
+- [x] **Vocabulary + marker cleanup (endgame S3)**: ✅ DONE (2026-06,
+      `vocab_cleanup_test`/`_bad` — 0 errors + runs `012 3`, and exactly 3
+      errors). Three cleanups, no checker-pipeline restructure: (1) **`exhaustive`
+      → always-on** — `exhaust.checkClauseHeads` drops the edition gate AND the
+      `proofs: [exhaustive]` hardened flag and pushes a hard error
+      unconditionally (match exhaustiveness was already always a hard error; this
+      makes the multi-clause-head check match it). The word stays accepted in the
+      proof vocabulary (declaring a true guarantee must not error — UX), it is
+      just redundant now. (2) **inert decorators pruned** — a closed
+      `KNOWN_DECORATORS = {low, kernel, total, private}` allowlist in
+      `lowerDeclList`; an unknown decorator (`@deprecated`/`@idempotent`/
+      `@audioKernel`) is now an error, not a silent no-op. (3) **`@total` is the
+      function-scope shorthand** for `proofs: [total]` (S1) and stays a valid
+      marker — no code change, it already routes through the totality engine.
+      Verification cost was the reason this was safe: the corpus had ZERO
+      clause-head warnings (the only two clause-head diags, in `clause_heads_bad`
+      and `proof_scope_bad`, were already errors) and ZERO inert decorators, so
+      both baselines = the two new rows only. `proof_scope_bad` stays at 5 errors
+      (its dispatch gap now errors via the unconditional rule instead of the
+      hardened path — same count, the message-path change is past the 80-char
+      first-error slice). No grammar change.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

@@ -1,0 +1,28 @@
+-- Marker + vocabulary cleanup (SPEC §3.20, §12.7). Multi-clause-head
+-- exhaustiveness is now ALWAYS-ON: a complete constructor dispatch is clean in
+-- EVERY edition with no `proofs: [exhaustive]` declaration (the word stays an
+-- accepted vocabulary member, but declaring it is redundant — the type system
+-- forces exhaustiveness). The marker set is the closed two axes plus @total.
+-- NO @edition pragma — this is baseline 2026.1, where a clause-head gap used to
+-- be only a warning; a COMPLETE dispatch was and stays clean.
+-- Expected: clean; runs.
+
+type Light
+  = Red
+  | Yellow
+  | Green
+
+-- exhaustive clause heads at baseline 2026.1 — clean, no declaration needed.
+def rank(Red): Number    -> 0
+def rank(Yellow): Number -> 1
+def rank(Green): Number  -> 2
+
+-- @total: the function-scope shorthand for `proofs: [total]` (still a valid
+-- marker; the closed set is @low/@kernel + @private + @total).
+@total
+def countdown(0): Number -> 0
+@total
+def countdown(n: Number): Number -> 1 + countdown(n - 1)
+
+def main(): ()
+  print("{rank(Red)}{rank(Yellow)}{rank(Green)} {countdown(3)}")

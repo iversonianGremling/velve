@@ -371,8 +371,10 @@ the re-grade below argues the construct's A+, not cheaper proofs):
    six) and **declared = enforced** — unknown or not-yet-checkable obligations are errors,
    never silent skips, so the surface can't promise more than the checker verified. `total`
    marks every module def implicitly `@total` (the downward gate then fires automatically);
-   `exhaustive` hardens clause-head gaps to errors in every edition, ahead of the 2026.6 gate.
-   Per-def `Proof [obligation] T` and per-block `@proof[...]{}` remain PROPOSED in SPEC.
+   `exhaustive` is **always-on** (2026-06, `vocab_cleanup_test`/`_bad`) — clause-head gaps are
+   hard errors in every edition with no declaration (the type system forces it), so the word is
+   now an accepted-but-redundant vocabulary member. Per-function `proofs: [...]` body-head clause
+   SHIPPED 2026-06 (`proof_fnscope_test`/`_bad`); per-block `@proof[...]{}` cut (OQ#3).
 5. ✅ Z3 **Tier-2** + relational witnesses — SHIPPED across five slices (2026-06).
    *(Tier 2 LIVE for three obligations: the fact env (`facts.ts`) shipped with
    `nonzero` and pinned the Z3 hand-off as a concrete error; the Z3 back-end

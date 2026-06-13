@@ -28,7 +28,7 @@ means there is a green fixture exercising it under `checker/`.
 | Grammar (tree-sitter) | ✅ Built | Full surface; native binding builds. |
 | Type inference / resolution | ✅ Built | `infer.ts` / `resolve.ts`; HM-style with annotations. |
 | Pattern match + exhaustiveness | ✅ Built | `exhaust.ts`; closed ADTs, `Outcome`, literals. |
-| Multi-clause head exhaustiveness | ✅ Built | `clause_heads_test`; constructor dispatch on a closed ADT (warn 2026.1 / error 2026.6). |
+| Multi-clause head exhaustiveness | ✅ Built | `clause_heads_test`; constructor dispatch on a closed ADT. **Always-on (2026-06, `vocab_cleanup_test`/`_bad`)**: a hard error in every edition like match exhaustiveness (was warn 2026.1 / error 2026.6 + `proofs: [exhaustive]`-hardenable; both knobs removed — the type system forces it). |
 | Refinement types | ✅ Built | `dependent_test`, `refinement_test`; transparent, checked. |
 | Effects (declared + unchecked-hole closed) | ✅ Built | `effects_test`; pure-calls-effectful is a gate (warn 2026.1 / error 2026.6). |
 | Transactions + `Outcome` ADT | ✅ Built (check-only) | `transaction_test`, `outcome_test`; no runtime transaction yet. |
@@ -49,7 +49,7 @@ means there is a green fixture exercising it under `checker/`.
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. **User-spelled rows built (E2, 2026-06, `effect_spell_test`/`_bad`)**: `..e` on param fn-types binds, in the Effect clause charges — user HOFs get the same per-call-site precision; unbound tails error. **Ascription coverage built (2026-06, `effect_ascribe_test`/`_bad`)**: a fn-type ascription must cover the value's row (returns + bindings, covariant-deep) — the erasure laundering hole is closed. **`effects: [...]` clause built (2026-06, `effect_clause_test`/`_bad`)**: a body-head clause spells the concrete row as sugar for the inline `Effect [...]` wrapper (rows union; enforced and propagated identically); the inline form stays for effect tails. |
 | Effect-typed builtin surface | ✅ Built (2026-06) | §12.5, `builtin_effects_test`/`_bad`: `setTheme`/`setViewport` charge `[ui]`, `externSource` and the network names charge `[io]` — the stdlib stops lying by omission, incl. through HOF tails. Decided ambient: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. |
 | Totality (`@total`, Tier 1) | ✅ Built (2026-06) | §12.6, `total_test`/`_bad`: opt-in structural termination — recursion must decrease at one position (ctor/tuple/record descent or `n - k` under a literal/comparison floor), totality flows down the call graph (total calls total + terminating builtins; HOFs need a checkable fn), `loop`/`await`/spawn/host rejected in total bodies. Mutual recursion, closure recursion → conservative reject. **The Tier-2 valve opened (2026-06, `proof_terminates_test`/`_bad`)**: when the structural decrease is the only failure, Z3 proves a unit-decreasing floored measure from path facts — `halve(n / 2)` under `if n < 2`, non-constant `shrink(n - k, k)` under `k >= 1`; counterexamples in the errors. First shipped obligation of the north-star §3 proof gradient. **Floored measures shipped (2026-06, `proof_binsearch_test`/`_bad`)**: `floor(e)` joins the solver fragment as an Int-sorted term bracketed `e − 1 < ⌊e⌋ ≤ e`, so a binary search recursing on `floor(span / 2)` proves unit-decrease for `span ∈ [1, 2)` via integrality — the gradient's showcase, green under `proofs: [bounds, total]` at once. **§5.1 payoff shipped (2026-06, `constfold_total_test`/`_bad`)**: the refinement folder (§2.6) executes `@total` predicates at check time — fuel-bounded, conservative on anything undecidable — so the conservative-skip set shrinks by exactly the code that proved it terminates. |
-| Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`; `exhaustive` hardens clause-head gaps to errors in every edition. **`handled` shipped (2026-06, `proof_handled_test`/`_bad`)**: no silently discarded `Result` anywhere in the module — third checkable obligation, scope-local like `exhaustive`. **`nonzero` shipped (2026-06, `proof_nonzero_test`/`_bad`)**: every `/` and `%` divisor proved nonzero via the flow-sensitive fact env — fourth checkable obligation. **Z3 back-end shipped one slice later (2026-06, `proof_nonzero_z3_test`/`_bad`)**: the floor's residue goes to Z3 as a refutation over the reals — the pinned `a != b ⟹ a - b != 0` case graduated from `_bad` to green; counterexample models in the errors; lazy load; floor fallback when uninstalled. **`bounds` shipped (2026-06, `proof_bounds_test`/`_bad`)**: every list index read proved `0 ≤ i < length(xs)` — fifth checkable obligation; `length(xs)` on an immutable name becomes an Int-sorted solver symbol (`≥ 0` asserted), so `xs[length(xs) - 1]` under `length(xs) > 0` proves; two queries per read, the error names which side leaked with the model. **`arith` shipped (2026-06, `proof_arith_test`/`_bad`)**: every domain-restricted math builtin (`sqrt` needs `x ≥ 0`, `log` `x > 0`, `asin`/`acos` `-1 ≤ x ≤ 1`) proved in-domain via the same floor → Z3 pipeline — sixth checkable obligation, out-of-domain model in the error. Not-checkable-yet is down to `overflow` alone (6/7). **Per-function scope shipped (2026-06, `proof_fnscope_test`/`_bad`)**: a `proofs: [...]` clause at the head of a function body scopes the obligation to that def (same production, same vocabulary, same assume/guarantee) — a sibling without the clause is unconstrained; `total` routes through the totality engine. Per-block `@proof[...] { }` deferred (OQ#3). |
+| Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`. **`exhaustive` is now always-on (2026-06, `vocab_cleanup_test`/`_bad`)**: clause-head exhaustiveness is a hard error in every edition with no declaration needed (the type system forces it) — the word stays an accepted vocabulary member for intent/back-compat, but declaring it changed from "hardens ahead of the edition gate" to a redundant no-op. **`handled` shipped (2026-06, `proof_handled_test`/`_bad`)**: no silently discarded `Result` anywhere in the module — third checkable obligation, scope-local. **`nonzero` shipped (2026-06, `proof_nonzero_test`/`_bad`)**: every `/` and `%` divisor proved nonzero via the flow-sensitive fact env — fourth checkable obligation. **Z3 back-end shipped one slice later (2026-06, `proof_nonzero_z3_test`/`_bad`)**: the floor's residue goes to Z3 as a refutation over the reals — the pinned `a != b ⟹ a - b != 0` case graduated from `_bad` to green; counterexample models in the errors; lazy load; floor fallback when uninstalled. **`bounds` shipped (2026-06, `proof_bounds_test`/`_bad`)**: every list index read proved `0 ≤ i < length(xs)` — fifth checkable obligation; `length(xs)` on an immutable name becomes an Int-sorted solver symbol (`≥ 0` asserted), so `xs[length(xs) - 1]` under `length(xs) > 0` proves; two queries per read, the error names which side leaked with the model. **`arith` shipped (2026-06, `proof_arith_test`/`_bad`)**: every domain-restricted math builtin (`sqrt` needs `x ≥ 0`, `log` `x > 0`, `asin`/`acos` `-1 ≤ x ≤ 1`) proved in-domain via the same floor → Z3 pipeline — sixth checkable obligation, out-of-domain model in the error. Not-checkable-yet is down to `overflow` alone (6/7). **Per-function scope shipped (2026-06, `proof_fnscope_test`/`_bad`)**: a `proofs: [...]` clause at the head of a function body scopes the obligation to that def (same production, same vocabulary, same assume/guarantee) — a sibling without the clause is unconstrained; `total` routes through the totality engine. Per-block `@proof[...] { }` deferred (OQ#3). |
 | Module-private constructors (`@private type`) | ✅ Built (2026-06) | §7.1, `private_ctor_test`/`_bad`: an ADT's constructors seal at the module boundary (no forging by call, no representation-dependence by pattern); the type name stays public. The soundness primitive for the refined-type tier (north-star §3.5 confirmed → shipped). Resolver scope stays flat — privacy is a use-site check. |
 | Refined-type library (Tier 1) | ✅ Built (2026-06) | §7.1, `refined_types_test`/`_bad`: `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — smart-constructor gates, closed ops, faulting ops through the gate; `divBy(n, NonZero)` makes division total and `getAt(xs, InBounds)` makes indexing safe **as type errors**, no solver. The library module is proof-carrying (`proofs: [total, exhaustive, handled]`). Pure library add — zero checker changes. Tier-1 bound: `InBounds` is not relational (Tier 1.5). |
 | `SortedList` — the semantic archetype | ✅ Built (2026-06) | §7.1, `sorted_list_test`/`_bad`: sortedness has no structural proxy (north-star §3.2), so it ships by the construct-it route — order checked once at the gate (`sortedList` rejects, `fromAny` folds the closed insert), closed ops (`slInsert` filter-split, `slMerge`) preserve it by construction, and `slMin` is O(1) `head` whose *correctness* precondition the type makes unforgeable. Proof-carrying module; pure library add — zero checker changes. The `_bad` twin's doctrinal pin: `proofs: [sorted]` is a vocabulary error — value invariants stay types. `where proof.sorted` (Tier 2) stays PROPOSED. |
@@ -813,8 +813,11 @@ typed (`r: Number`), and constant literals (`0`, `true`) for dispatch on a value
 parameter *by constructor* and that parameter's type is a closed ADT, the clause set
 must cover every constructor — otherwise a call with the missing constructor has no
 matching clause. A catch-all binder at that position (`def rank(p: Priority)`) covers
-the rest. This is checked at compile time — a **warning in edition 2026.1, an error in
-2026.6** (SPEC §17):
+the rest. This is checked at compile time — a **hard error in every edition**
+(2026-06, `vocab_cleanup_test`/`_bad`), like match exhaustiveness, since the
+type system forces it. (It was edition-gated — a warning in 2026.1, error in
+2026.6 — and could be hardened early with `proofs: [exhaustive]`; both knobs are
+gone now that it is always-on.)
 ```
 type Priority = High | Medium | Low
 
@@ -1296,19 +1299,28 @@ value is String
 
 ### 3.20 Decorators
 
+The marker set is CLOSED (2026-06, `vocab_cleanup_test`/`_bad`) — two axes plus
+totality, and nothing else:
+
 ```
-@deprecated
-@idempotent
-@kernel
+@low / @kernel          -- low-level tier gate (§2.11): mut-as-affine, pointers, lifetimes
+@private                -- hides an ADT's constructors inside its module (§7.1)
+@total                  -- checked Tier-1 structural totality (§12.6)
+
 @total
-@audioKernel sampleRate=44100 bufferSize=256
-
-def myFunc(): ()
-  ...
+def factorial(0): Number -> 1
+@total
+def factorial(n: Number): Number -> n * factorial(n - 1)
 ```
 
-`@total` is checked (Tier-1 structural totality, §12.6); `@low`/`@kernel` gate
-the low-level tier (§2.11). The rest are currently inert annotations.
+`@total` is checked (Tier-1 structural totality, §12.6) — it is the
+function-scope shorthand for `proofs: [total]` (§12.7 A4) and routes through the
+same engine. `@low`/`@kernel` gate the low-level tier (§2.11). `@private` hides
+an ADT's constructors (§7.1). **An unknown decorator is an error** (not a silent
+no-op): the formerly-inert annotations `@deprecated`/`@idempotent`/`@audioKernel`
+are pruned, the same "declared = enforced" discipline as the proof vocabulary
+(§12.7). A future annotation re-enters the set only when it does something
+checked.
 
 ---
 
@@ -2695,10 +2707,14 @@ Checkable today:
   goes through the full §12.6 check (structural decrease + the downward call
   gate). A module def calling an unmarked outside fn is an error: totality flows
   down.
-- **`exhaustive`** — clause-head exhaustiveness (§17's edition-gated check)
-  hardens to an **error in every edition** inside the module. Match
-  exhaustiveness is already a hard error everywhere; this closes the multi-clause
-  dispatch gap ahead of the 2026.6 edition gate.
+- **`exhaustive`** — **now always-on** (2026-06, `vocab_cleanup_test`/`_bad`):
+  clause-head exhaustiveness is a hard error in every edition with no declaration
+  needed, exactly like match exhaustiveness, because the type system forces it.
+  The word stays an accepted vocabulary member (declaring it does not error — a
+  true guarantee should never be punished), but it is now redundant: it no longer
+  hardens anything, since the check is unconditional. It is the one obligation
+  the type checker subsumes; the genuinely-additive ones are `handled`/`total`
+  (no type route) and the solver obligations `bounds`/`nonzero`/`arith`.
 - **`handled`** *(2026-06, `proof_handled_test`/`_bad`)* — no def in the module
   may silently discard a `Result`: a `Result`-typed expression in a dropped
   statement position (non-final in a `do`/`try`/`retry`/`transaction` block, any

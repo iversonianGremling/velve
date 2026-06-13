@@ -2,7 +2,6 @@ import type { Span } from "./span.js";
 import type { Module, Expr, Stmt, Pat, Branch } from "./ast.js";
 import type { Type } from "./types.js";
 import type { Diagnostic } from "./resolve.js";
-import { type Edition, atLeast } from "./edition.js";
 
 // ── Type definition map ───────────────────────────────────────────────────────
 
@@ -87,18 +86,23 @@ export function checkExhaustiveness(
   const diags: Diagnostic[] = [];
 
   walkDecls(mod.decls, types, typedefs, diags);
-  checkClauseHeads(mod.decls, typedefs, diags, mod.edition, false);
+  checkClauseHeads(mod.decls, typedefs, diags);
   return diags;
 }
 
-// ── 1c. Multi-clause head exhaustiveness (edition-gated) ──────────────────────
+// ── 1c. Multi-clause head exhaustiveness (always-on) ──────────────────────────
 //
 // A multi-clause function `def f(High) … / def f(Medium) …` dispatches on a
 // parameter by constructor. If the clause heads at a constructor-dispatch position
 // don't cover every constructor of that position's ADT — and no clause has a
 // catch-all (binder/wildcard) there — then calling `f` with the missing
 // constructor has no matching clause: a runtime "no clause" failure the type
-// system should catch. Warning in baseline 2026.1, error in 2026.6 (SPEC §17).
+// system should catch. This is a HARD ERROR in every edition (2026-06): like
+// match exhaustiveness, it is always-on — the type system forces it, so the
+// `exhaustive` proof obligation is redundant and no longer gates the check (it
+// remains an accepted vocabulary word for intent/back-compat, but declaring it
+// changes nothing). This was edition-gated (warning in 2026.1, error from
+// 2026.6) and hardenable via `proofs: [exhaustive]`; both knobs are gone.
 //
 // SAFE SUBSET (zero corpus false positives by construction):
 //   • only positions where every head is a `PCtor` or a catch-all are considered —
@@ -113,21 +117,13 @@ function checkClauseHeads(
   decls: import("./ast.js").Decl[],
   td: TypeDefMap,
   diags: Diagnostic[],
-  edition: Edition,
-  // True inside a `proofs: [exhaustive]` module (SPEC §12.7): the obligation
-  // hardens the clause-head gap to an error in EVERY edition — declared =
-  // enforced, ahead of the 2026.6 edition gate.
-  hardened: boolean,
 ): void {
   for (const decl of decls) {
     if (decl.tag === "DModule") {
-      checkClauseHeads(decl.decls, td, diags, edition, hardened || decl.proofs.includes("exhaustive"));
+      checkClauseHeads(decl.decls, td, diags);
       continue;
     }
     if (decl.tag !== "DFn" || decl.clauses.length < 2) continue;
-    // A per-function `proofs: [exhaustive]` clause (A4) hardens THIS def's
-    // clause-head gap to an error without the enclosing module declaring it.
-    const fnHardened = hardened || (decl.proofs?.includes("exhaustive") ?? false);
 
     const arity = decl.clauses[0]!.params.length;
     if (arity === 0) continue;
@@ -150,15 +146,12 @@ function checkClauseHeads(
       const missing = td.get(adt)!.filter(c => !covered.has(c.name)).map(c => c.name);
       if (missing.length === 0) continue;
 
-      const deprecated = atLeast(edition, "2026.6");
       const where = arity > 1 ? `parameter ${i + 1} (${adt})` : `the ${adt} argument`;
       const base = `non-exhaustive clause heads for '${decl.name}' — ${where} missing: ${missing.join(", ")}`;
       diags.push({
-        kind: fnHardened || deprecated ? "error" : "warning",
+        kind: "error",
         span: decl.span,
-        message: deprecated ? base
-          : fnHardened ? `${base} (declares proofs: [exhaustive])`
-          : `${base} (rejected from edition 2026.6)`,
+        message: base,
       });
     }
   }
