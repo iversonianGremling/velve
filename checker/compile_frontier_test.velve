@@ -1,0 +1,21 @@
+@edition "2026.6"
+
+-- D1(i) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it uses `match`, which is outside the D1(i) compute core. The
+-- differential harness must report it `unsupported` — a CLEAN refusal at the
+-- compiler frontier — never a miscompile, never a JS crash. This is the backend-
+-- slice analogue of a `_bad` twin: a backend slice adds no checker rejection rule,
+-- so the guarantee under test is "the compiler refuses what it cannot yet lower,
+-- loudly", asserted by the harness rather than by an error count. `match` lowering
+-- arrives in D1(ii); when it does, this file flips from `unsupported` to a MATCH
+-- with no edit.
+
+def classify(n: Number): String
+  match n
+    | 0 -> "zero"
+    | 1 -> "one"
+    | _ -> "many"
+
+def main(): Effect [io] ()
+  println(classify(0))
+  println(classify(7))

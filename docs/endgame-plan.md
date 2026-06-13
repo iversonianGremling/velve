@@ -466,6 +466,29 @@ exists (`compiler-architecture-design.md`).
   eval AND compiled, outputs diffed — the baseline script generalizes to a
   three-column capture (check / run-eval / run-compiled). eval.ts becomes
   the reference semantics, never deleted.
+  - **D1(i) — the compute spine — DONE 2026-06.** First real backend code:
+    `core.ts` (the §11.3 IR datatypes + AST→Core **ANF** lowering for the pure
+    spine — single-clause defs, `Lit`/`Var`, arithmetic/comparison/equality
+    `PrimOp`s, saturated `Call` to a def or a whitelisted pure builtin, tail-`if`
+    incl. else-if ladders, `Do` blocks), `emitjs.ts` (Core→JS, `$show` mirroring
+    `display`, the operator table mirroring `evalBinOp`), the `compile`/`runc` CLI
+    commands, and **`scripts/diff.mjs` — the three-column differential harness**.
+    Anything outside the spine is refused **loudly** via `CompileUnsupported`
+    (exit 2 → harness reports `unsupported`), never a silent miscompile — the
+    backend-slice analogue of a `_bad` twin (no new *checker* rejection rule, so
+    the guarantee is "refuse, never lie", asserted by the harness). Green fixture
+    `compile_spine_test.velve` (fib/fact/gcd + grade ladder) compiles to JS that
+    prints **byte-identically** to eval; frontier twin `compile_frontier_test.velve`
+    (a valid `match`) is refused cleanly. Harness over the whole corpus: **15 match,
+    0 mismatch, 0 js-crash**, 116 unsupported (the honest frontier). The erasure law
+    is now *empirically* witnessed, not just argued: among the 15 matches are
+    `uom_test`/`std/units` (units), `refinement_compile_test`/`std/refined`
+    (refinements), and `proof_terminates_test` (totality) — source carrying those
+    judgments compiles to JS that drops every one and computes identically. SPEC
+    untouched (a compiled path observationally identical to eval is not a surface
+    change); no graded row moves yet (the backend is partial — `Match`, heap values,
+    and `Perform` remain). Next: **D1(ii)** = `Match` pattern compilation + ADT
+    `Ctor`s + lists/records/tuples + closures (the heap-value core), still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

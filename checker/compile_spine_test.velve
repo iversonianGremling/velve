@@ -1,0 +1,39 @@
+@edition "2026.6"
+
+-- D1(i): the pure compute spine compiles. This is the first program to traverse all
+-- three columns of the differential harness — check / run (eval) / runc (compiled) —
+-- and the assertion is that the Velve-Core→JS emitter prints BYTE-IDENTICALLY to
+-- eval.ts, the reference semantics. It exercises recursion, tail-`if` (incl. an
+-- else-if ladder), arithmetic/`%`/comparison/equality PrimOps, and `let` sequencing
+-- in a `main` that prints. No effects, no `Match`, no heap values yet — that is the
+-- frontier the IR draws (compiler-architecture-design §11), and everything here sits
+-- inside it.
+
+def fib(n: Number): Number ->
+  if n <= 1 then n
+  else fib(n - 1) + fib(n - 2)
+
+def fact(n: Number): Number ->
+  if n <= 0 then 1
+  else n * fact(n - 1)
+
+def gcd(a: Number, b: Number): Number ->
+  if b == 0 then a
+  else gcd(b, a % b)
+
+def grade(score: Number): String ->
+  if score > 90 then "A"
+  else if score > 80 then "B"
+  else if score > 70 then "C"
+  else "F"
+
+def main(): Effect [io] ()
+  let a = fib(10)
+  let b = fact(6)
+  let g = gcd(48, 36)
+  println(a)
+  println(b)
+  println(g)
+  println(a + b - g)
+  println(grade(85))
+  println(2 ^ 10)

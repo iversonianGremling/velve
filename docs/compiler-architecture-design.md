@@ -453,6 +453,22 @@ pattern-compiled `Match`, lists/records/closures, the pure builtin surface
 semantics. The IR specified here is frozen for that work; `Perform` and the effect
 realization land in D2.
 
+**D1(i) shipped (2026-06) — the compute spine.** The first vertical slice of this
+contract is built and green: `core.ts` (the §11.3 IR datatypes + AST→Core ANF
+lowering for the pure spine — single-clause defs, `Lit`/`Var`, arithmetic/comparison
+/equality `PrimOp`s, saturated `Call`, tail-`if` and else-if ladders, `Do` blocks),
+`emitjs.ts` (Core→JS), the `compile`/`runc` CLI commands, and `scripts/diff.mjs` —
+the three-column harness this section called for. Forms outside the spine (`Match`,
+heap constructors, closures-as-values, all effects) are refused by `CompileUnsupported`
+rather than miscompiled — the frontier is explicit and loud. Over the whole corpus the
+harness reports **15 match / 0 mismatch / 0 js-crash / 116 unsupported**. The erasure
+law (§11.5) is thereby *witnessed empirically*: among the matches are unit-carrying
+(`uom_test`, `std/units`), refinement-carrying (`refinement_compile_test`,
+`std/refined`), and totality-carrying (`proof_terminates_test`) programs — each
+compiles to JS that drops the judgment entirely and prints byte-identically to eval.
+**Remaining for D1(ii)+**: `Match` pattern compilation, ADT `Ctor`s, lists/records
+/tuples, closures with explicit capture (the heap-value core), then `Perform` in D2.
+
 ---
 
 **Evidence basis:** the enabling pieces exist today — `resolve()` already yields the

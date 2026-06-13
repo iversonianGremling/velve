@@ -822,6 +822,30 @@ dimension machinery generalize?
   D1 = IR + compute-core JS emitter + the three-column (check/eval/compiled)
   differential harness.
 
+- [x] 🟢 **Phase D1(i) — the compute spine compiles — DONE 2026-06** (first real
+  backend code; `core.ts` + `emitjs.ts` + `compile`/`runc` CLI + `scripts/diff.mjs`;
+  `compile_spine_test.velve` / `compile_frontier_test.velve`). The opening vertical
+  slice of the §11.7 contract, end-to-end: AST → Velve Core (**ANF** lowering, the
+  §11.3 datatypes) → JS, and a **three-column differential harness** (check / run-eval
+  / run-compiled) over the whole corpus. Spine scope: single-clause defs, `Lit`/`Var`,
+  arithmetic/comparison/equality `PrimOp`s, saturated `Call` to a def or whitelisted
+  pure builtin, tail-`if` (incl. else-if ladders), `Do` blocks. The emitter's `$show`
+  mirrors `display` and its operator table mirrors `evalBinOp`, so compiled stdout is
+  **byte-identical** to eval. Anything outside the spine is refused **loudly** by
+  `CompileUnsupported` (exit 2 → harness `unsupported`), never miscompiled — this is
+  the backend-slice form of a `_bad` twin (no new *checker* rejection rule, so the
+  guarantee is "refuse, never lie", asserted by the harness, and documented as an
+  honest cadence deviation). Harness result: **15 match / 0 mismatch / 0 js-crash /
+  116 unsupported / 100 check-fail / 5 eval-error** across 236 files. The **erasure
+  law is now empirically witnessed**: the 15 matches include unit-carrying
+  (`uom_test`, `std/units`), refinement-carrying (`refinement_compile_test`,
+  `std/refined`), and totality-carrying (`proof_terminates_test`) programs — each
+  compiles to JS that drops the judgment and computes identically. SPEC untouched (a
+  compiled path observationally identical to eval is not a surface change); no graded
+  row moves (the backend is partial). **Next: D1(ii)** — `Match` pattern compilation +
+  ADT `Ctor`s + lists/records/tuples + closures (the heap-value core), still
+  pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

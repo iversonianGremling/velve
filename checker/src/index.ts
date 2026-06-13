@@ -11,11 +11,13 @@ import { discharge } from "./smt.js";
 import { Evaluator } from "./eval.js";
 import { RuntimeError } from "./value.js";
 import { analyzeTweaks } from "./tweaks.js";
+import { lowerModule, CompileUnsupported } from "./core.js";
+import { emitModule } from "./emitjs.js";
 
 const [cmd, file] = process.argv.slice(2);
 
 if (!cmd || !file) {
-  console.error("usage: node dist/index.js <check|run|ast|tweaks> <file.velve>");
+  console.error("usage: node dist/index.js <check|run|ast|tweaks|compile|runc> <file.velve>");
   process.exit(1);
 }
 
@@ -82,6 +84,31 @@ if (cmd === "check") {
   // Static intent/tweak gradient (§9.6) — per-component count of `raw()`/off-scale/
   // magic-constant props vs token-driven ones. Walks the AST, not the runtime tree.
   console.log(analyzeTweaks(mod));
+} else if (cmd === "compile" || cmd === "runc") {
+  // The compiled backend (D1): lower the AST to Velve Core, emit JS. `compile`
+  // prints the JS (for inspection / the differential harness); `runc` executes it
+  // in-process so its stdout can be diffed against `run` (eval). A CompileUnsupported
+  // means the program uses a form outside the current compute-core frontier — exit 2,
+  // distinct from a real failure, so the harness can report `unsupported` cleanly.
+  const fatal = loadDiags.filter(d => d.kind === "error");
+  if (fatal.length > 0) {
+    for (const d of fatal) console.error(`  ${d.kind} [${d.span.start.line + 1}:${d.span.start.col + 1}] ${d.message}`);
+    process.exit(1);
+  }
+  let js: string;
+  try {
+    js = emitModule(lowerModule(mod));
+  } catch (e) {
+    if (e instanceof CompileUnsupported) { console.error(`unsupported: ${e.form}`); process.exit(2); }
+    throw e;
+  }
+  if (cmd === "compile") {
+    console.log(js);
+  } else {
+    // Execute the emitted module text. The pure spine is synchronous; `main()` (if
+    // present) is already appended by emitModule.
+    new Function(js)();
+  }
 } else {
   console.error(`unknown command: ${cmd}`);
   process.exit(1);

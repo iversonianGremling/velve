@@ -1,0 +1,96 @@
+// emitjs.ts — Velve Core IR → JavaScript (D1(i)).
+//
+// The first of the "two representations" Decision 2 promises: this emitter maps the
+// neutral IR onto JS. Numerics become JS `number` (the width tag is *dropped* — a
+// native/WASM emitter would read the same IR and select a machine width instead).
+// The pure compute spine has no `Perform`, so the output is plain synchronous JS.
+//
+// Correctness is defined DIFFERENTIALLY: the compiled program must print
+// byte-identically to `eval.ts` (the never-deleted reference semantics). So the
+// prelude's `$show` mirrors `value.ts`'s `display`, and the operator table mirrors
+// `eval.ts`'s `evalBinOp`, exactly.
+
+import type { IRModule, IRFn, IRExpr, IRComp, IRAtom, IRLit } from "./core.js";
+
+// Operator → JS operator. Mirrors eval.ts evalBinOp: `^` is power (NOT bitwise xor),
+// `++` is string concat (lists are out of core), `==`/`!=` are strict on the spine's
+// primitives. Unary ops are prefixed `u` by the lowerer.
+const OP: Record<string, string> = {
+  "+": "+", "-": "-", "*": "*", "/": "/", "%": "%", "**": "**", "^": "**",
+  "<": "<", ">": ">", "<=": "<=", ">=": ">=", "==": "===", "!=": "!==", "++": "+",
+};
+
+// `$show` mirrors value.ts `display` for the spine's value set (Num/Str/Bool/Unit);
+// `$unit` is the runtime witness of `()`. Internal names are `$`-prefixed so a user
+// `def` can never collide with them. Each builtin is emitted only if the module does
+// not shadow its name with a `def`.
+const BUILTIN_IMPL: Record<string, string> = {
+  print:    "(...a) => { const s = a.map($show).join(' '); (typeof process !== 'undefined' && process.stdout) ? process.stdout.write(s) : console.log(s); return $unit; }",
+  println:  "(...a) => { console.log(a.map($show).join(' ')); return $unit; }",
+  toString: "(v) => $show(v)",
+  abs:      "Math.abs", floor: "Math.floor", ceil: "Math.ceil",
+  round:    "Math.round", sqrt: "Math.sqrt", int: "Math.trunc",
+  max:      "(a, b) => Math.max(a, b)", min: "(a, b) => Math.min(a, b)",
+};
+
+function lit(l: IRLit): string {
+  switch (l.t) {
+    case "Num":  return String(l.v);
+    case "Str":  return JSON.stringify(l.v);
+    case "Bool": return l.v ? "true" : "false";
+    case "Unit": return "$unit";
+  }
+}
+
+function atom(a: IRAtom): string {
+  return a.k === "Var" ? a.name : lit(a.lit);
+}
+
+function comp(c: IRComp): string {
+  switch (c.k) {
+    case "Atom": return atom(c.atom);
+    case "Call": return `${c.fn}(${c.args.map(atom).join(", ")})`;
+    case "PrimOp": {
+      const a = c.args.map(atom);
+      const j = OP[c.op];
+      if (j) return `(${a[0]} ${j} ${a[1]})`;
+      if (c.op === "u-") return `(-${a[0]})`;
+      if (c.op === "u!" || c.op === "unot") return `(!${a[0]})`;
+      throw new Error(`emitjs: unknown PrimOp '${c.op}'`);
+    }
+  }
+}
+
+// Emit a function body as a block of statements terminating in a `return`.
+function body(e: IRExpr, indent: string): string {
+  switch (e.k) {
+    case "Ret":
+      return `${indent}return ${atom(e.atom)};`;
+    case "Let":
+      return `${indent}const ${e.name} = ${comp(e.comp)};\n${body(e.body, indent)}`;
+    case "If":
+      return `${indent}if (${atom(e.cond)}) {\n${body(e.then, indent + "  ")}\n${indent}} else {\n${body(e.else_, indent + "  ")}\n${indent}}`;
+  }
+}
+
+function fn(f: IRFn): string {
+  return `function ${f.name}(${f.params.join(", ")}) {\n${body(f.body, "  ")}\n}`;
+}
+
+// Emit a complete, self-contained JS module. When `callMain` and the module has a
+// `main`, append the entry call so the text runs standalone under node.
+export function emitModule(mod: IRModule, callMain = true): string {
+  const userNames = new Set(mod.fns.map(f => f.name));
+  const prelude = [
+    '"use strict";',
+    '// velve-core → js (D1) — values are JS primitives; the width tag is dropped here.',
+    'const $unit = Symbol("unit");',
+    'const $show = (v) => v === $unit ? "()" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
+    ...Object.entries(BUILTIN_IMPL)
+      .filter(([name]) => !userNames.has(name))
+      .map(([name, impl]) => `const ${name} = ${impl};`),
+  ];
+  const out = [prelude.join("\n"), ...mod.fns.map(fn)];
+  if (callMain && mod.hasMain) out.push("main();");
+  return out.join("\n\n") + "\n";
+}
