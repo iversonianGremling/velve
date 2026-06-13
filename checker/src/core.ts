@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xi) if-value): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
+// SCOPE (through D1(xii) match-value): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -29,9 +29,10 @@
 // The supported ctor names are the module's own `type … = | …` variants plus the core
 // data ctors eval defines globally (Ok/Error/Some/None). Everything else is refused
 // LOUDLY via CompileUnsupported — the frontier is explicit, never a silent miscompile.
-// Non-tail `if` AS A VALUE — the `let`-RHS / argument-position conditional, lowered to
-// the same `Cond` (D1(xi)). Non-tail `match` as a value, destructuring `let`/params, and
-// `Perform` (effects) are next (D1(xii)+, D2).
+// non-tail `if`/`match` AS A VALUE — the `let`-RHS / argument-position conditional via
+// `Cond` (D1(xi)) and the value-position `match` decision-spine reified by a `Block`
+// IIFE (D1(xii)). Destructuring `let`/params and `Perform` (effects) are next
+// (D1(xiii)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch } from "./ast.js";
 
@@ -67,7 +68,8 @@ export type IRComp =
   | { k: "List"; elems: IRAtom[] }                     // build a sequence (display `[a, b, …]`)
   | { k: "Index"; obj: IRAtom; index: IRAtom }         // read element `index` of a list
   | { k: "Lambda"; params: string[]; body: IRExpr }    // an anonymous closure value — captures by lexical scope
-  | { k: "Cond"; cond: IRAtom; then: IRExpr; else_: IRExpr }; // a value-producing conditional — the lazy `if` short-circuit `&&`/`||` lower to
+  | { k: "Cond"; cond: IRAtom; then: IRExpr; else_: IRExpr } // a value-producing conditional — the lazy `if` short-circuit `&&`/`||` lower to
+  | { k: "Block"; body: IRExpr };                       // reify an arbitrary value-`IRExpr` (e.g. a `match` decision-spine) as a value
 // Perform — D2.
 
 // Expressions — the ANF spine. `Match` does NOT survive into the IR: D1(ii) lowers
@@ -416,6 +418,15 @@ class Lowering {
         const o = this.norm(e.obj, scope);
         const i = this.norm(e.index, scope);
         return { binds: [...o.binds, ...i.binds], comp: { k: "Index", obj: o.atom, index: i.atom } };
+      }
+      case "Match": {
+        // A non-tail `match` used as a VALUE (`let s = match … | …`, or nested in an
+        // argument). `matchE` already lowers a `match` to the `If`/`Let`/`Fail` decision-
+        // spine (an `IRExpr`); in value position that whole spine is reified by a `Block`,
+        // which emitjs wraps in an arrow-IIFE returning the taken branch's value — the
+        // n-way generalization of what `Cond` does for a single binary branch. `Block` is
+        // an ordinary comp, so a value-`match` nested in an argument/operand composes.
+        return { binds: [], comp: { k: "Block", body: this.matchE(e.subject, e.branches, scope) } };
       }
       case "If": {
         // A non-tail `if` used as a VALUE (`let x = if c then a else b`, or nested in an

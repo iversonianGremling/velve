@@ -90,6 +90,9 @@ function comp(c: IRComp): string {
     // eval's laziness. A trivial branch (just a `Ret`) emits as its atom; a branch with
     // its own `Let`/`If` spine wraps in an arrow-IIFE returning the value.
     case "Cond": return `(${atom(c.cond)} ? ${exprValue(c.then)} : ${exprValue(c.else_)})`;
+    // Reify a value-`IRExpr` (a `match` decision-spine) as a value — `exprValue` wraps a
+    // non-trivial spine in an arrow-IIFE returning the branch value, an atom if trivial.
+    case "Block": return exprValue(c.body);
   }
 }
 

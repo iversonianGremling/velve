@@ -619,8 +619,21 @@ lowered. Harness: **27 match / 0 mismatch / 0 js-crash / 114 unsupported** (246 
 match (fixture `compile_ifvalue_test.velve`, byte-identical `10 / 6 / 7 / A / B / C`), no
 corpus flip. The frontier twin rolled to a **non-tail `match` as a value** (`let s = match …`
 — `match` lowers in tail position only) and still refuses.
-**Remaining for D1(xii)+**: non-tail `match` as a value (reify the decision-spine as an
-IIFE); destructuring `let`/params; then `Perform` in D2.
+
+**D1(xii) shipped (2026-06) — non-tail `match` as a value (the frontier twin flips again).**
+A `match` whose value is consumed now lowers: `matchE` already builds the `If`/`Let`/`Fail`
+decision-spine, and in value position that spine is reified by a new `Block` comp — emitjs
+wraps it in an arrow-IIFE returning the taken arm's value (the n-way generalization of
+`Cond`). `Block` is an ordinary comp, so a value-`match` composes wherever a value is
+wanted; a one-case `normComp` addition plus the `Block` emitter (reusing the `exprValue`
+IIFE helper). Harness: **28 match / 0 mismatch / 0 js-crash / 114 unsupported** (247 files) —
++1 match (fixture `compile_matchvalue_test.velve`, byte-identical `many / 300 / 16 / round /
+37`), no corpus flip. The frontier twin rolled to a **multi-clause `def`** (`fib(0)`/`fib(1)`/
+`fib(n)` — eval dispatches across clauses; the lowerer emits one JS `function` per `def`).
+String interpolation `"{x}"` confirmed never a frontier (desugars to `++` upstream, like
+`|>`).
+**Remaining for D1(xiii)+**: multi-clause `def`s (clause dispatch as a parameter-tuple
+`match`); reassignment; atom/duration literals; then `Perform` in D2.
 
 ---
 

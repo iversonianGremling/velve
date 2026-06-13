@@ -1,0 +1,35 @@
+@edition "2026.6"
+
+-- D1(xii) green fixture — a non-tail `match` used as a VALUE. `matchE` already lowers a
+-- `match` to the `If`/`Let`/`Fail` decision-spine; this slice reifies that spine in value
+-- position via a `Block` (an arrow-IIFE returning the taken branch's value) — the n-way
+-- generalization of `Cond`. Covers a scalar `match`-value bound by `let`, a `match` over a
+-- constructor (binding its payload) in a def body that is itself consumed, and a chained
+-- scalar `match`-value. (Velve `match` arms are block-form, so a value `match` appears as a
+-- `let` RHS or a def body, not inline inside a larger expression.) Byte-identical to eval,
+-- whose `match` is an ordinary expression yielding the matched arm's value.
+
+type Shape
+  = Circle Number
+  | Square Number
+
+def area(s: Shape): Number
+  let a = match s
+    | Circle(r) -> 3 * r * r
+    | Square(w) -> w * w
+  a
+
+def main(): Effect [io] ()
+  let name = match 2
+    | 0 -> "zero"
+    | 1 -> "one"
+    | _ -> "many"
+  println(name)                  -- many : scalar match-value by let
+  println(area(Circle(10)))      -- 300  : match-value bound mid-def, then returned
+  println(area(Square(4)))       -- 16
+  let tag = match Circle(5)
+    | Circle(_) -> "round"
+    | Square(_) -> "boxy"
+  println(tag)                   -- round : match-value binding a ctor payload
+  let plus = 1 + area(Square(6)) -- 37   : a match-value (via area) inside arithmetic
+  println(plus)

@@ -1079,6 +1079,25 @@ dimension machinery generalize?
   (still partial). **Next: D1(xii)** — non-tail `match` as a value (reify the decision-spine as an IIFE)
   — still pre-effect.
 
+- [x] 🟢 **Phase D1(xii) — non-tail `match` as a value compiles (the frontier twin flips again) — DONE
+  2026-06** (`core.ts` `Block` IR comp + one `Match` case in `normComp`; `emitjs.ts` `Block`→`exprValue`
+  IIFE; `compile_matchvalue_test.velve`). The value D1(xi)'s guardrail was holding. A `match` whose value
+  is CONSUMED (bound by `let`, a def body, or feeding an expression) now lowers: `matchE` already builds
+  the `If`/`Let`/`Fail` decision-spine, and in value position that whole spine is reified by the new
+  `Block` comp — emitjs wraps it in an arrow-IIFE returning the taken arm's value (the n-way
+  generalization of what `Cond` does for one binary branch). `Block` is an ordinary comp ⇒ a value-`match`
+  composes wherever a value is wanted. Green `compile_matchvalue_test` (scalar `match`-value by `let`, a
+  ctor `match` binding its payload, a mid-def `let a = match …`, a `match`-value reaching arithmetic via a
+  def) byte-identical to eval (`many / 300 / 16 / round / 37`). (Velve `match` arms are block-form, so a
+  value `match` sits as a `let` RHS or def body, not inline inside a larger expression — a parse limit,
+  not a compiler one.) The frontier twin `compile_frontier_test` ROLLED match-value→**multi-clause `def`**
+  (`fib(0)`/`fib(1)`/`fib(n)` — eval dispatches across clauses; the lowerer emits one JS `function` per
+  `def` and refuses >1 clause) — next unrepresented form — still exit 2. (String interpolation `"{x}"`
+  confirmed never a frontier — desugars to `++` concat upstream, like `|>`.) **No pre-existing corpus
+  file flipped.** Harness: **28 match / 0 mismatch / 0 js-crash / 114 unsupported** across 247 files (+1
+  match = fixture; unsupported unchanged). SPEC untouched; no graded row moves (still partial). **Next:
+  D1(xiii)** — multi-clause `def`s (clause dispatch as a `match` on the parameter tuple) — still pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

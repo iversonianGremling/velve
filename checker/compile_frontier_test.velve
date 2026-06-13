@@ -1,27 +1,33 @@
 @edition "2026.6"
 
--- D1(xi) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it uses a `match` as a VALUE in non-tail position (`let s = match …`).
--- The lowerer compiles `match` only in TAIL position (the `matchE` decision-spine); as the
--- RHS of a `let` it reaches `normComp`'s default and is refused. A value-position `match`
--- needs its whole decision-spine reified as a value — an IIFE wrapping the `If`/`Let`/`Fail`
--- spine `matchE` already builds (the same move `Cond` makes for a single binary branch,
--- generalized to the n-way match tree). The differential harness must report it
+-- D1(xii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it defines a MULTI-CLAUSE `def`: `fib` has three clauses, two with
+-- literal-pattern params (`fib(0)`, `fib(1)`) and one general. eval dispatches across the
+-- clauses by trying each in order (applyFn); the lowerer emits ONE JS `function` per `def`
+-- and refuses a `def` with more than one clause — the clause-dispatch (a `match` on the
+-- argument tuple, in effect) is not yet compiled. The differential harness must report it
 -- `unsupported` — a CLEAN refusal at the compiler frontier — never a miscompile.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
 -- yet lower, loudly", asserted by the harness rather than by an error count. D1(ii)
--- moved the frontier PAST scalar `match` (tail); D1(iii) PAST tuples; D1(iv) PAST ADT
+-- moved the frontier PAST scalar `match`; D1(iii) PAST tuples; D1(iv) PAST ADT
 -- constructors; D1(v) PAST records; D1(vi) PAST lists; D1(vii) PAST closures-as-values;
 -- D1(viii) PAST first-class `def` references; D1(ix) PAST first-class BUILTIN references;
--- D1(x) PAST short-circuit `&&`/`||`; D1(xi) PAST non-tail `if` as a value (lowered to a
--- `Cond`; see compile_ifvalue_test). The frontier now sits at NON-TAIL `match` AS A VALUE.
--- This file uses one, so it still refuses; when value-position `match` lowers (a later D1
--- slice, reifying the spine as an IIFE), it flips from `unsupported` to a print with no edit.
+-- D1(x) PAST short-circuit `&&`/`||`; D1(xi) PAST non-tail `if` as a value; D1(xii) PAST
+-- non-tail `match` as a value (reified by a `Block` IIFE; see compile_matchvalue_test).
+-- (String interpolation `"{x}"` and pipe `|>` were never frontiers — both desugar upstream,
+-- to `++` concat and a saturated `Call` respectively, and have compiled since D1(i).) The
+-- frontier now sits at MULTI-CLAUSE `def`s — clause dispatch over the argument patterns.
+-- This file defines one, so it still refuses; when clause dispatch lowers (a later D1
+-- slice, as a `match` on the parameter tuple), it flips from `unsupported` to a print.
+
+def fib(0): Number
+  0
+def fib(1): Number
+  1
+def fib(n: Number): Number
+  fib(n - 1) + fib(n - 2)
 
 def main(): Effect [io] ()
-  let s = match 2
-    | 0 -> "zero"
-    | _ -> "other"
-  println(s)
+  println(fib(10))

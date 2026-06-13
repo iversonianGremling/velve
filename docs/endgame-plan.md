@@ -741,6 +741,28 @@ exists (`compiler-architecture-design.md`).
     files) — +1 match (the fixture), unsupported unchanged. SPEC untouched; no graded row
     moves (still partial). Next: **D1(xii)** = non-tail `match` as a value (reify the
     decision-spine as an IIFE) — still pre-effect.
+  - **D1(xii) — non-tail `match` as a value compiles (the frontier twin flips again) — DONE
+    2026-06.** The value D1(xi)'s guardrail was holding. A `match` whose value is consumed
+    (bound by `let`, or a def body, or feeding an expression) now lowers: `matchE` already
+    builds the `If`/`Let`/`Fail` decision-spine, and in value position that whole spine is
+    reified by a new `Block` comp — emitjs wraps it in an arrow-IIFE returning the taken
+    arm's value (the n-way generalization of what `Cond` does for one binary branch). A
+    `Block` is an ordinary comp, so a value-`match` composes wherever a value is wanted. A
+    one-case addition to `normComp` plus the `Block` comp and its one-line emitter (reusing
+    the `exprValue` IIFE helper). Green fixture `compile_matchvalue_test.velve` (a scalar
+    `match`-value by `let`, a ctor `match` binding its payload, a mid-def `let a = match …`,
+    and a `match`-value reaching arithmetic via a def) compiles **byte-identically** to eval
+    (`many / 300 / 16 / round / 37`). (Velve `match` arms are block-form, so a value `match`
+    sits as a `let` RHS or def body, not inline inside a larger expression — a parse limit,
+    not a compiler one.) The frontier twin `compile_frontier_test.velve` rolled to a
+    **multi-clause `def`** (`fib(0)`/`fib(1)`/`fib(n)` — eval dispatches across clauses, the
+    lowerer emits one JS `function` per `def` and refuses >1 clause) — the next unrepresented
+    form — still exit 2. (String interpolation `"{x}"` was also confirmed never a frontier —
+    it desugars to `++` concat upstream and has compiled since D1(i), like `|>`.) No
+    pre-existing corpus file flipped. Harness: **28 match, 0 mismatch, 0 js-crash**, 114
+    unsupported (247 files) — +1 match (the fixture), unsupported unchanged. SPEC untouched;
+    no graded row moves (still partial). Next: **D1(xiii)** = multi-clause `def`s (clause
+    dispatch as a `match` on the parameter tuple) — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,
