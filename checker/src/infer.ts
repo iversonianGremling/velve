@@ -1863,6 +1863,10 @@ class Inferrer {
           break;
         }
         case "DImport": {
+          // File-local import (loader.ts merged the imported file's decls) — the
+          // real declarations bind the names with their true schemes; skip so we
+          // don't shadow them with an `Unknown` placeholder.
+          if (decl.local) break;
           // Named imports: `import { split, join } from "String"` — each name looked
           // up individually so polymorphic schemes are preserved.
           // Bare import: `import math from "std/math"` — bind the alias as a record

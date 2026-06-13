@@ -293,14 +293,29 @@ Phase D's neutral IR being the down payment). The proof vocabulary closes.
 
 ## 4. Phase C — infrastructure (~4 slices)
 
-- **C1. Multi-file imports (SPEC §14)** *(2–3 slices)*. The biggest
+- **C1. Multi-file imports (SPEC §7.3)** *(2–3 slices)*. The biggest
   non-backend infrastructure gap: the refined-type/SortedList libraries
-  travel by copy-paste inclusion today. (i) Resolution + check: an `import`
-  form, file-relative module resolution, cross-file resolve/infer (the
-  registries — REFINEMENTS, FN_PARAMS, ADT_CTORS — become per-program, not
-  per-file), `@private` honored across files; (ii) eval loading + CLI
-  multi-file entry; (iii) `std/` on disk — `std/refined`, `std/sorted`,
-  later `std/units` — and the corpus migrated off inclusion. LSP follows.
+  travel by copy-paste inclusion today.
+  - **(i) Resolution + check — DONE 2026-06** (`loader.ts`,
+    `import_refined_test`/`import_private_bad`/`import_refined_lib`). A loader
+    parses+lowers the entry file and every `./`/`../` module it imports
+    transitively, merging their decls into ONE program (imported-first, deduped
+    by abspath, cycles rejected). **As-built — the merge does all the work:** a
+    `module Foo { … }` in the merged decl list is exactly what a single-file
+    program already produces, so resolve/infer/exhaust/eval run *unchanged* —
+    the registries (REFINEMENTS, FN_PARAMS, ADT_CTORS) become per-program for
+    free, and `@private` ctors stay sealed across files via the existing
+    `privateTo`/moduleStack check (the `_bad` proves it: a forged ctor outside
+    its file goes from "unresolved" pre-loader to "private to module"
+    post-loader). The file-local `DImport` is marked `local` so resolve/infer/
+    eval skip its placeholder binding. *Honest:* the green consumer's *check*
+    passes pre-loader too (lenient `Unknown` for unknown imports/types), so the
+    behavioral proof is `run` (pre-loader dies `undefined variable: natural`).
+  - **(ii)** eval loading + CLI multi-file entry — largely falls out of (i)
+    (the merge already makes `run` work end-to-end on the consumer).
+  - **(iii)** `std/` on disk — `std/refined`, `std/sorted`, later `std/units` —
+    and the corpus migrated off inclusion. Selective visibility (only the listed
+    names, vs the current flatten-on-merge) is a tightening here. LSP follows.
 - **C2. `is Ok(a)` payload binding / flow narrowing** *(1 slice)*. The
   optional PLAN box: `if x is Ok(a)` binds the payload in the then-branch
   (and feeds the fact env — cheap synergy with A1's binder seeding;

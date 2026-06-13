@@ -595,6 +595,30 @@ dimension machinery generalize?
   All three registries already existed (stdlib.ts MODULE_ALIASES, eval
   STDLIB_RUNTIME, import machinery) — the slice wired the bare-name fallback
   and added the missing `IO`/`JSON` runtime keys.
+- [ ] 🟡 **Phase C1 — multi-file imports** (SPEC §7.3, endgame-plan §4). The
+  refined-type / `SortedList` libraries travel by copy-paste inclusion today.
+  **C1(i) DONE 2026-06** (`loader.ts`, `import_refined_test`/`import_private_bad`,
+  `import_refined_lib`): file-relative `import … from "./mod"` now resolves to
+  disk. A new loader parses+lowers the entry file and every `./`/`../` module it
+  imports transitively, and merges their decls into ONE program (imported-first,
+  deduped by abspath, cyclic imports rejected). Because a `module Foo { … }`
+  nested in the decl list is exactly what a single-file program already
+  produces, every downstream pass runs unchanged — the registries (REFINEMENTS,
+  FN_PARAMS, ADT_CTORS) become **per-program for free**, and `@private` ctors
+  stay sealed across the file boundary via the existing `privateTo`/moduleStack
+  check (the `_bad` proves it: `Natural(99)` outside its file is rejected
+  "private to module 'refined'", where pre-loader it was merely "unresolved").
+  The merged-out file-local `DImport` is marked `local` so resolve/infer/eval
+  skip its placeholder binding. Stdlib/ambient imports (`"String"`, `"std/json"`)
+  are untouched — only `./`/`../` paths hit disk. **Honest as-built:** the green
+  consumer's *check* passes pre-loader too (unknown imports bind leniently as
+  `Unknown`, unknown type names are opaque), so the loader's behavioral proof is
+  `run` — pre-loader `run` dies `undefined variable: natural`, post-loader it
+  prints. Remaining: C1(ii) eval loading + CLI multi-file entry (largely falls
+  out — `run` already works through the merge); C1(iii) `std/` on disk +
+  corpus migrated off inclusion; selective-visibility enforcement (only listed
+  names visible, vs the current flatten-on-merge) is a later tightening. LSP
+  follows.
 
 ---
 

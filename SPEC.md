@@ -1952,9 +1952,10 @@ pins all four boundary violations: forge by call, match by pattern, raw
 `Number` where `NonZero`/`InBounds` is demanded). Honest Tier-1 bound:
 `InBounds` witnesses *an index that passed a bounds check*, not an index tied
 to **that** list — the relational tie (`Index(xs)`) is Tier 1.5's
-witness-token primitive (north-star §3.3). Until multi-file imports resolve
-(§14), the library travels by inclusion; `refined_types_test.velve` is its
-reference source.
+witness-token primitive (north-star §3.3). File-relative `import` now resolves
+(§7.3, Phase C1(i)) — `import_refined_test.velve` imports the library from a
+sibling file rather than inlining it; `refined_types_test.velve` remains the
+single-file reference source until the corpus migrates off inclusion (C1(iii)).
 
 **`SortedList` — the semantic archetype** *(SHIPPED 2026-06,
 `sorted_list_test`/`_bad`; north-star §3.2)*. Sortedness is the canonical
@@ -2035,6 +2036,21 @@ import { view, model }         from "./UserCard"
 import http                    from "std/http"
 import js "stripe-js"          as stripe
 ```
+
+**File-relative imports — implemented** *(2026-06, Phase C1(i), `loader.ts`,
+`import_refined_test`/`import_private_bad`)*. A `./`- or `../`-relative path
+resolves to a sibling `.velve` file: the loader parses+lowers the entry file and
+every local module it imports transitively, then merges their declarations into
+one program (imported-first, deduped by absolute path; a cycle in the module
+import graph is a hard error). A `module Foo { … }` nested in the merged decl
+list is exactly what a single-file program already produces, so resolve / infer /
+exhaust / eval run unchanged — the type/refinement/constructor registries become
+**per-program**, and a `@private` ADT's constructors stay sealed at its module
+boundary *across files* (the smart constructor is the only way in). Bare-name
+(`"String"`) and `std/…` paths stay stdlib/ambient imports (§5.5), unaffected.
+*Not yet:* `std/` modules on disk (C1(iii)), and selective visibility — a
+file-local import currently makes the imported module's public members
+resolvable program-wide rather than only the names it lists (a later tightening).
 
 ---
 

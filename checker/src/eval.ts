@@ -63,7 +63,7 @@ interface SagaCtx {
 export class Evaluator {
   private env: Env;
   private stores = new Map<string, StoreRuntime>();
-  // inputmap registry (SPEC �10.5), keyed by the map's runtime value so
+  // inputmap registry (SPEC �10.5), keyed by the map's runtime value so
   // `help(m)` and `++` layering work through aliases. Each row carries the
   // env it was declared in, so layered maps run their actions in the right
   // scope. Built once per map (declaration eval or `++` merge).
@@ -248,7 +248,7 @@ export class Evaluator {
 
   // ── Declarations ────────────────────────────────────────────────────────────
 
-  // Build an inputmap runtime value (SPEC �10.5): a nullary runner over the
+  // Build an inputmap runtime value (SPEC �10.5): a nullary runner over the
   // stream's drain loop  await an event, run the FIRST matching row's action
   // with the pattern's bindings in scope, fall through when no row matches,
   // stop on Done (after a bound Done row runs, so the termination signal is
@@ -359,12 +359,16 @@ export class Evaluator {
       }
       case "DInputmap": {
         // The inputmap IS the drain loop over its stream (multitarget-design
-        // �4.0); construction is shared with `++` layering via makeInputmap.
+        // �4.0); construction is shared with `++` layering via makeInputmap.
         env.define(decl.name, this.makeInputmap(decl.name, decl.stream,
           decl.rows.map(row => ({ row, env }))));
         break;
       }
       case "DImport": {
+        // File-local import (loader.ts merged the imported file's decls): the
+        // merged DModule decls already define these bindings in `env`. Nothing
+        // to bind here.
+        if (decl.local) break;
         // Mirror infer.ts's named-vs-namespace decision: a SINGLE name that is
         // NOT a member of the module is a NAMESPACE alias (`import String from
         // "std/string"` → bind the whole record); otherwise every name is a
@@ -1508,7 +1512,7 @@ export class Evaluator {
       case "==": return { tag: "VBool", v: equal(l, r) };
       case "!=": return { tag: "VBool", v: !equal(l, r) };
       case "++": {
-        // Inputmap layering (SPEC �10.5): `base ++ overrides`  an unguarded
+        // Inputmap layering (SPEC �10.5): `base ++ overrides`  an unguarded
         // override row REPLACES the same-pattern base row in place (so help
         // keeps the base ordering); everything else appends after the base
         // rows. Guarded rows never replace and are never replaced (a guard may
@@ -2081,7 +2085,7 @@ export function patchHOF(env: Env, ev: Evaluator): void {
     return src.stream;
   });
 
-  // help(map)  an inputmap's labelled rows as derived data (SPEC �10.5):
+  // help(map)  an inputmap's labelled rows as derived data (SPEC �10.5):
   // List({pattern, label}). The table is registered at declaration eval and
   // looked up by value identity, so aliases work.
   def("help", args => {

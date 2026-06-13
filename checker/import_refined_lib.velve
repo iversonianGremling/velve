@@ -1,0 +1,28 @@
+-- C1(i) multi-file imports (SPEC §7.3): the LIBRARY half. This is the §3.3
+-- refined-type archetype as a STANDALONE module on disk — no usage in this file.
+-- It checks clean on its own (a proof-carrying module: total/exhaustive/handled),
+-- and `import_refined_test.velve` imports its gates by file-relative path. The
+-- `@private` ctor stays sealed at the MODULE boundary, which is now also a FILE
+-- boundary — `import_private_bad.velve` proves the seal holds across files.
+-- Expected: clean (checked standalone by the corpus baseline too).
+@edition "2026.6"
+
+module refined
+  proofs: [total, exhaustive, handled]
+
+  @private
+  type Natural
+    = Natural Number
+
+  -- The only way in from a raw Number.
+  def natural(n: Number): Result Natural String
+    if n >= 0 then Ok(Natural(n)) else Error("negative")
+
+  -- Closed op: Natural + Natural stays Natural, no re-gate.
+  def natAdd(a: Natural, b: Natural): Natural
+    match (a, b)
+      | (Natural(x), Natural(y)) -> Natural(x + y)
+
+  def natValue(n: Natural): Number
+    match n
+      | Natural(v) -> v

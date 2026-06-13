@@ -1,0 +1,13 @@
+-- C1(i) multi-file imports (SPEC §7.3): the GUARDRAIL. `@private` seals an ADT's
+-- constructors to its declaring module — and now that the module lives in its own
+-- file, the seal must hold ACROSS the file boundary. Here we import the refined
+-- library and try to forge a `Natural` by calling its ctor directly, bypassing the
+-- `natural` gate. The cross-file merge keeps the ctor's `privateTo: "refined"`, so
+-- resolve rejects it outside the module — exactly as in the single-file case.
+-- Expected: error — constructor 'Natural' is private to module 'refined'.
+@edition "2026.6"
+
+import { natural, natValue } from "./import_refined_lib"
+
+def forged(): Number
+  natValue(Natural(99))

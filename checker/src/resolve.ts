@@ -126,8 +126,13 @@ class Resolver {
         case "DLet":
           scope.define(decl.name, { name: decl.name, kind: "var", span: decl.span });
           break;
-        // DImport: names brought in — treat as vars for now
+        // DImport: names brought in — treat as vars for now. A file-local import
+        // (`decl.local`, set by loader.ts) is satisfied by the imported file's
+        // merged decls, which already bind the real names — skip its placeholder
+        // binding so the genuine fn/type/ctor bindings (and `@private` sealing)
+        // win instead of an opaque var.
         case "DImport":
+          if (decl.local) break;
           for (const { name, alias } of decl.names) {
             const resolved = alias ?? name;
             scope.define(resolved, { name: resolved, kind: "var", span: decl.span });

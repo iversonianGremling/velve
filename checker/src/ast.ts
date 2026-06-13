@@ -266,7 +266,13 @@ export type Decl =
 
   | ({ tag: "DImport";
        path: string;
-       names: { name: string; alias: string | null }[] }                    & Node)
+       names: { name: string; alias: string | null }[];
+       // Set by the module loader (loader.ts) when `path` resolved to an on-disk
+       // `.velve` file whose decls were merged into the program. Such an import
+       // is satisfied BY the merged decls — resolve/infer/eval skip its own
+       // binding so the real (cross-file) declarations bind the names instead.
+       // Falsy for stdlib/ambient imports, which keep the per-module binding path.
+       local?: boolean }                                                     & Node)
 
   | ({ tag: "DModule";
        name: string;

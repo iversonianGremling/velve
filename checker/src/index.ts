@@ -1,8 +1,4 @@
-import Parser from "tree-sitter";
-// @ts-ignore
-import Velve from "tree-sitter-velve";
-import { readFileSync } from "node:fs";
-import { Lowerer } from "./lower.js";
+import { loadProgram } from "./loader.js";
 import { resolve } from "./resolve.js";
 import { infer } from "./infer.js";
 import { checkExhaustiveness } from "./exhaust.js";
@@ -15,7 +11,6 @@ import { discharge } from "./smt.js";
 import { Evaluator } from "./eval.js";
 import { RuntimeError } from "./value.js";
 import { analyzeTweaks } from "./tweaks.js";
-import { collectParseErrors } from "./parseErrors.js";
 
 const [cmd, file] = process.argv.slice(2);
 
@@ -24,16 +19,11 @@ if (!cmd || !file) {
   process.exit(1);
 }
 
-const src = readFileSync(file, "utf8");
-const parser = new Parser();
-parser.setLanguage(Velve);
-const tree = parser.parse(src);
-// A parse error makes tree-sitter drop the unparseable node during recovery, so
-// every later pass would silently skip it. Surface these first.
-const parseDiags = collectParseErrors(tree.rootNode as any, file);
-const lowerer = new Lowerer(file);
-const mod  = lowerer.lower(tree);
-const lowerDiags = lowerer.diagnostics;
+// Load the entry file and every file-relative module it imports, transitively,
+// into one merged program (loader.ts). Parse errors (tree-sitter drops the
+// unparseable node during recovery, so every later pass would silently skip it)
+// and lowering errors from ALL files are surfaced here, before the later passes.
+const { mod, diagnostics: loadDiags } = loadProgram(file);
 
 if (cmd === "check") {
   const { resolutions, diagnostics: resolveDiags } = resolve(mod);
@@ -52,7 +42,7 @@ if (cmd === "check") {
   const { diagnostics: measureDiags, jobs } = buildMeasureJobs(candidates, resolutions);
   const smtDiags = await discharge(residue, jobs, boundsResidue, arithResidue, overflowResidue);
 
-  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags, ...boundsDiags, ...arithDiags, ...overflowDiags, ...measureDiags, ...smtDiags];
+  const allDiags = [...loadDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags, ...boundsDiags, ...arithDiags, ...overflowDiags, ...measureDiags, ...smtDiags];
   console.log(`${types.size} expressions typed, ${resolutions.size} names resolved`);
   if (allDiags.length === 0) {
     console.log("no errors");
@@ -67,7 +57,7 @@ if (cmd === "check") {
   // Parse and lowering errors (e.g. a dropped decl, empty `{}` interpolation) make
   // the AST unsound to run — surface them and refuse, like a compiler, instead of
   // evaluating a patched tree.
-  const fatal = [...parseDiags, ...lowerDiags].filter(d => d.kind === "error");
+  const fatal = loadDiags.filter(d => d.kind === "error");
   if (fatal.length > 0) {
     for (const d of fatal) {
       console.error(`  ${d.kind} [${d.span.start.line + 1}:${d.span.start.col + 1}] ${d.message}`);

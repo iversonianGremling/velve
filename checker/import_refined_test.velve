@@ -1,0 +1,28 @@
+-- C1(i) multi-file imports (SPEC §7.3): the GREEN consumer. The refined-type
+-- library no longer travels by copy-paste inclusion — it lives in
+-- `import_refined_lib.velve` and arrives by a file-relative `import`. The loader
+-- (loader.ts) merges that file's `module refined { … }` into this program, so
+-- cross-file resolve/infer Just Works: `natural`/`natAdd`/`natValue` resolve to
+-- the imported defs, the `Natural` TYPE name is public, and the registries are
+-- per-program. The `@private` ctor is unreachable here (see _bad) — values flow
+-- through the gates exactly as in the single-file archetype.
+-- Expected: clean; runs (prints 5, no: negative, 12).
+@edition "2026.6"
+
+import { natural, natAdd, natValue } from "./import_refined_lib"
+
+-- Outside the imported module: the type name is public, values flow through gates.
+def show(r: Result Natural String): String
+  match r
+    | Ok(n)    -> "nat {natValue(n)}"
+    | Error(e) -> "no: {e}"
+
+def main(): Effect [io] ()
+  println(show(natural(5)))
+  println(show(natural(0 - 3)))
+  match natural(5)
+    | Ok(a) ->
+      match natural(7)
+        | Ok(b)    -> println(natValue(natAdd(a, b)))
+        | Error(_) -> println("?")
+    | Error(_) -> println("?")
