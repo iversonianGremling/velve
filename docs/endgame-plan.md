@@ -225,6 +225,20 @@ types**, not eight scattered numeric sketches.
     construction (constructors / literal-defaulting), so B2(i)'s fixture
     validates the compile-time algebra through unit-typed defs and runs on the
     erased (plain-`Number`) semantics.
+  - **B2(ii) SHIPPED 2026-06** (`uom2_test`/`uom2_bad`, SPEC §2.15). **Duration
+    folded into the algebra**: a `100ms` literal now *is* a `United{s:1}` value,
+    so the `isDur` special-cases in `inferBinOp` deleted outright — `ms*ms : s^2`
+    (the showcase pin, once an error), `400ms/100ms : Number`, `1/30s : s^-1` all
+    fall out of the general `*`/`/` rules. **Math interplay**: a `unitMathCall`
+    intercept on the `Math.*` builtins — `sqrt`/`cbrt` scale exponents (non-even
+    → error), `abs`/`round`/`sign` preserve, `min`/`max`/`clamp` demand one shared
+    dimension, transcendentals demand dimensionless; fires only when an argument
+    is United, so plain-Number Math is byte-identical (baseline diff: only the two
+    new rows). **Conversions**: the `Duration` stdlib module (`fromMs`/`fromSeconds`/
+    `toMs`) retyped to the shared `United`, becoming the explicit Number↔Duration
+    bridge (runtime identity). Still deferred: a *general* unit-value constructor /
+    literal-defaulting surface (B2(iii) / design §5) — Duration has its bridge,
+    other units are still params-only.
 - **B3. Sized types + the `overflow` obligation** *(2 slices)*. (i) The
   stdlib range-refinement family (`u8 i8 u16 i16 u32 i32`) with gates
   (`u8(n): Result u8 String`) and closed ops — mirrors the

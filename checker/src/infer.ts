@@ -2441,6 +2441,22 @@ class Inferrer {
         const ret   = freshVar();
         const fnName = expr.fn.tag === "Var" ? `call to '${expr.fn.name}'` : "function call";
 
+        // Units of measure ∩ Math (B2(ii)): `sqrt`/`cbrt` scale exponents, the
+        // abs/round family preserves the dimension, transcendentals demand a
+        // dimensionless argument. Fires ONLY when an argument is actually United,
+        // so every plain-Number Math call (the whole corpus) takes the generic
+        // signature path below unchanged.
+        const mathName =
+          expr.fn.tag === "Field" && expr.fn.obj.tag === "Var" && expr.fn.obj.name === "Math" ? expr.fn.field
+          : expr.fn.tag === "Var" ? expr.fn.name : null;
+        if (mathName) {
+          const margs = argTs.map(t => this.ctx.subst.apply(t));
+          if (margs.some(t => t.tag === "United")) {
+            const um = this.unitMathCall(mathName, margs, expr.span);
+            if (um) return um;
+          }
+        }
+
         // Return-gate GUARANTEE: inside a fn returning `Result(Index(length(p)), e)`,
         // an `Ok(payload)` success must itself prove `payload` in range for `p` —
         // recorded as a witness demand on the payload (facts.ts enforces it under
@@ -3339,6 +3355,57 @@ class Inferrer {
     }
   }
 
+  // ── Math ∩ units ─────────────────────────────────────────────────────────
+  // How the standard Math builtins act on a united argument (B2(ii)). Returns
+  // null when the name is not a unit-aware Math function — the caller then takes
+  // the ordinary `fn([Number], Number)` signature path. Only ever called with a
+  // United present, so it never perturbs plain-Number arithmetic.
+
+  private unitMathCall(name: string, args: Type[], span: Span): Type | null {
+    const num: Type = { tag: "Prim", kind: "Number" };
+    const united = (dims: Dims): Type => isDimensionless(dims) ? num : { tag: "United", base: num, dims };
+    const us = args.filter((t): t is Extract<Type, { tag: "United" }> => t.tag === "United");
+
+    // Dimension-preserving: abs/round/sign keep the unit; min/max/clamp require
+    // every operand to share ONE dimension (no bare-Number ∼ unit mixing).
+    if (["abs", "floor", "ceil", "round", "trunc", "sign", "min", "max", "clamp"].includes(name)) {
+      const base = us[0]!;
+      for (const u of us)
+        if (!dimsEqual(u.dims, base.dims))
+          err(this.ctx, span, `'${name}' across mixed units — ${typeToString(base)} vs ${typeToString(u)}`);
+      if (args.some(t => t.tag !== "United"))
+        err(this.ctx, span, `'${name}' mixes a united value with a bare Number`);
+      return base;
+    }
+
+    // Roots scale every exponent: sqrt halves, cbrt thirds. A non-divisible
+    // exponent (sqrt of a Length, m^1) is the error units exist to catch.
+    if (name === "sqrt" || name === "cbrt") {
+      const u = us[0];
+      if (!u) return null;
+      const root = name === "sqrt" ? 2 : 3;
+      const scaled: { atom: string; exp: number }[] = [];
+      for (const [atom, exp] of Object.entries(u.dims)) {
+        if (exp % root !== 0) {
+          err(this.ctx, span, `'${name}' of ${typeToString(u)} — exponent of ${atom} (${exp}) is not divisible by ${root}`);
+          return num;
+        }
+        scaled.push({ atom, exp: exp / root });
+      }
+      return united(mkDims(scaled));
+    }
+
+    // Transcendentals (and log/exp) are only defined on a pure ratio: the
+    // argument must be dimensionless. `sin(m)` is a category error.
+    if (["sin", "cos", "tan", "asin", "acos", "atan", "log", "log2", "log10", "exp"].includes(name)) {
+      const u = us[0];
+      if (u) err(this.ctx, span, `'${name}' requires a dimensionless Number — got ${typeToString(u)}`);
+      return num;
+    }
+
+    return null; // pow, atan2, … — fall through to the ordinary signature.
+  }
+
   // ── BinOp ──────────────────────────────────────────────────────────────────
 
   private inferBinOp(expr: Extract<Expr, { tag: "BinOp" }>, env: TypeEnv): Type {
@@ -3347,16 +3414,11 @@ class Inferrer {
     const num:  Type = { tag: "Prim", kind: "Number" };
     const bool: Type = { tag: "Prim", kind: "Bool" };
 
-    // Duration is a distinct "dimension": it scales by a Number and adds to itself,
-    // but `Duration * Duration` (time²) and `Duration + Number` are nonsense.
-    const dur: Type = { tag: "Named", name: "Duration", args: [] };
-    const isDur = (t: Type) => { const a = this.ctx.subst.apply(t); return a.tag === "Named" && a.name === "Duration"; };
-
     // Units of measure (B2, numeric-dimension-design.md §2.2). `*`/`/` add/subtract
     // exponent vectors (collapsing a cancelled dimension back to `Number`); `+`/`-`
     // require matching dimensions. The solver never sees this — it is a shape
-    // algebra. Disjoint from Duration (a `Named` type, not `United`), so the two
-    // dimension stories coexist until B2(ii) folds Duration into this algebra.
+    // algebra. Duration is just the time-dimensioned unit (B2(ii)), so it rides
+    // these same branches — no special-case.
     const asUnit = (t: Type) => { const a = this.ctx.subst.apply(t); return a.tag === "United" ? a : null; };
     const lu = asUnit(l), ru = asUnit(r);
     const united = (dims: Dims): Type => isDimensionless(dims) ? num : { tag: "United", base: num, dims };
@@ -3368,12 +3430,6 @@ class Inferrer {
           if (lu && ru && dimsEqual(lu.dims, ru.dims)) return lu;
           err(this.ctx, expr.span, `'${expr.op}' needs matching units — got ${typeToString(this.ctx.subst.apply(l))} and ${typeToString(this.ctx.subst.apply(r))}`);
           return lu ?? ru!;
-        }
-        // Duration ± Duration → Duration; Number ± Number → Number; mixed → error.
-        if (isDur(l) || isDur(r)) {
-          unify(l, dur, this.ctx, expr.span, `'${expr.op}' on a Duration needs both operands to be Durations`);
-          unify(r, dur, this.ctx, expr.span, `'${expr.op}' on a Duration needs both operands to be Durations`);
-          return dur;
         }
         unify(l, num, this.ctx, expr.span, `'${expr.op}' requires Number`);
         unify(r, num, this.ctx, expr.span, `'${expr.op}' requires Number`);
@@ -3388,11 +3444,6 @@ class Inferrer {
           unify(lu ? r : l, num, this.ctx, expr.span, "scaling a united value requires a Number");
           return u;
         }
-        // Duration * Number / Number * Duration → Duration (scaling); Duration² → error.
-        const ld = isDur(l), rd = isDur(r);
-        if (ld && rd) { err(this.ctx, expr.span, "cannot multiply two Durations (the result would be time²)"); return dur; }
-        if (ld) { unify(r, num, this.ctx, expr.span, "scaling a Duration requires a Number"); return dur; }
-        if (rd) { unify(l, num, this.ctx, expr.span, "scaling a Duration requires a Number"); return dur; }
         unify(l, num, this.ctx, expr.span, "'*' requires Number");
         unify(r, num, this.ctx, expr.span, "'*' requires Number");
         return num;
@@ -3406,11 +3457,6 @@ class Inferrer {
           unify(l, num, this.ctx, expr.span, "'/' requires Number");
           return united(dimsDiv({}, ru!.dims));
         }
-        // Duration / Number → Duration; Duration / Duration → Number (ratio).
-        const ld = isDur(l), rd = isDur(r);
-        if (ld && rd) return num;
-        if (ld) { unify(r, num, this.ctx, expr.span, "dividing a Duration requires a Number"); return dur; }
-        if (rd) { err(this.ctx, expr.span, "cannot divide a Number by a Duration"); return num; }
         unify(l, num, this.ctx, expr.span, "'/' requires Number");
         unify(r, num, this.ctx, expr.span, "'/' requires Number");
         return num;
@@ -3790,7 +3836,10 @@ class Inferrer {
       case "Bool":     return { tag: "Prim", kind: "Bool" };
       case "Unit":     return { tag: "Prim", kind: "Unit" };
       case "Atom":     return { tag: "Atom", name: lit.name };
-      case "Duration": return { tag: "Named", name: "Duration", args: [] };   // distinct from Number; dimensional arithmetic in inferBinOp
+      // A duration is a Number carrying the time dimension (atom `s`). Folded into
+      // the unit algebra (B2(ii)): `100ms * 100ms : s^2`, `400ms / 100ms : Number`,
+      // `1 / 30s : s^-1` (frequency) all fall out of inferBinOp's United branches.
+      case "Duration": return { tag: "United", base: { tag: "Prim", kind: "Number" }, dims: { s: 1 }, name: "Duration" };
     }
   }
 

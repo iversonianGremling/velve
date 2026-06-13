@@ -69,10 +69,20 @@ native/WASM emitter (Phase D) lower the same source to machine primitives.
 > algebra + dimensionless-collapse all shipped exactly as specced below. `unify`
 > compares two `United` by `dimsEqual` and lets `United`-vs-base fall through to
 > the mismatch error — the explicit-casts-only rule (§4) enforced for free.
-> **Not yet built (deferred):** unit-value construction (constructors /
-> literal-defaulting, §5) and folding `Duration` into the algebra (B2(ii), the
-> `ms*ms → Duration²` showcase). So today's fixture validates the algebra
-> through unit-typed defs and runs on the erased plain-`Number` semantics.
+> So this fixture validates the algebra through unit-typed defs and runs on the
+> erased plain-`Number` semantics.
+>
+> **B2(ii) AS BUILT (2026-06)** — `uom2_test`/`uom2_bad`. `Duration` folded into
+> the algebra: the literal is now a `United{s:1}` (the `isDur` special-cases in
+> `inferBinOp` deleted), so `ms*ms : s^2` (the showcase), `400ms/100ms : Number`,
+> `1/30s : s^-1` all fall out of the general rules. A `unitMathCall` intercept
+> gives the `Math.*` builtins unit semantics (`sqrt`/`cbrt` scale exponents,
+> abs-family preserve, transcendentals demand dimensionless), firing only when an
+> argument is United (zero plain-Number perturbation). The `Duration` stdlib
+> module (`fromMs`/`toMs`) is retyped to the shared `United` — the explicit
+> Number↔Duration conversion bridge §5 anticipated, for the time dimension.
+> **Still deferred:** a *general* unit-value constructor / literal-defaulting
+> surface (§5) for non-Duration units — they remain params-only.
 
 ### 2.1 Surface — refinement-flavored declaration
 

@@ -608,9 +608,16 @@ builds, not pending the design.
 **B2(i) SHIPPED 2026-06** (`uom_test`/`uom_bad`, SPEC §2.15): the `United` type variant +
 `unit` grammar + the full `*`/`/`/`+`/`-`/cmp dimensional algebra (with the cancelled-dimension
 → `Number` collapse) are built — axis (2) now has its general mechanism, not just the
-hand-built `Duration`. Remaining for the re-grade: B2(ii) folds `Duration` in (`ms*ms →
-Duration²`) + conversions, then B3 (sized types + `overflow`) lands axis (1). Grade stays B−
-until those close.
+hand-built `Duration`.
+
+**B2(ii) SHIPPED 2026-06** (`uom2_test`/`uom2_bad`, SPEC §2.15): `Duration` folded into the
+algebra — the literal is now the time-dimensioned `United`, so `ms*ms : s^2` (the showcase, once
+an error), `400ms/100ms : Number`, `1/30s : s^-1` all fall out of the general rules; the `Math.*`
+builtins gained unit semantics (`sqrt`/`cbrt` scale exponents, abs-family preserve, transcendentals
+demand dimensionless); and the `Duration` stdlib module became the explicit Number↔Duration
+conversion bridge. Axis (2) is now complete bar a general unit-constructor surface (params-only
+today). Remaining for the re-grade: B3 (sized types + `overflow`) lands axis (1). Grade stays B−
+until that closes.
 
 ---
 

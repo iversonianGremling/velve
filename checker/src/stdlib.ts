@@ -164,7 +164,10 @@ function makeIoModule(): Record<string, Scheme> {
   };
 }
 
-const dur: Type = { tag: "Named", name: "Duration", args: [] };
+// The time-dimensioned unit (B2(ii)): the SAME `United` shape a `100ms` literal
+// carries, so `Duration.fromMs(250)` and `250ms` are the one type. This module is
+// the explicit Number↔Duration conversion bridge units otherwise forbid.
+const dur: Type = { tag: "United", base: { tag: "Prim", kind: "Number" }, dims: { s: 1 }, name: "Duration" };
 
 function makeDurationModule(): Record<string, Scheme> {
   // Convert between raw Numbers (ms) and the dimensional `Duration` type. Runtime

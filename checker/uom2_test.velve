@@ -1,0 +1,41 @@
+@edition "2026.6"
+
+-- B2(ii): Duration joins the unit algebra, and Math respects dimensions.
+--   • a Duration IS the time-dimensioned unit (atom `s`), so `100ms * 100ms : s^2`
+--     and `400ms / 100ms : Number` fall straight out of the `*`/`/` exponent rules.
+--   • `sqrt` halves exponents (√m² = m); `abs`/`min` preserve the dimension.
+--   • Duration.fromMs / toMs are the explicit Number↔Duration conversion bridge.
+-- The unit-typed defs are compile-time checks (params supply the units); the
+-- Duration arithmetic RUNS on the erased ms semantics. Expected: 0 errors.
+
+module kinematics2
+  type Meters = Number unit m
+  type Area   = Number unit m^2
+  type Sq     = Number unit s^2
+
+  -- sqrt halves every exponent: √(m²) = m.
+  def side(a: Area): Meters
+    Math.sqrt(a)
+
+  -- abs preserves the dimension — abs(m) : m.
+  def mag(x: Meters): Meters
+    Math.abs(x)
+
+  -- min over one shared dimension yields that dimension.
+  def shorter(a: Meters, b: Meters): Meters
+    Math.min(a, b)
+
+  -- The classic pin: multiplying two durations is time², not an error.
+  def squared(): Sq
+    100ms * 100ms
+
+-- These run on the erased ms semantics.
+def ratio(): Number
+  400ms / 100ms                         -- like-dimension cancels → Number (4)
+
+def fromConv(): Number
+  Duration.toMs(Duration.fromMs(250))   -- explicit conversion bridge → 250
+
+def main(): Effect [io] ()
+  print("ratio   = {ratio()}")
+  print("convert = {fromConv()}")

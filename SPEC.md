@@ -657,8 +657,8 @@ def attempt(f: (String -> Result Number e)): Result Number e
 
 ### 2.15 Units of measure
 
-**Status: B2(i) SHIPPED 2026-06** (`uom_test`/`uom_bad`; design in
-`docs/numeric-dimension-design.md`). A unit type is a `Number` carrying a
+**Status: B2(i)+B2(ii) SHIPPED 2026-06** (`uom_test`/`uom_bad`, `uom2_test`/`uom2_bad`;
+design in `docs/numeric-dimension-design.md`). A unit type is a `Number` carrying a
 **dimension** — declared with a `unit` tail on a `Number` alias:
 
 ```
@@ -687,15 +687,31 @@ alias name.
 
 A unit is **not transparent** to its `Number` base (unlike a refinement type,
 §2.6): `m + s` is a type error, and a bare `Number` does not unify with a
-`Meters` — conversions are **explicit only** (a future constructor / annotation,
-deferred with the rest of B2). The solver never sees dimensions; this is a
-structural shape discipline (like the effect row, §12.4), and it **erases at
-runtime** — every united value is just a `Number` when it runs.
+`Meters` — conversions are **explicit only**. The solver never sees dimensions;
+this is a structural shape discipline (like the effect row, §12.4), and it
+**erases at runtime** — every united value is just a `Number` when it runs.
 
-`Duration` (§3.13) is the precursor of this algebra, hand-built; it remains a
-distinct `Named` type for now (so `ms * ms` still errors). Folding it into the
-unit algebra — making `ms * ms : Duration²` legal — is the B2(ii) step. Sized
-types (`u8`/`i32`) are the dimensionless-but-bounded sibling, B3.
+**Math interplay** (B2(ii)). The standard `Math.*` builtins respect dimensions:
+
+| Function | On a united argument | Example |
+|---|---|---|
+| `sqrt` / `cbrt` | exponents are **halved / thirded** (must divide evenly) | `Math.sqrt(area) : m` for `area : m^2` |
+| `abs` `floor` `ceil` `round` `trunc` `sign` | **dimension-preserving** | `Math.abs(d) : m` |
+| `min` `max` `clamp` | require **one shared** dimension | `Math.min(a, b) : m` |
+| `sin` `cos` `tan` `asin` `acos` `atan` `log` `log2` `log10` `exp` | argument must be **dimensionless** | `Math.sin(m)` is an error |
+
+A non-divisible root (`sqrt` of a `m^1` length) and a dimensioned transcendental
+(`sin(100ms)`) are the errors units exist to catch. These rules fire only when an
+argument actually carries a dimension, so plain-`Number` Math calls are untouched.
+
+**`Duration` is the time-dimensioned unit** (B2(ii), §3.13). It is no longer a
+distinct `Named` type — a `100ms` literal *is* a `United` value with dimension
+`s`, so the whole algebra applies: `100ms * 100ms : s^2` (the classic time²
+pin, once an error), `400ms / 100ms : Number`, `1 / 30s : s^-1` (frequency). The
+`Duration` stdlib module — `Duration.fromMs` / `fromSeconds` / `toMs` — is the
+explicit `Number`↔`Duration` conversion bridge (runtime identity; the type
+checker enforces the boundary). Sized types (`u8`/`i32`) are the
+dimensionless-but-bounded sibling, B3.
 
 ---
 

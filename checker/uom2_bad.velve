@@ -1,0 +1,24 @@
+@edition "2026.6"
+
+-- The dimension errors B2(ii) forces. Expected: exactly 3 errors.
+
+module bad_units2
+  type Meters = Number unit m
+
+  -- 1: sqrt of a length — exponent 1 is not divisible by 2. A root has to land
+  -- on a whole-number exponent or the result is not expressible.
+  def badRoot(x: Meters): Number
+    Math.sqrt(x)
+
+  -- 2: a transcendental needs a pure ratio — `sin` of a Duration is a category
+  -- error (you can only take the sine of a dimensionless Number).
+  def badSin(): Number
+    Math.sin(100ms)
+
+  -- 3: addition still requires matching dimensions — a length plus a duration
+  -- mixes two different dimensions.
+  def badAdd(d: Meters): Meters
+    d + 100ms
+
+def main(): Number
+  0
