@@ -1,12 +1,11 @@
 @edition "2026.6"
 
--- D1(xii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it defines a MULTI-CLAUSE `def`: `fib` has three clauses, two with
--- literal-pattern params (`fib(0)`, `fib(1)`) and one general. eval dispatches across the
--- clauses by trying each in order (applyFn); the lowerer emits ONE JS `function` per `def`
--- and refuses a `def` with more than one clause — the clause-dispatch (a `match` on the
--- argument tuple, in effect) is not yet compiled. The differential harness must report it
--- `unsupported` — a CLEAN refusal at the compiler frontier — never a miscompile.
+-- D1(xiii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it REASSIGNS a mutable binding (`let mut x = 1` then `x = x + 5`).
+-- eval mutates the binding in its environment; the compute spine lowers a `let` to a JS
+-- `const` and has no reassignment statement — `block`'s `SBind` refuses a non-declaring
+-- (reassigning) bind. The differential harness must report it `unsupported` — a CLEAN
+-- refusal at the compiler frontier — never a miscompile.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
@@ -15,19 +14,13 @@
 -- constructors; D1(v) PAST records; D1(vi) PAST lists; D1(vii) PAST closures-as-values;
 -- D1(viii) PAST first-class `def` references; D1(ix) PAST first-class BUILTIN references;
 -- D1(x) PAST short-circuit `&&`/`||`; D1(xi) PAST non-tail `if` as a value; D1(xii) PAST
--- non-tail `match` as a value (reified by a `Block` IIFE; see compile_matchvalue_test).
--- (String interpolation `"{x}"` and pipe `|>` were never frontiers — both desugar upstream,
--- to `++` concat and a saturated `Call` respectively, and have compiled since D1(i).) The
--- frontier now sits at MULTI-CLAUSE `def`s — clause dispatch over the argument patterns.
--- This file defines one, so it still refuses; when clause dispatch lowers (a later D1
--- slice, as a `match` on the parameter tuple), it flips from `unsupported` to a print.
-
-def fib(0): Number
-  0
-def fib(1): Number
-  1
-def fib(n: Number): Number
-  fib(n - 1) + fib(n - 2)
+-- non-tail `match` as a value; D1(xiii) PAST multi-clause `def`s — clause dispatch over the
+-- parameter patterns (see compile_multiclause_test). The frontier now sits at REASSIGNMENT
+-- of a mutable binding. This file reassigns one, so it still refuses; when mutable `let`
+-- lowers (a later D1 slice, a JS `let` + assignment), it flips from `unsupported` to a
+-- print with no edit.
 
 def main(): Effect [io] ()
-  println(fib(10))
+  let mut x = 1
+  x = x + 5
+  println(x)

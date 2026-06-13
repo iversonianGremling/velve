@@ -1098,6 +1098,30 @@ dimension machinery generalize?
   match = fixture; unsupported unchanged). SPEC untouched; no graded row moves (still partial). **Next:
   D1(xiii)** — multi-clause `def`s (clause dispatch as a `match` on the parameter tuple) — still pre-effect.
 
+- [x] 🟢 **Phase D1(xiii) — multi-clause `def`s compile (honest baseline movement, 4 corpus flips) — DONE
+  2026-06** (`core.ts` `clauses`/`clause` dispatch methods + multi-clause branch in `lowerModule`;
+  `compile_multiclause_test.velve`). The value D1(xii)'s guardrail was holding. A `def` with >1 clause now
+  compiles. eval (applyFn/runClause) dispatches by trying each clause in order and taking the first whose
+  PARAM PATTERNS all match — so clause dispatch is exactly a `match` whose subject is the parameter tuple.
+  The compiler emits ONE JS `function` per def over fresh param names `_a0..`, folding each clause's
+  parameter patterns (reusing the same `MatchStep[]`/`pattern()` machinery `match` uses) into an `If`/`Let`
+  chain that falls through to the next clause, the last falling to `Fail` (eval's non-exhaustive error,
+  proven unreachable). Dispatch is **pattern-only**, matching eval: `where_`/`using` clause-bindings run
+  only AFTER a clause is chosen and a failure THROWS rather than falling through — body bindings, not
+  guards — so a clause carrying them is refused (the frontier the single-clause path already leaves them
+  at). Green `compile_multiclause_test` (single-arg literal dispatch `fib`, multi-arg dispatch
+  `ack`/Ackermann, fixed+bound `sign`) byte-identical to eval (`55 / 9 / 61 / zero / neg / pos`). (Velve
+  clause params are literal/binder only, not ctor/tuple — a parse limit — so payload destructuring stays a
+  body `match`.) **Honest baseline movement (like D1(vi)):** FOUR pre-existing corpus files flipped
+  `unsupported`→`match` — `clause_heads_test`/`constfold_total_test`/`literal_param_test`/`vocab_cleanup_test`,
+  all multi-clause programs the spine now lowers, each verified byte-identical. The frontier twin
+  `compile_frontier_test` ROLLED multi-clause→**reassignment** (`let mut x = 1; x = x + 5` — the spine
+  lowers `let` to a `const`; `block`'s `SBind` refuses a reassigning bind) — next unrepresented form —
+  still exit 2. Harness: **33 match / 0 mismatch / 0 js-crash / 110 unsupported** across 248 files (+5
+  match = fixture + 4 flips, −4 unsupported = the flips left; frontier stayed unsupported). SPEC untouched;
+  no graded row moves (still partial). **Next: D1(xiv)** — reassignment / mutable `let` (a JS `let` +
+  assignment) — still pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

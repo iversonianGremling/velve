@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xii) match-value): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
+// SCOPE (through D1(xiii) multi-clause): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -31,10 +31,12 @@
 // LOUDLY via CompileUnsupported — the frontier is explicit, never a silent miscompile.
 // non-tail `if`/`match` AS A VALUE — the `let`-RHS / argument-position conditional via
 // `Cond` (D1(xi)) and the value-position `match` decision-spine reified by a `Block`
-// IIFE (D1(xii)). Destructuring `let`/params and `Perform` (effects) are next
-// (D1(xiii)+, D2).
+// IIFE (D1(xii)); and MULTI-CLAUSE `def`s — clause dispatch over the parameter patterns,
+// compiled to one JS `function` whose body is a `match`-on-the-arguments decision-spine
+// (D1(xiii)). Reassignment (`mut`), atom/duration literals, and `Perform` (effects) are
+// next (D1(xiv)+, D2).
 
-import type { Module, Expr, Stmt, Lit, Pat, Branch } from "./ast.js";
+import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
 
 // ── The node grammar (§11.3) ────────────────────────────────────────────────────
 
@@ -129,6 +131,43 @@ class Lowering {
 
   fn(params: string[], body: Expr): IRExpr {
     return this.tail(body, new Set(params));
+  }
+
+  // A MULTI-CLAUSE `def` (D1(xiii)): the JS `function` takes the fresh param names
+  // `_a0..` and dispatches across clauses. eval (applyFn/runClause) tries each clause in
+  // order, accepting the first whose PARAM PATTERNS all match — so dispatch is exactly a
+  // `match` whose subject is the parameter tuple. Built back-to-front like `matchE`: each
+  // clause's pattern steps fold into an `If`/`Let` spine that falls through to the next
+  // clause, the last falling through to `Fail` (eval's non-exhaustive RuntimeError, which
+  // the checker's coverage analysis proves unreachable on valid programs).
+  clauses(cls: FnClause[], paramNames: string[]): IRExpr {
+    let chain: IRExpr = { k: "Fail", msg: "non-exhaustive patterns in clause dispatch" };
+    for (let i = cls.length - 1; i >= 0; i--) chain = this.clause(cls[i]!, paramNames, chain);
+    return chain;
+  }
+
+  // One clause: match every param pattern against its `_ai` (accumulating binds/tests
+  // left-to-right, like `PTuple` across slots); on full success run the body, else fall
+  // through to `next`. `where_`/`using` clause-bindings run only AFTER a clause is chosen
+  // (eval.ts runClause) and a failure THROWS rather than falling through — they are body
+  // bindings, not dispatch guards — so a clause carrying them is refused (the same place
+  // the single-clause path leaves them: at the frontier) to keep dispatch pattern-only.
+  private clause(cl: FnClause, paramNames: string[], next: IRExpr): IRExpr {
+    if (cl.where_.length || cl.surface?.value) throw new CompileUnsupported("def clause with `where`/`using` bindings");
+    const steps: MatchStep[] = [];
+    let scope = new Set(paramNames);
+    for (let i = 0; i < paramNames.length; i++) {
+      const sub = this.pattern(cl.params[i]!.pat, { k: "Var", name: paramNames[i]! }, scope);
+      steps.push(...sub.steps);
+      scope = sub.scope;
+    }
+    let then = this.tail(cl.body, scope);
+    for (let i = steps.length - 1; i >= 0; i--) {
+      const st = steps[i]!;
+      if (st.s === "bind") then = { k: "Let", name: st.bind.name, comp: st.bind.comp, body: then };
+      else then = wrap(st.binds, { k: "If", cond: st.atom, then, else_: next });
+    }
+    return then;
   }
 
   // Tail position — yields an IRExpr (the `If`/`Ret` spine).
@@ -542,10 +581,20 @@ export function lowerModule(mod: Module): IRModule {
     // (a `type`'s constructors, an `import`'s names): skip them. Any *use* of what
     // they introduce trips the frontier inside the def that uses it.
     if (d.tag !== "DFn") continue;
-    if (d.clauses.length !== 1) throw new CompileUnsupported(`multi-clause def '${d.name}' (D1(ii))`);
-    const cl = d.clauses[0]!;
-    const params = cl.params.map(p => patName(p.pat));
-    fns.push({ name: d.name, params, body: new Lowering(userFns, ctors).fn(params, cl.body) });
+    const low = new Lowering(userFns, ctors);
+    if (d.clauses.length === 1) {
+      // Single clause: params are simple binders, lowered directly (the fast path).
+      const cl = d.clauses[0]!;
+      const params = cl.params.map(p => patName(p.pat));
+      fns.push({ name: d.name, params, body: low.fn(params, cl.body) });
+    } else {
+      // Multi-clause: emit ONE JS `function` over fresh param names that dispatches
+      // across the clauses by their parameter patterns (D1(xiii)). All clauses of a `def`
+      // share its arity, so the fresh-name count is the first clause's param count.
+      const arity = d.clauses[0]!.params.length;
+      const paramNames = Array.from({ length: arity }, (_, i) => `_a${i}`);
+      fns.push({ name: d.name, params: paramNames, body: low.clauses(d.clauses, paramNames) });
+    }
     if (d.name === "main") hasMain = true;
   }
   return { fns, hasMain };

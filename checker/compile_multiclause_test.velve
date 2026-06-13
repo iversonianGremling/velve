@@ -1,0 +1,40 @@
+@edition "2026.6"
+
+-- D1(xiii) green fixture — multi-clause `def`s. eval dispatches across a def's clauses by
+-- trying each in order and taking the first whose PARAM PATTERNS all match (applyFn /
+-- runClause); the compiler emits ONE JS `function` per def whose body is a `match`-on-the-
+-- arguments decision-spine — fresh param names `_a0..`, each clause's patterns folded into
+-- an `If`/`Let` chain that falls through to the next clause, ending in `Fail` (eval's
+-- non-exhaustive error, proven unreachable). Covers single-argument literal-pattern
+-- dispatch (`fib`) and multi-argument dispatch (`ack`, Ackermann). (Velve allows literal
+-- and binder param patterns on a clause, not constructor/tuple patterns — those are a
+-- parse limit, so payload destructuring stays a body `match`.) Byte-identical to eval.
+
+def fib(0): Number
+  0
+def fib(1): Number
+  1
+def fib(n: Number): Number
+  fib(n - 1) + fib(n - 2)
+
+-- multi-argument clause dispatch: two literal-pattern params, then the general clause
+def ack(0, n: Number): Number
+  n + 1
+def ack(m: Number, 0): Number
+  ack(m - 1, 1)
+def ack(m: Number, n: Number): Number
+  ack(m - 1, ack(m, n - 1))
+
+-- a clause with a literal guard-style first pattern, mixing fixed and bound
+def sign(0): String
+  "zero"
+def sign(n: Number): String
+  if n > 0 then "pos" else "neg"
+
+def main(): Effect [io] ()
+  println(fib(10))     -- 55
+  println(ack(2, 3))   -- 9  : multi-argument dispatch (Ackermann)
+  println(ack(3, 3))   -- 61
+  println(sign(0))     -- zero
+  println(sign(-4))    -- neg
+  println(sign(8))     -- pos

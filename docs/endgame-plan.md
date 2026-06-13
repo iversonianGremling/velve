@@ -763,6 +763,34 @@ exists (`compiler-architecture-design.md`).
     unsupported (247 files) — +1 match (the fixture), unsupported unchanged. SPEC untouched;
     no graded row moves (still partial). Next: **D1(xiii)** = multi-clause `def`s (clause
     dispatch as a `match` on the parameter tuple) — still pre-effect.
+  - **D1(xiii) — multi-clause `def`s compile (honest baseline movement, 4 corpus flips) —
+    DONE 2026-06.** The value D1(xii)'s guardrail was holding. A `def` with more than one
+    clause now compiles. eval (applyFn/runClause) dispatches by trying each clause in order
+    and taking the first whose PARAM PATTERNS all match — so clause dispatch is exactly a
+    `match` whose subject is the parameter tuple. The compiler emits ONE JS `function` per
+    def over fresh param names `_a0..`, then folds each clause's parameter patterns (reusing
+    the same `MatchStep[]`/`pattern()` machinery `match` uses) into an `If`/`Let` chain that
+    falls through to the next clause, the last falling to `Fail` (eval's non-exhaustive
+    error, proven unreachable by the coverage analysis). Dispatch is **pattern-only**, matching
+    eval: `where_`/`using` clause-bindings run only after a clause is chosen and a failure
+    THROWS rather than falling through, so they are body bindings, not guards — a clause
+    carrying them is refused (the same frontier the single-clause path already leaves them
+    at). Green fixture `compile_multiclause_test.velve` (single-arg literal dispatch `fib`,
+    multi-argument dispatch `ack`/Ackermann, a fixed+bound `sign`) compiles
+    **byte-identically** to eval (`55 / 9 / 61 / zero / neg / pos`). (Velve allows literal
+    and binder param patterns on a clause, not constructor/tuple patterns — a parse limit —
+    so payload destructuring stays a body `match`.) **Honest baseline movement (like
+    D1(vi)):** FOUR pre-existing corpus files flipped `unsupported`→`match` — `clause_heads_test`
+    (`flip`/`proceed`), `constfold_total_test` (`fib`), `literal_param_test` (`fib`/`yesno`),
+    `vocab_cleanup_test` (`countdown`/`rank`) — all multi-clause programs the spine now
+    lowers, each verified byte-identical. The frontier twin `compile_frontier_test.velve`
+    rolled to **reassignment** of a mutable binding (`let mut x = 1; x = x + 5` — the spine
+    lowers `let` to a `const`, and `block`'s `SBind` refuses a reassigning bind) — the next
+    unrepresented form — still exit 2. Harness: **33 match, 0 mismatch, 0 js-crash**, 110
+    unsupported (248 files) — +5 match (the fixture + 4 flips), −4 unsupported (the flips
+    left; the frontier stayed unsupported, multi-clause→reassignment). SPEC untouched; no
+    graded row moves (still partial). Next: **D1(xiv)** = reassignment / mutable `let`
+    (a JS `let` + assignment) — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

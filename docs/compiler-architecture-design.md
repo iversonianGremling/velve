@@ -632,8 +632,24 @@ IIFE helper). Harness: **28 match / 0 mismatch / 0 js-crash / 114 unsupported** 
 `fib(n)` — eval dispatches across clauses; the lowerer emits one JS `function` per `def`).
 String interpolation `"{x}"` confirmed never a frontier (desugars to `++` upstream, like
 `|>`).
-**Remaining for D1(xiii)+**: multi-clause `def`s (clause dispatch as a parameter-tuple
-`match`); reassignment; atom/duration literals; then `Perform` in D2.
+
+**D1(xiii) shipped (2026-06) — multi-clause `def`s (honest baseline movement, 4 corpus
+flips).** A `def` with more than one clause now compiles. eval dispatches by trying each
+clause in order and taking the first whose param patterns all match — clause dispatch is a
+`match` whose subject is the parameter tuple. The compiler emits one JS `function` per def
+over fresh names `_a0..`, folding each clause's patterns (reusing the `MatchStep[]`/`pattern()`
+machinery) into an `If`/`Let` chain falling through to the next clause, ending in `Fail`.
+Dispatch is pattern-only, matching eval (`where_`/`using` run after selection and a failure
+throws, so they are body bindings, not guards — a clause carrying them is refused). Harness:
+**33 match / 0 mismatch / 0 js-crash / 110 unsupported** (248 files) — +5 match (fixture
+`compile_multiclause_test.velve`, byte-identical `55 / 9 / 61 / zero / neg / pos`, plus FOUR
+pre-existing corpus flips: `clause_heads_test`/`constfold_total_test`/`literal_param_test`/
+`vocab_cleanup_test`, each verified byte-identical), −4 unsupported (the flips). The frontier
+twin rolled to **reassignment** (`let mut x = 1; x = x + 5` — the spine lowers `let` to a
+`const`; `block`'s `SBind` refuses a reassigning bind). Velve clause params are literal/binder
+only (not ctor/tuple — a parse limit), so payload destructuring stays a body `match`.
+**Remaining for D1(xiv)+**: reassignment / mutable `let`; atom/duration literals; then
+`Perform` in D2.
 
 ---
 
