@@ -677,6 +677,20 @@ export default grammar({
       $._newline,
     ),
 
+    // A function-scope effect clause (SPEC §12.4): `effects: [payment, io]` at
+    // the head of a body is sugar for the inline `Effect [payment, io] T`
+    // return wrapper — the readable spelling for the concrete-row common case.
+    // Same shape as `proofs_decl`; the inline form stays for HOF effect-tail
+    // polymorphism (`Effect [..e]`), which a fixed list can't express.
+    effects_decl: $ => seq(
+      'effects',
+      ':',
+      '[',
+      commaSep1($.lower_id),
+      ']',
+      $._newline,
+    ),
+
     // ----------
     // Function definitions
     // ----------
@@ -724,9 +738,11 @@ export default grammar({
         optional($.using_clause),
         $._newline,
         $._indent,
-        // Finer proof scope (SPEC §12.7 A4): a `proofs: [...]` clause as the
-        // head of the body promises THIS function's obligations, mirroring the
-        // module body head — the same `proofs_decl` production, reused verbatim.
+        // Function-scope clause head, mirroring the module body head: the
+        // up-flowing `effects: [...]` (like `capabilities:`) then the
+        // down-flowing `proofs: [...]` (SPEC §12.4 / §12.7 A4). Both reuse the
+        // module-scope productions verbatim.
+        optional($.effects_decl),
         optional($.proofs_decl),
         repeat1($._statement),
         $._dedent,

@@ -1,0 +1,36 @@
+@edition "2026.6"
+
+-- `effects: [...]` is held to the same enforcement as the inline row: a body
+-- may perform ONLY the capabilities its row names, and a caller must cover
+-- every callee's row. The clause grants nothing the inline form wouldn't.
+-- Expected: exactly 3 errors.
+
+def feed(push: (Number -> ()), done: (() -> ())): ()
+  push(1)
+  done()
+
+-- 1: the clause names [ui] but the body performs [io] (externSource) — the
+-- undeclared capability is a violation exactly as with an inline row.
+def leak(): Number
+  effects: [ui]
+  externSource(feed) |> streamFold(0, fn (acc x) -> acc + x)
+
+-- 2: a pure def (no clause, no inline row) performs [ui] — undeclared.
+def sneaky(): ()
+  setViewport(#{ width: 375, height: 667, breakpoint: Mobile })
+
+-- a clause-declared [ui] def, correctly charged (the callee in error 3).
+def sized(): ()
+  effects: [ui]
+  setViewport(#{ width: 414, height: 896, breakpoint: Mobile })
+
+-- 3: the caller's clause names [io] but `sized` charges [ui] — uncovered.
+def caller(): ()
+  effects: [io]
+  sized()
+
+-- main covers leak's DECLARED row [ui] (what propagates is the clause, not the
+-- body's real effect) — so the only errors are the three intended violations.
+def main(): Number
+  effects: [ui]
+  leak()

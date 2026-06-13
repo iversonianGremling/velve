@@ -408,13 +408,24 @@ export class Lowerer {
     // the module scope, validated by the same closed-vocabulary check.
     const proofsNode = bodyNodes.find(c => c.type === "proofs_decl");
     const proofs = proofsNode ? this.lowerProofs(proofsNode) : [];
+    // Per-function `effects: [...]` clause (SPEC §12.4): sugar for the inline
+    // `Effect [...] T` return wrapper — its capability names join the row.
+    const effectsNode = bodyNodes.find(c => c.type === "effects_decl");
+    const clauseEffects = effectsNode
+      ? effectsNode.namedChildren.filter(c => c.type === "lower_id").map(c => c.text)
+      : [];
     const bodyContent = bodyNodes.filter(c =>
-      c.type !== "where_stmt" && c.type !== "using_clause" && c.type !== "proofs_decl");
+      c.type !== "where_stmt" && c.type !== "using_clause" &&
+      c.type !== "proofs_decl" && c.type !== "effects_decl");
     const where_ = whereNodes.flatMap(w => this.lowerWhereBindings(w));
     const lifetimeConstraints = whereNodes.flatMap(w => this.lowerLifetimeConstraints(w));
     const surface = usingNode ? this.lowerUsingClause(usingNode) : null;
     const rawRetNode = typeIdx >= 0 ? rest[typeIdx] : undefined;
-    const { effects, effectTails, retRef: ret } = this.unpackEffectType(rawRetNode ?? null);
+    const { effects: inlineEffects, effectTails, retRef: ret } = this.unpackEffectType(rawRetNode ?? null);
+    // Union the clause row with any inline `Effect [..]` row (the clause is the
+    // readable spelling; the inline form stays for HOF effect-tail polymorphism,
+    // so both can legally co-occur). Dedupe, clause names appended.
+    const effects = [...new Set([...inlineEffects, ...clauseEffects])];
 
     return { params, ret, effects, effectTails, body: this.lowerBody(bodyContent), where_, lifetimeConstraints, surface,
              ...(proofs.length ? { proofs } : {}), span: this.sp(n) };

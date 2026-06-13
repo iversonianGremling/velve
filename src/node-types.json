@@ -3899,6 +3899,21 @@
     }
   },
   {
+    "type": "effects_decl",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "lower_id",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "element",
     "named": true,
     "fields": {},
@@ -5326,6 +5341,10 @@
         },
         {
           "type": "effect_type",
+          "named": true
+        },
+        {
+          "type": "effects_decl",
           "named": true
         },
         {
@@ -18042,6 +18061,10 @@
   {
     "type": "duration_lit",
     "named": true
+  },
+  {
+    "type": "effects",
+    "named": false
   },
   {
     "type": "else",

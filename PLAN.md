@@ -950,6 +950,26 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       handled error suffixes were reworded "the module declares" → "declared
       via" (now accurate at either scope); check baseline = the two new rows +
       that one cosmetic reword, run baseline = the two new rows.
+- [x] **`effects: [...]` clause sugar (endgame S2)**: ✅ DONE (2026-06,
+      `effect_clause_test`/`_bad` — 0 errors + runs `width: 375` / `both: 42`,
+      and exactly 3 errors). A body-head `effects: [...]` clause spells the
+      concrete effect row as sugar for the inline `Effect [...] T` return
+      wrapper. Grammar: new `effects_decl` production (the `proofs_decl` shape
+      with the `effects` keyword — a literal-only keyword, extracted by
+      `word: $.lower_id` exactly as `proofs`/`capabilities` are, so it stays
+      usable as an identifier elsewhere), added to the `function_def` block-body
+      head BEFORE `proofs_decl` (up-flowing effects, then down-flowing proofs —
+      mirroring the module head's `capabilities:` then `proofs:`). Lowering:
+      `lowerFnClause` collects the clause's capability names and UNIONS them
+      with any inline `Effect [..]` row (`[...new Set([...inline, ...clause])]`),
+      so the two forms may co-occur — the inline form stays because it alone can
+      express an effect tail (`Effect [..e]`, the HOF case). No infer/checker
+      change: the unioned row flows through the existing effect machinery
+      identically (a body performs only what the row names; callers must cover
+      it; the declared row propagates, as the `_bad` main→leak case shows).
+      Regenerate deterministic; baselines = the two new rows only (no corpus
+      file uses `effects` as an identifier — the keyword-extraction concern was
+      empirically clean).
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

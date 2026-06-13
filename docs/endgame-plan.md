@@ -138,7 +138,12 @@ facts, callees assume their signatures) just shipped. What's left in-arc:
   sibling without the clause is unconstrained. **Per-block `@proof[...] { }`
   CUT for now** (OQ#3): the module + per-function scopes cover every fixture;
   block granularity would push the fact walkers below `DFn` granularity for no
-  demonstrated need.
+  demonstrated need. **The sibling `effects: [...]` clause shipped alongside**
+  (2026-06, `effect_clause_test`/`_bad`, SPEC §12.4): the same body-head shape
+  for the up-flowing effect row, sugar for the inline `Effect [...] T` wrapper
+  (rows union; the inline form stays for effect tails). So the function body
+  head now mirrors the module body head exactly — `effects:` then `proofs:`,
+  the duals of `capabilities:` then `proofs:`.
 - **A5. `sortBy` infer/eval reconciliation** *(1 slice, small)*. **SHIPPED
   2026-06** (`sortby_test`/`_bad`). The divergence was total: infer typed
   `sortBy(xs, keyFn)` (list-first, one-arg key) while eval read `args[0]` as a

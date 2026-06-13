@@ -1,0 +1,38 @@
+@edition "2026.6"
+
+-- The `effects: [...]` clause (SPEC §12.4) is sugar for the inline
+-- `Effect [...] T` return wrapper — the readable spelling for a concrete row.
+-- It charges exactly as the inline form: a body may perform a capability the
+-- clause names, and the clause's names propagate up to every caller. The inline
+-- form stays for HOF effect-tail polymorphism (`Effect [..e]`), which a fixed
+-- list can't express; when a def writes both, the rows union.
+-- Expected: clean; runs.
+
+-- clause sugar: charges [ui] exactly as `Effect [ui] ()` would.
+def shrink(): ()
+  effects: [ui]
+  setViewport(#{ width: 375, height: 667, breakpoint: Mobile })
+
+-- a pure def still may print (observation, not capability) — no clause needed.
+def report(label: String, n: Number): ()
+  print("{label}: {n}")
+
+-- the input FFI helper (pure: it only calls its callback params).
+def feed(push: (Number -> ()), done: (() -> ())): ()
+  push(7)
+  push(35)
+  done()
+
+-- clause + inline row co-occur and UNION: [io] inline (externSource) and [ui]
+-- from the clause (setViewport) — the def's row is [io, ui].
+def both(): Effect [io] Number
+  effects: [ui]
+  setViewport(#{ width: 414, height: 896, breakpoint: Mobile })
+  externSource(feed) |> streamFold(0, fn (acc x) -> acc + x)
+
+-- the caller's pool covers every callee's row, spelled with the clause too.
+def main(): ()
+  effects: [ui, io]
+  shrink()
+  report("width", viewport.width)
+  report("both", both())
