@@ -1,0 +1,23 @@
+@edition "2026.6"
+
+-- D1(xi) green fixture — a non-tail `if` used as a VALUE. `tail()` already lowers an `if`
+-- in tail position; this slice handles the `if` whose value is consumed — bound by `let`,
+-- nested inside an arithmetic expression, written as a function argument, and chained
+-- (else-if). All lower to the same value-producing `Cond` short-circuit `&&`/`||` use
+-- (D1(x)): a JS ternary, IIFE-wrapped only when a branch has its own spine. Byte-identical
+-- to eval, whose `if` is an ordinary expression returning the taken branch's value.
+
+def grade(n: Number): String
+  if n >= 90 then "A" else if n >= 80 then "B" else "C"
+
+def abs2(n: Number): Number
+  if n < 0 then 0 - n else n
+
+def main(): Effect [io] ()
+  let x = if 3 > 2 then 10 else 20
+  println(x)                          -- 10  : if-value bound by let
+  println(1 + (if true then 5 else 9))-- 6   : if-value nested in arithmetic
+  println(abs2(if false then 1 else -7))-- 7 : if-value as a function argument
+  println(grade(95))                  -- A   : else-if chain as a value
+  println(grade(85))                  -- B
+  println(grade(70))                  -- C

@@ -609,8 +609,18 @@ match (fixture `compile_shortcircuit_test.velve`), no corpus flip. Forecast corr
 and has compiled since D1(i). The frontier twin rolled to a **non-tail `if` as a value**
 (`let x = if …` — `if` lowers in tail position only; as a `let` RHS it reaches `normComp`'s
 default) and still refuses.
-**Remaining for D1(xi)+**: non-tail `if`/`match` as a value (reuse `Cond`); destructuring
-`let`/params; then `Perform` in D2.
+
+**D1(xi) shipped (2026-06) — non-tail `if` as a value (the frontier twin flips again).** An
+`if` whose value is consumed (bound by `let`, nested in an expression, a function argument,
+or an else-if ladder) now lowers, reusing the `Cond` comp from D1(x): cond→atom, each
+branch→value-`IRExpr` emitted as a ternary arm (IIFE-wrapped when it has its own spine). A
+one-case addition to `normComp`, the value-position mirror of the tail `if` `tail()` already
+lowered. Harness: **27 match / 0 mismatch / 0 js-crash / 114 unsupported** (246 files) — +1
+match (fixture `compile_ifvalue_test.velve`, byte-identical `10 / 6 / 7 / A / B / C`), no
+corpus flip. The frontier twin rolled to a **non-tail `match` as a value** (`let s = match …`
+— `match` lowers in tail position only) and still refuses.
+**Remaining for D1(xii)+**: non-tail `match` as a value (reify the decision-spine as an
+IIFE); destructuring `let`/params; then `Perform` in D2.
 
 ---
 

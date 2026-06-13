@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(x) short-circuit): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
+// SCOPE (through D1(xi) if-value): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -29,8 +29,9 @@
 // The supported ctor names are the module's own `type … = | …` variants plus the core
 // data ctors eval defines globally (Ok/Error/Some/None). Everything else is refused
 // LOUDLY via CompileUnsupported — the frontier is explicit, never a silent miscompile.
-// Non-tail `if`/`match` AS A VALUE, destructuring `let`/params, and `Perform` (effects)
-// are next (D1(xi)+, D2).
+// Non-tail `if` AS A VALUE — the `let`-RHS / argument-position conditional, lowered to
+// the same `Cond` (D1(xi)). Non-tail `match` as a value, destructuring `let`/params, and
+// `Perform` (effects) are next (D1(xii)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch } from "./ast.js";
 
@@ -415,6 +416,18 @@ class Lowering {
         const o = this.norm(e.obj, scope);
         const i = this.norm(e.index, scope);
         return { binds: [...o.binds, ...i.binds], comp: { k: "Index", obj: o.atom, index: i.atom } };
+      }
+      case "If": {
+        // A non-tail `if` used as a VALUE (`let x = if c then a else b`, or nested in an
+        // argument). `tail()` already lowers a tail-position `if` to the `If` spine; in
+        // value position it becomes the same value-producing `Cond` that short-circuit
+        // `&&`/`||` use (D1(x)) — the cond is an atom, each branch a value-`IRExpr`
+        // emitted as a ternary arm (IIFE-wrapped when it has its own spine). A branchless
+        // `if` (no `else`) yields Unit, mirroring `tail`'s `RET_UNIT`.
+        const c = this.norm(e.cond, scope);
+        const then = this.tail(e.then, new Set(scope));
+        const els = e.else_ ? this.tail(e.else_, new Set(scope)) : RET_UNIT;
+        return { binds: c.binds, comp: { k: "Cond", cond: c.atom, then, else_: els } };
       }
       case "Lambda": {
         // A closure value (D1(vii)). eval makes a single-clause VFn capturing the

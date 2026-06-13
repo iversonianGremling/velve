@@ -723,6 +723,24 @@ exists (`compiler-architecture-design.md`).
     unsupported (245 files) — +1 match (the fixture), unsupported unchanged. SPEC
     untouched; no graded row moves (still partial). Next: **D1(xi)** = non-tail `if`/`match`
     as a value (reusing `Cond`) — still pre-effect.
+  - **D1(xi) — non-tail `if` as a value compiles (the frontier twin flips again) — DONE
+    2026-06.** The value D1(x)'s guardrail was holding. An `if` whose value is CONSUMED —
+    bound by `let`, nested in an arithmetic expression, written as a function argument, or
+    chained as an else-if ladder — now lowers, reusing the `Cond` value-producing
+    conditional `&&`/`||` introduced in D1(x): the cond normalizes to an atom, each branch
+    to a value-`IRExpr` emitted as a ternary arm (IIFE-wrapped only when the branch has its
+    own spine). This is the exact value-position mirror of the tail-position `if` `tail()`
+    already lowered — a one-case addition to `normComp` (a branchless `if` yields Unit, as
+    in `tail`). Green fixture `compile_ifvalue_test.velve` (if-value by `let`, nested in
+    `1 + (if …)`, as an `abs2(if …)` argument, and a three-way `grade` else-if chain)
+    compiles **byte-identically** to eval (`10 / 6 / 7 / A / B / C`). The frontier twin
+    `compile_frontier_test.velve` rolled to a **non-tail `match` as a value** (`let s = match
+    …` — the lowerer compiles `match` in tail position only; as a `let` RHS it reaches
+    `normComp`'s default) — the next unrepresented form — still exit 2. No pre-existing
+    corpus file flipped. Harness: **27 match, 0 mismatch, 0 js-crash**, 114 unsupported (246
+    files) — +1 match (the fixture), unsupported unchanged. SPEC untouched; no graded row
+    moves (still partial). Next: **D1(xii)** = non-tail `match` as a value (reify the
+    decision-spine as an IIFE) — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,
