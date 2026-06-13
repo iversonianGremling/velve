@@ -330,9 +330,20 @@ Phase D's neutral IR being the down payment). The proof vocabulary closes.
     real bug: the entry path was its own `onStack`/`loaded` key verbatim
     (relative) while deps resolve to absolute paths, so a cycle back through the
     entry double-merged it; fixed by normalizing the entry to absolute.
-  - **(iii)** `std/` on disk — `std/refined`, `std/sorted`, later `std/units` —
-    and the corpus migrated off inclusion. Selective visibility (only the listed
-    names, vs the current flatten-on-merge) is a tightening here. LSP follows.
+  - **(iii) `std/` on disk + corpus off inclusion — DONE 2026-06**
+    (`std/refined`, `std/sorted`; `refined_types_test`/`sorted_list_test`
+    migrated; `import_std_bad`). A `std/X` path now resolves to a compiler-shipped
+    source file (`checker/std/X.velve`, located relative to the loader so it is
+    cwd-independent) and merges exactly like a `./` import. The §3.3 refined-type
+    library and §3.2 SortedList live on disk **once each** and the two corpus
+    fixtures `import` them rather than inlining the module — same `run` output,
+    proof moved to the standalone std files (baseline now globs `checker/std`).
+    Resolution is **additive**: a `std/X` is intercepted only if its source exists,
+    so ambient `std/json`/`std/set`/`Math` fall through untouched and a typo'd
+    `std/X` still errors "cannot resolve" (`import_std_bad`) — not swallowed.
+    *Remaining in C1:* selective visibility (only the listed names visible, vs the
+    current flatten-on-merge), then `std/units`; LSP follows. Phase-C exit met:
+    a green fixture imports `std/refined` (not includes it), baselines hold.
 - **C2. `is Ok(a)` payload binding / flow narrowing** *(1 slice)*. The
   optional PLAN box: `if x is Ok(a)` binds the payload in the then-branch
   (and feeds the fact env — cheap synergy with A1's binder seeding;

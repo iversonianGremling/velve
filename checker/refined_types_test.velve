@@ -1,89 +1,14 @@
--- The Tier-1 refined-type library (north-star §3.3): Natural / NonZero /
--- Positive / InBounds as `@private` ADTs. Correct BY CONSTRUCTION, no solver:
--- the smart constructor is the only gate from raw Number (ctors are sealed at
--- the module boundary, SPEC §7.1), closed ops stay in the type, faulting ops
--- return Result. The module is itself proof-carrying — `proofs: [total,
--- exhaustive, handled]` — so every def discharges the gradient it ships.
--- Honest Tier-1 bound: InBounds witnesses an index, not an index-INTO-xs
--- (the relational tie is Tier 1.5's witness-token primitive); same-list
--- discipline is the caller's until then.
+-- The Tier-1 refined-type library (north-star §3.3), now IMPORTED rather than
+-- INCLUDED (SPEC §7.3, Phase C1(iii)). The library — Natural / NonZero /
+-- Positive / InBounds as `@private` ADTs, correct BY CONSTRUCTION — lives once
+-- on disk at `std/refined`; this fixture is just the consumer. The loader merges
+-- `module refined { … }` into the program, so the gates resolve cross-file, the
+-- `Natural` TYPE name is public, and the `@private` ctors stay sealed at the
+-- module-now-file boundary (`refined_types_bad` proves the seal holds).
 -- Expected: clean; runs.
 @edition "2026.6"
 
-module refined
-  proofs: [total, exhaustive, handled]
-
-  @private
-  type Natural
-    = Natural Number
-
-  @private
-  type NonZero
-    = NonZero Number
-
-  @private
-  type Positive
-    = Positive Number
-
-  @private
-  type InBounds
-    = InBounds Number
-
-  -- Gates: the only way in from a raw Number.
-  def natural(n: Number): Result Natural String
-    if n >= 0 then Ok(Natural(n)) else Error("negative")
-
-  def nonZero(n: Number): Result NonZero String
-    if n == 0 then Error("zero") else Ok(NonZero(n))
-
-  def positive(n: Number): Result Positive String
-    if n > 0 then Ok(Positive(n)) else Error("not positive")
-
-  def inBounds(i: Number, xs: List(a)): Result InBounds String
-    if i >= 0 && i < length(xs) then Ok(InBounds(i)) else Error("out of bounds")
-
-  -- Projections: reading is not forging.
-  def natValue(n: Natural): Number
-    match n
-      | Natural(x) -> x
-
-  def nzValue(d: NonZero): Number
-    match d
-      | NonZero(x) -> x
-
-  def posValue(p: Positive): Number
-    match p
-      | Positive(x) -> x
-
-  def ibValue(ix: InBounds): Number
-    match ix
-      | InBounds(x) -> x
-
-  -- Closed ops: Natural + Natural is Natural by construction, no re-check.
-  def natAdd(a: Natural, b: Natural): Natural
-    Natural(natValue(a) + natValue(b))
-
-  def natMul(a: Natural, b: Natural): Natural
-    Natural(natValue(a) * natValue(b))
-
-  -- Faulting op: subtraction can leave the type, so it returns through the gate.
-  def natSub(a: Natural, b: Natural): Result Natural String
-    natural(natValue(a) - natValue(b))
-
-  def posMul(a: Positive, b: Positive): Positive
-    Positive(posValue(a) * posValue(b))
-
-  -- Positive ⊆ Natural: the embedding is closed.
-  def posToNat(p: Positive): Natural
-    Natural(posValue(p))
-
-  -- Division made total: the witness type deletes the zero case.
-  def divBy(n: Number, d: NonZero): Number
-    n / nzValue(d)
-
-  -- Indexing made safe: only a checked index reaches the partial kernel.
-  def getAt(xs: List(a), ix: InBounds): a
-    head(slice(xs, ibValue(ix), ibValue(ix) + 1))
+import { natural, natValue, natAdd, natMul, natSub, nonZero, divBy, positive, posToNat, posMul, inBounds, getAt } from "std/refined"
 
 -- Outside the module: type names are public, values flow through the gates.
 def show(r: Result Natural String): String

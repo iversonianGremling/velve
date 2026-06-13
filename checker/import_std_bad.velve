@@ -1,0 +1,17 @@
+-- C1(iii) guardrail: a `std/…` path that names neither a compiler-shipped
+-- source module (none at `std/refinedz`) nor an ambient stdlib module is still a
+-- hard error. The loader probes `checker/std/` for the source, finds nothing,
+-- and — crucially — does NOT swallow the import: it leaves it for infer.ts,
+-- which reports "cannot resolve import" exactly as for any other unknown name.
+-- This proves the std-on-disk resolution is additive: it intercepts only the
+-- paths it can actually satisfy, and a typo'd std import fails honestly rather
+-- than binding the recovery type silently.
+-- Expected: 1 error — cannot resolve import 'std/refinedz'.
+@edition "2026.6"
+
+import { natural } from "std/refinedz"
+
+def main(): Effect [io] ()
+  match natural(5)
+    | Ok(_)    -> println("ok")
+    | Error(_) -> println("no")

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
-const DIRS = [join(ROOT, "checker"), join(ROOT, "examples"), ROOT];
+const DIRS = [join(ROOT, "checker"), join(ROOT, "checker", "std"), join(ROOT, "examples"), ROOT];
 
 function listVelve(dir) {
   return readdirSync(dir).filter(f => f.endsWith(".velve")).map(f => join(dir, f));

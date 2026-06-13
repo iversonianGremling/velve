@@ -1,0 +1,59 @@
+-- std/sorted — the §3.2 semantic archetype (SortedList), shipped WITH the
+-- compiler and reached by `import { … } from "std/sorted"` (SPEC §7.3, Phase
+-- C1(iii)). It used to be copy-pasted into every fixture; it now lives on disk
+-- exactly once.
+--
+-- Sortedness has no structural proxy (north-star §3.2), so the no-solver option
+-- is a smart constructor: the order check runs exactly once at the gate, and
+-- every closed op preserves the invariant BY CONSTRUCTION — no re-check, no
+-- re-sort, no solver. `@private` seals the ctor at the module boundary
+-- (SPEC §7.1, now also a FILE boundary), so a SortedList that exists IS sorted.
+-- The payoff ops are the ones whose CORRECTNESS (not safety) needs the
+-- invariant: slMin is O(1) head, which is only "the minimum" on sorted input —
+-- the type makes that precondition unforgeable. The module is proof-carrying:
+-- proofs: [total, exhaustive, handled].
+-- Expected: clean (checked standalone by the corpus baseline).
+@edition "2026.6"
+
+module sorted
+  proofs: [total, exhaustive, handled]
+
+  @private
+  type SortedList
+    = SortedList List(Number)
+
+  def pairOk(p: (Number, Number)): Bool
+    match p
+      | (a, b) -> a <= b
+
+  -- The semantic check, run once per gate: every adjacent pair is ordered.
+  def isSorted(xs: List(Number)): Bool
+    if length(xs) <= 1 then true else all(pairOk, zip(xs, tail(xs)))
+
+  -- Gate 1: parse, don't normalize — an unsorted list is rejected, not
+  -- silently sorted behind the caller's back.
+  def sortedList(xs: List(Number)): Result SortedList String
+    if isSorted(xs) then Ok(SortedList(xs)) else Error("not sorted")
+
+  -- Gate 2: sorting is the other sound construction — and it's by-construction
+  -- all the way down: fold the closed insert, never touch the representation.
+  def fromAny(xs: List(Number)): SortedList
+    foldl(slInsert, SortedList([]), xs)
+
+  def slValues(s: SortedList): List(Number)
+    match s
+      | SortedList(xs) -> xs
+
+  -- Closed op: insert by split. Order is preserved by construction —
+  -- everything <= x, then x, then everything > x — never re-sorted.
+  def slInsert(s: SortedList, x: Number): SortedList
+    SortedList(concat([filter(fn v -> v <= x, slValues(s)), [x], filter(fn v -> v > x, slValues(s))]))
+
+  -- Closed op: merging two sorted lists stays in the type.
+  def slMerge(a: SortedList, b: SortedList): SortedList
+    fromAny(concat([slValues(a), slValues(b)]))
+
+  -- THE payoff: minimum in O(1). On an unsorted list, head is just an element;
+  -- the type makes "sorted" a precondition no caller can skip.
+  def slMin(s: SortedList): Result Number String
+    if length(slValues(s)) >= 1 then Ok(head(slValues(s))) else Error("empty")

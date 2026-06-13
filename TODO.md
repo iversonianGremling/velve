@@ -653,6 +653,26 @@ dimension machinery generalize?
   the entry to absolute (`load(resolvePath(entryFile))`); the cycle is now
   caught at the true back-edge and every file merges once. Also hardened the DFS
   to push the current file onto the stack for the duration of its own load.
+  **C1(iii) `std/` on disk + corpus off inclusion — DONE 2026-06**
+  (`std/refined`, `std/sorted`; `refined_types_test`/`sorted_list_test` migrated;
+  `import_std_bad`). A `std/X` path now resolves to a compiler-shipped source file
+  at `checker/std/X.velve` — located relative to the loader module (via
+  `import.meta.url`), so resolution is cwd-independent — and merges exactly like a
+  `./` import (same `local` machinery). The §3.3 refined-type library and §3.2
+  SortedList now live on disk ONCE each; the two corpus fixtures `import` them
+  instead of inlining the whole module, with byte-identical `run` output, and the
+  module's proof obligations are re-discharged standalone (the baseline now globs
+  `checker/std`). Resolution is **additive**: a `std/X` is intercepted only when
+  its source file exists, so the ambient stdlib namespaces with no source
+  (`std/json`/`std/set`/`Math`/…) fall through to infer.ts untouched, and a typo'd
+  `std/X` (no source, no ambient binding) still errors "cannot resolve import"
+  (`import_std_bad`) rather than being swallowed. Baseline: 222→225 files, 0 CRASH,
+  every previously-clean fixture still clean (the two migrated consumers unchanged
+  at 0 err; the std libs 0 err standalone; `import_std_bad` 1 err). **Phase-C exit
+  criterion met:** a green fixture imports `std/refined` (not includes it),
+  baselines hold. Remaining in C1: selective-visibility enforcement (only the
+  listed names visible, vs the current flatten-on-merge), then `std/units`; LSP
+  follows.
 
 ---
 

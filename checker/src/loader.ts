@@ -10,18 +10,28 @@
 // per-program for free, and `@private` ctors stay sealed to their module via the
 // existing `privateTo` / moduleStack machinery.
 //
-// Only `./`- and `../`-relative paths resolve to disk here; bare names
-// (`"String"`, `"std/json"`) stay stdlib/ambient imports, handled per-module as
-// before. `std/` on disk is C1(iii).
+// `./`- and `../`-relative paths resolve to a sibling file. A `std/…` path
+// resolves to a Velve source file shipped WITH the compiler (`checker/std/`) —
+// but only if such a file exists: the ambient stdlib modules (`std/json`,
+// `std/set`, the capitalized namespaces) have no `.velve` source and stay for
+// infer.ts to resolve (§5.5). Everything else (bare `"String"`, foreign
+// `import js`) is left untouched here.
 import Parser from "tree-sitter";
 // @ts-ignore — no types for the native grammar
 import Velve from "tree-sitter-velve";
 import { readFileSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Lowerer } from "./lower.js";
 import { collectParseErrors } from "./parseErrors.js";
 import type { Module, Decl } from "./ast.js";
 import type { Diagnostic } from "./resolve.js";
+
+// The stdlib source tree ships next to the compiler. From `dist/loader.js` this
+// is `dist/../std` = `checker/std`; from `src/loader.ts` it is `src/../std` =
+// `checker/std` — both land on the same directory, so the resolution is stable
+// whether we run the built or the source tree.
+const STD_ROOT = resolvePath(dirname(fileURLToPath(import.meta.url)), "..", "std");
 
 export interface LoadResult {
   mod: Module;
@@ -37,6 +47,22 @@ function isLocalPath(path: string): boolean {
 function resolveLocal(importerFile: string, path: string): string {
   const withExt = path.endsWith(".velve") ? path : path + ".velve";
   return resolvePath(dirname(importerFile), withExt);
+}
+
+// A `std/…` path names a compiler-shipped module. It resolves to disk only if
+// the source file exists; otherwise the path is an ambient stdlib name.
+function isStdPath(path: string): boolean {
+  return path.startsWith("std/");
+}
+
+function resolveStd(path: string): string {
+  const rest = path.slice("std/".length);
+  const withExt = rest.endsWith(".velve") ? rest : rest + ".velve";
+  return resolvePath(STD_ROOT, withExt);
+}
+
+function fileExists(file: string): boolean {
+  try { readFileSync(file, "utf8"); return true; } catch { return false; }
 }
 
 export function loadProgram(entryFile: string): LoadResult {
@@ -74,21 +100,32 @@ export function loadProgram(entryFile: string): LoadResult {
     diagnostics.push(...lowerer.diagnostics);
 
     for (const decl of mod.decls) {
-      if (decl.tag !== "DImport" || !isLocalPath(decl.path)) continue;
-      const dep = resolveLocal(file, decl.path);
+      if (decl.tag !== "DImport") continue;
+      // Where does this import resolve on disk? A `./`/`../` path is always a
+      // file (a missing one is an error). A `std/…` path is a file only if the
+      // compiler ships its source — otherwise it is an ambient stdlib module,
+      // which we leave for infer.ts (do NOT mark `local`, do NOT error).
+      let dep: string;
+      if (isLocalPath(decl.path)) {
+        dep = resolveLocal(file, decl.path);
+        if (!fileExists(dep)) {
+          diagnostics.push({ kind: "error", span: decl.span,
+            message: `cannot resolve import '${decl.path}' — no file at ${dep}` });
+          continue;
+        }
+      } else if (isStdPath(decl.path)) {
+        const cand = resolveStd(decl.path);
+        if (!fileExists(cand)) continue;   // ambient stdlib module, not on disk
+        dep = cand;
+      } else {
+        continue;
+      }
       // This import is satisfied by merged decls, not its own binding path.
       decl.local = true;
       if (loaded.has(dep)) continue;     // diamond: already merged once
       if (onStack.has(dep)) {            // back-edge: a cycle in the import graph
         diagnostics.push({ kind: "error", span: decl.span,
           message: `cyclic import of '${decl.path}' — the module import graph must be acyclic (recursion within a module is fine; a cycle between files is not)` });
-        continue;
-      }
-      let exists = true;
-      try { readFileSync(dep, "utf8"); } catch { exists = false; }
-      if (!exists) {
-        diagnostics.push({ kind: "error", span: decl.span,
-          message: `cannot resolve import '${decl.path}' — no file at ${dep}` });
         continue;
       }
       const depMod = load(dep);

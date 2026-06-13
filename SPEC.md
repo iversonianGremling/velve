@@ -2046,11 +2046,24 @@ import graph is a hard error). A `module Foo { … }` nested in the merged decl
 list is exactly what a single-file program already produces, so resolve / infer /
 exhaust / eval run unchanged — the type/refinement/constructor registries become
 **per-program**, and a `@private` ADT's constructors stay sealed at its module
-boundary *across files* (the smart constructor is the only way in). Bare-name
-(`"String"`) and `std/…` paths stay stdlib/ambient imports (§5.5), unaffected.
-*Not yet:* `std/` modules on disk (C1(iii)), and selective visibility — a
-file-local import currently makes the imported module's public members
-resolvable program-wide rather than only the names it lists (a later tightening).
+boundary *across files* (the smart constructor is the only way in).
+
+**`std/…` modules on disk — implemented** *(2026-06, Phase C1(iii), `std/refined`,
+`std/sorted`; `refined_types_test`/`sorted_list_test`/`import_std_bad`)*. A
+`std/X` path resolves to a Velve source file shipped *with the compiler*
+(`checker/std/X.velve`, located relative to the loader, not the project) and is
+merged exactly like a file-relative import. The Tier-1 refined-type library
+(§3.3) and SortedList (§3.2) now live on disk once each and arrive by `import`
+rather than the copy-paste **inclusion** they travelled by before. Resolution is
+**additive**: a `std/X` path is intercepted *only* if `checker/std/X.velve`
+exists — the ambient stdlib namespaces with no source (`std/json`, `std/set`,
+the capitalized `Math`/`String`/… of §5.5) fall through untouched, and a typo'd
+`std/X` with neither a source file nor an ambient binding is the same "cannot
+resolve import" error as any other unknown name (`import_std_bad`).
+Bare-name (`"String"`) imports stay ambient (§5.5), unaffected. *Not yet:*
+selective visibility — a file-local import currently makes the imported module's
+public members resolvable program-wide rather than only the names it lists (a
+later tightening).
 
 **An unresolved import is an error** *(2026-06, `import_unresolved_bad`/`import_foreign_test`)*.
 A path that names neither a known stdlib module, nor a file-relative module
