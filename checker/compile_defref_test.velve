@@ -1,0 +1,32 @@
+@edition "2026.6"
+
+-- D1(viii) green fixture — first-class `def` references. A named `def` MENTIONED
+-- without calling it becomes a value. eval has this for free (a top-level def is a VFn
+-- in the environment); the compiled def is a hoisted JS `function`, which is itself a
+-- value, so the reference lowers to a bare name — no wrapper, no capture. This file
+-- exercises the four uses: a def BOUND by `let` and called, a def PASSED to a
+-- higher-order function, a def RETURNED from a `def` (chosen by a flag), and a def
+-- PRINTED — which displays `<fn:name>` (its real name, unlike a lambda's `<fn:<lambda>>`,
+-- because $show reads the JS function's own `.name`). All output matches eval.
+
+def double(n: Number): Number
+  n * 2
+
+def triple(n: Number): Number
+  n * 3
+
+def apply2(f: (Number -> Number), v: Number): Number
+  f(v)
+
+-- returns one of two def references, chosen at runtime — both branches are values
+def pick(hi: Bool): (Number -> Number)
+  if hi then triple else double
+
+def main(): Effect [io] ()
+  let f = double
+  println(f(5))                 -- 10 : def bound to a local, called by name
+  println(apply2(double, 21))   -- 42 : def passed to a higher-order function
+  println(apply2(triple, 10))   -- 30
+  let g = pick(true)
+  println(g(4))                 -- 12 : def returned from a def, then called
+  println(double)               -- <fn:double> : a def reference displays its name

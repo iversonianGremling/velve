@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(vii) closures): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
+// SCOPE (through D1(viii) def references): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -17,15 +17,17 @@
 // nullary `None`) and destructured in `match` arms via `PCtor` (D1(iv)); RECORDS
 // — built (`#{ x: a }`, incl. `...spread`), field-read (`p.x`), and destructured via
 // `PRecord` (D1(v)); LISTS — built (`[a, b, …]`), element-read (`xs[i]`), and
-// measured (`length`/`isEmpty`) (D1(vi)); and CLOSURES-AS-VALUES — a `fn x -> …`
+// measured (`length`/`isEmpty`) (D1(vi)); CLOSURES-AS-VALUES — a `fn x -> …`
 // lowered to a JS arrow that captures by lexical scope, bound by `let`, passed as an
 // argument, returned from a `def`, called through a local name, and displayed
-// `<fn:<lambda>>` (D1(vii)). The supported ctor names are the module's own
-// `type … = | …` variants plus the core data ctors eval defines globally
-// (Ok/Error/Some/None). Everything else is refused LOUDLY via CompileUnsupported —
-// the frontier is explicit, never a silent miscompile. First-class `def` references,
-// destructuring `let`/params, `Perform` (effects), and non-tail `if` joins are next
-// (D1(viii)+, D2).
+// `<fn:<lambda>>` (D1(vii)); and FIRST-CLASS `def` REFERENCES — a named `def`
+// mentioned without calling it becomes a value (the JS `function` is itself a value),
+// bound/passed/returned/called like any closure and displayed `<fn:name>` (D1(viii)).
+// The supported ctor names are the module's own `type … = | …` variants plus the core
+// data ctors eval defines globally (Ok/Error/Some/None). Everything else is refused
+// LOUDLY via CompileUnsupported — the frontier is explicit, never a silent miscompile.
+// First-class BUILTIN references, destructuring `let`/params, `Perform` (effects), and
+// non-tail `if` joins are next (D1(ix)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch } from "./ast.js";
 
@@ -300,6 +302,10 @@ class Lowering {
   private norm(e: Expr, scope: Set<string>): { binds: Bind[]; atom: IRAtom } {
     if (e.tag === "Lit") return { binds: [], atom: { k: "Lit", lit: lowerLit(e.lit) } };
     if (e.tag === "Var" && scope.has(e.name)) return { binds: [], atom: { k: "Var", name: e.name } };
+    // A first-class `def` reference is already an atom — the JS `function` it names —
+    // so pass it through directly rather than naming it by a redundant `Let` temp.
+    if (e.tag === "Var" && this.userFns.has(e.name) && !this.ctors.has(e.name))
+      return { binds: [], atom: { k: "Var", name: e.name } };
     // An out-of-scope `Var` is not necessarily an error — it may be a nullary ctor
     // (`None`). Defer to normComp, which builds the variant or refuses by name.
     const c = this.normComp(e, scope);
@@ -314,11 +320,18 @@ class Lowering {
       case "Var": {
         if (scope.has(e.name)) return { binds: [], comp: { k: "Atom", atom: { k: "Var", name: e.name } } };
         // A bare name out of scope: a nullary ctor builds a payload-less variant; a
-        // unary ctor used unapplied would be a first-class function (refused); anything
-        // else is a genuine free variable.
+        // unary ctor used unapplied would be a first-class function (refused); a `def`
+        // name mentioned without calling it is a FIRST-CLASS REFERENCE (D1(viii)) —
+        // anything else is a genuine free variable.
         const ci = this.ctors.get(e.name);
         if (ci?.nullary) return { binds: [], comp: { k: "Ctor", name: e.name, payload: null } };
         if (ci) throw new CompileUnsupported(`first-class constructor '${e.name}' (apply it)`);
+        // First-class `def` reference: eval has the def as a VFn in the environment;
+        // the compiled `def` is a hoisted JS `function`, which is itself a value, so the
+        // reference lowers to a bare `Var` atom naming it — no wrapper, no capture. It
+        // is then bound/passed/returned/called like any closure, and `$show` reads the
+        // JS `function`'s own `.name` to display `<fn:name>` (eval's VFn display).
+        if (this.userFns.has(e.name)) return { binds: [], comp: { k: "Atom", atom: { k: "Var", name: e.name } } };
         throw new CompileUnsupported(`free variable '${e.name}'`);
       }
       case "BinOp": {

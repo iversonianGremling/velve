@@ -75,10 +75,12 @@ function comp(c: IRComp): string {
     case "List":  return `$list(${c.elems.map(atom).join(", ")})`;
     case "Index": return `${atom(c.obj)}.es[${atom(c.index)}]`;
     // A closure: a JS arrow whose body is the same statement spine a `def` emits. It
-    // closes over enclosing consts lexically — eval's VFn-over-env, exactly. $show
-    // maps any function to `<fn:<lambda>>` (the only functions reaching $show are
-    // lowered lambdas; user `def`s are never first-class values on the pure spine).
-    case "Lambda": return `(${c.params.join(", ")}) => {\n${body(c.body, "    ")}\n  }`;
+    // closes over enclosing consts lexically — eval's VFn-over-env, exactly. Wrapped in
+    // `$lam` (identity) so the arrow sits in argument position and JS infers NO `.name`
+    // for it — a let-bound lambda would otherwise inherit its binding's name, but eval
+    // displays every lambda as `<fn:<lambda>>` regardless of binding. `$show` then reads
+    // `.name`: empty ⇒ `<lambda>` (a lambda), set ⇒ the def's name (a `def` reference).
+    case "Lambda": return `$lam((${c.params.join(", ")}) => {\n${body(c.body, "    ")}\n  })`;
   }
 }
 
@@ -119,7 +121,10 @@ export function emitModule(mod: IRModule, callMain = true): string {
     'const $record = (fs) => ({ $t: "R", fs });',
     '// A list: elements in a JS array tagged for $show — displays `[a, b, …]`.',
     'const $list = (...es) => ({ $t: "L", es });',
-    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : (v && v.$t === "C") ? (v.payload !== null ? v.name + "(" + $show(v.payload) + ")" : v.name) : (v && v.$t === "R") ? "{ " + Object.entries(v.fs).map(([k, val]) => k + ": " + $show(val)).join(", ") + " }" : (v && v.$t === "L") ? "[" + v.es.map($show).join(", ") + "]" : typeof v === "function" ? "<fn:<lambda>>" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
+    '// Identity wrapper: keeps a lambda anonymous (arg-position ⇒ no inferred `.name`),',
+    '// so $show shows `<fn:<lambda>>` while a `def` reference keeps its real name.',
+    'const $lam = (f) => f;',
+    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : (v && v.$t === "C") ? (v.payload !== null ? v.name + "(" + $show(v.payload) + ")" : v.name) : (v && v.$t === "R") ? "{ " + Object.entries(v.fs).map(([k, val]) => k + ": " + $show(val)).join(", ") + " }" : (v && v.$t === "L") ? "[" + v.es.map($show).join(", ") + "]" : typeof v === "function" ? "<fn:" + (v.name || "<lambda>") + ">" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
     ...Object.entries(BUILTIN_IMPL)
       .filter(([name]) => !userNames.has(name))
       .map(([name, impl]) => `const ${name} = ${impl};`),

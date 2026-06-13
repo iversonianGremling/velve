@@ -647,6 +647,34 @@ exists (`compiler-architecture-design.md`).
     flip; the frontier stayed unsupported, rolling closure→def-reference). SPEC untouched;
     no graded row moves (still partial). Next: **D1(viii)** = first-class `def` references
     (eta-expansion of a named function to a value) — still pre-effect.
+  - **D1(viii) — first-class `def` references compile (the frontier twin flips again) —
+    DONE 2026-06.** The value D1(vii)'s guardrail was holding. A named `def` mentioned
+    without calling it is now a VALUE: eval has it for free (a top-level def is a VFn in
+    the environment), and the compiled def is a hoisted JS `function` — itself a value —
+    so the reference lowers to a bare `Var` atom naming it, NO eta-expansion wrapper and
+    no capture needed (the JS-backend shortcut the design note flagged; a native backend
+    would eta-expand to a closure instead). It is then bound by `let`, passed to a
+    higher-order function, returned from a `def` (both branches of an `if` being def
+    references), and called like any closure. **The display had to become faithful:** eval
+    shows a named function as `<fn:name>` but a lambda as `<fn:<lambda>>`, so `$show` (which
+    had hard-coded `<fn:<lambda>>` for every function since D1(vii)) now reads the JS
+    function's own `.name` — empty ⇒ `<lambda>`, set ⇒ the def's name. To keep lambdas
+    anonymous (a let-bound arrow would otherwise inherit its binding's name, JS name
+    inference) every lambda is wrapped in an identity `$lam(…)` so it sits in argument
+    position and JS infers no `.name`. Two lowering touch-points: a `userFns` branch in the
+    `Var` normalizer (and a `norm` fast-path so a def reference is an atom, not a redundant
+    `Let` temp). Green fixture `compile_defref_test.velve` (def let-bound and called, def
+    passed to a HOF, def returned from a def, def printed) compiles **byte-identically** to
+    eval (`10 / 42 / 30 / 12 / <fn:double>`). The frontier twin `compile_frontier_test.velve`
+    was rolled to name a **builtin** as a value (`let f = abs` — eval has it as a VBuiltin,
+    the compiler's first-class path admits user defs only, so it refuses `abs` as a free
+    variable) — the next unrepresented value — and still refuses cleanly (exit 2). No
+    pre-existing corpus file flipped (`fn_type_test` passes defs as values too but also uses
+    string interpolation, so it stays unsupported). Harness: **24 match, 0 mismatch, 0
+    js-crash**, 114 unsupported (243 files) — +1 match (the fixture), unsupported unchanged.
+    SPEC untouched; no graded row moves (still partial). Next: **D1(ix)** = first-class
+    BUILTIN references (the same value-ification for the prelude functions) — still
+    pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

@@ -994,6 +994,30 @@ dimension machinery generalize?
   partial). **Next: D1(viii)** — first-class `def` references (eta-expansion to a value) — still
   pre-effect.
 
+- [x] 🟢 **Phase D1(viii) — first-class `def` references compile (the frontier twin flips again) —
+  DONE 2026-06** (`core.ts` `userFns` branch in the `Var` normalizer + `norm` fast-path; `emitjs.ts`
+  `$lam` identity wrapper for lambdas + `$show` `.name`-based function display; `compile_defref_test.velve`).
+  The value D1(vii)'s guardrail was holding. A named `def` mentioned WITHOUT calling it is now a
+  VALUE: eval has it for free (a top-level def is a VFn in the env), and the compiled def is a hoisted
+  JS `function` — itself a value — so the reference lowers to a bare `Var` atom naming it, **NO
+  eta-expansion wrapper and no capture** (the JS-backend shortcut the design note flagged; a native
+  backend would eta-expand to a closure instead). It is BOUND by `let`, PASSED to a higher-order
+  function, RETURNED from a `def` (both branches of an `if` being def references), and CALLED like any
+  closure. **The display had to become faithful:** eval shows a named function `<fn:name>` but a lambda
+  `<fn:<lambda>>`, so `$show` (hard-coded to `<fn:<lambda>>` for every function since D1(vii)) now reads
+  the JS function's own `.name` — empty ⇒ `<lambda>`, set ⇒ the def's name. To keep lambdas anonymous
+  (a let-bound arrow would otherwise inherit its binding's name via JS name inference) every lambda is
+  wrapped in an identity `$lam(…)` so it sits in argument position and JS infers no `.name`. Green
+  `compile_defref_test` (def let-bound and called, def passed to a HOF, def returned from a def, def
+  printed) byte-identical to eval (`10 / 42 / 30 / 12 / <fn:double>`). The frontier twin
+  `compile_frontier_test` ROLLED def-reference→**builtin reference** (`let f = abs` — eval has it as a
+  VBuiltin, the first-class path admits user defs only, so it refuses `abs` as a free variable) — next
+  unrepresented value — still exit 2. **No pre-existing corpus file flipped** (`fn_type_test` passes
+  defs as values too but also uses string interpolation, so it stays unsupported). Harness: **24 match
+  / 0 mismatch / 0 js-crash / 114 unsupported** across 243 files (+1 match = fixture; unsupported
+  unchanged). SPEC untouched; no graded row moves (still partial). **Next: D1(ix)** — first-class
+  BUILTIN references (the same value-ification for the prelude functions) — still pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

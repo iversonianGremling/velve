@@ -560,8 +560,26 @@ byte-identical across 5 lines), no corpus flip. The frontier twin was rolled to 
 has it as a VFn in the env, the compiler refuses it as a free variable) and still refuses.
 Destructuring `let`/params from the prior forecast are SYNTAX errors — neither exists in
 the grammar (like `PList`) — corrected here.
-**Remaining for D1(viii)+**: first-class `def` references (eta-expansion to a value);
-non-tail match value; then `Perform` in D2.
+
+**D1(viii) shipped (2026-06) — first-class `def` references (the frontier twin flips
+again).** A named `def` mentioned without calling it is now a value. eval has it for free
+(a top-level def is a VFn in the env); the compiled def is a hoisted JS `function` —
+itself a value — so the reference lowers to a bare `Var` atom naming it, with NO
+eta-expansion wrapper and no capture (the JS shortcut; a native backend would eta-expand
+to a closure). It is bound by `let`, passed to a HOF, returned from a `def`, and called
+like any closure. Display became faithful: eval shows a named function `<fn:name>` and a
+lambda `<fn:<lambda>>`, so `$show` (hard-coded to `<fn:<lambda>>` since D1(vii)) now reads
+the JS function's own `.name` — empty ⇒ `<lambda>`, set ⇒ the def name — and every lambda
+is wrapped in an identity `$lam(…)` so JS infers no `.name` for it (a let-bound arrow would
+otherwise inherit its binding's name). Two lowering touch-points: a `userFns` branch in the
+`Var` normalizer plus a `norm` fast-path (a def reference is an atom, not a redundant `Let`
+temp). Harness: **24 match / 0 mismatch / 0 js-crash / 114 unsupported** (243 files) — +1
+match (fixture `compile_defref_test.velve`, byte-identical: `10 / 42 / 30 / 12 /
+<fn:double>`), no corpus flip. The frontier twin rolled to a **builtin reference** (`let f =
+abs` — eval has it as a VBuiltin, the first-class path admits user defs only, so it refuses
+`abs` as a free variable) and still refuses.
+**Remaining for D1(ix)+**: first-class BUILTIN references; non-tail match value; then
+`Perform` in D2.
 
 ---
 
