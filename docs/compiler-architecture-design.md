@@ -477,8 +477,24 @@ exercised. The frontier moved past scalar `match` to **heap-value destructuring*
 (constructor/tuple/record patterns), now the loud-refusal edge. Harness: **16 match /
 0 mismatch / 0 js-crash / 116 unsupported**. Honest deviation from D1(i)'s forecast:
 scalar `match` shipped on its own (pure control flow), and the heap-value core slid to
-**D1(iii)**. **Remaining for D1(iii)+**: ADT `Ctor`s, constructor/tuple/record
-patterns, lists/records/tuples, closures with explicit capture, then `Perform` in D2.
+**D1(iii)**.
+
+**D1(iii) shipped (2026-06) — tuples (the heap-value core opens).** The first heap
+value to clear all three differential columns. Two new IR computations — `Tuple`
+(build from atoms) and `Proj` (read element *i*) — plus one runtime convention that
+every later heap value reuses: heap values carry a `$t` tag (`$tuple(...) → {$t:"T",
+es}`) so the JS `$show` reproduces `value.ts` `display`'s `(a, b)` form byte-for-byte.
+The scalar pattern compiler generalized to a flat `MatchStep[]` (ordered binds +
+truthy-tests); a `PTuple` projects each slot and **recurses**, so nested tuples and
+fallible sub-patterns fold into the same `If`/`Let` spine (tuple shape itself is no
+test — arity is type-guaranteed). Tuple was the thinnest cut: positional, fixed-arity,
+**no `type` decl or constructor-name resolution**. Harness: **17 match / 0 mismatch /
+0 js-crash / 116 unsupported** (238 files). Honest deviation: D1(iii) was forecast as
+the whole heap-value core; tuples shipped alone, the rest slid forward. The frontier
+twin (constructor destructuring) is unchanged — it flips when ctors land.
+**Remaining for D1(iv)+**: ADT `Ctor`s + constructor patterns, records, lists,
+closures with explicit capture; destructuring `let`/params and non-tail match value;
+then `Perform` in D2.
 
 ---
 

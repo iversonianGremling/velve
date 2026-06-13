@@ -9,13 +9,15 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (D1(i)): single-clause `def`s; `Lit` (Str/Num/Bool/Unit); `Var`; arithmetic
-// /comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user `def` or a
-// whitelisted pure builtin; tail-position `If` (incl. else-if ladders); `Do` blocks
-// of `let`/expr statements. Everything else is refused LOUDLY via CompileUnsupported
-// — the compiler's frontier is explicit, never a silent miscompile. `Match`, lists/
-// records/tuples/closures-as-values, `Perform` (effects), and non-tail `if` join
-// points are the next slices (D1(ii)+, D2).
+// SCOPE (through D1(iii) tuples): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
+// `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
+// `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
+// `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); and TUPLES — built
+// as values and destructured in `match` arms via positional `PTuple` patterns
+// (D1(iii)). Everything else is refused LOUDLY via CompileUnsupported — the frontier
+// is explicit, never a silent miscompile. ADT ctors, lists, records, closures-as-
+// values, destructuring `let`/params, `Perform` (effects), and non-tail `if` join
+// points are the next slices (D1(iii)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch } from "./ast.js";
 
@@ -40,8 +42,10 @@ export type Width = { bits: number; signed: boolean };
 export type IRComp =
   | { k: "Atom"; atom: IRAtom }
   | { k: "Call"; fn: string; args: IRAtom[] }          // saturated; fn is a name
-  | { k: "PrimOp"; op: string; args: IRAtom[]; width?: Width };
-// Ctor / Tuple / List / Record / Field / Index / Lambda / Perform — D1(ii)+, D2.
+  | { k: "PrimOp"; op: string; args: IRAtom[]; width?: Width }
+  | { k: "Tuple"; elems: IRAtom[] }                    // build a positional aggregate
+  | { k: "Proj"; tuple: IRAtom; index: number };       // read element `index` of a tuple
+// Ctor / List / Record / Field / Index / Lambda / Perform — D1(iii)+, D2.
 
 // Expressions — the ANF spine. `Match` does NOT survive into the IR: D1(ii) lowers
 // it to the `If`/`Let` decision-spine already here (classic match compilation), so
@@ -79,6 +83,12 @@ export const BUILTINS = new Set([
 // ── Lowering ────────────────────────────────────────────────────────────────────
 
 interface Bind { name: string; comp: IRComp }
+
+// One step of a compiled pattern: introduce a name, or assert an atom is truthy
+// (else the branch falls through). A flat list of these folds into the decision-spine.
+type MatchStep =
+  | { s: "bind"; bind: Bind }
+  | { s: "test"; binds: Bind[]; atom: IRAtom };
 
 class Lowering {
   private n = 0;
@@ -124,7 +134,10 @@ class Lowering {
   }
 
   // One branch: if its pattern matches the subject atom (and any guard holds), run
-  // the body in the extended scope; otherwise fall through to `next`.
+  // the body in the extended scope; otherwise fall through to `next`. The pattern
+  // compiles to a flat list of `MatchStep`s (binds and truthy-tests, in order);
+  // folding them back-to-front threads each test's else-edge to `next`, so any
+  // failure anywhere in a nested pattern falls through cleanly.
   private branch(br: Branch, subj: IRAtom, scope: Set<string>, next: IRExpr): IRExpr {
     const p = this.pattern(br.pat, subj, scope);
     let then = this.tail(br.body, p.scope);
@@ -132,38 +145,58 @@ class Lowering {
       const g = this.norm(br.guard, p.scope);
       then = wrap(g.binds, { k: "If", cond: g.atom, then, else_: next });
     }
-    then = wrap(p.binds, then);                    // pattern bindings (PVar/PTyped)
-    if (!p.test) return then;                      // irrefutable pattern
-    return wrap(p.test.binds, { k: "If", cond: p.test.atom, then, else_: next });
+    for (let i = p.steps.length - 1; i >= 0; i--) {
+      const st = p.steps[i]!;
+      if (st.s === "bind") then = { k: "Let", name: st.bind.name, comp: st.bind.comp, body: then };
+      else then = wrap(st.binds, { k: "If", cond: st.atom, then, else_: next });
+    }
+    return then;
   }
 
-  // Compile a scalar pattern against the subject atom. `test === null` means the
-  // pattern is irrefutable; `binds` are the names it introduces; `scope` is the
-  // body scope (extended for PVar/PTyped). Mirrors eval.ts matchInto for the
-  // scalar cases — PLit compares with `==` (eval's strict `v === lit.value`).
+  // Compile a pattern against the subject atom into an ordered `MatchStep[]`: a
+  // `bind` introduces a name (a variable, or a tuple-element projection), a `test`
+  // is an atom that must be truthy or the branch falls through. `scope` is the body
+  // scope after the pattern's bindings. Mirrors eval.ts matchInto: PLit compares
+  // with `==` (eval's strict `v === lit.value`); PTuple projects each slot and
+  // recurses (the arity is type-guaranteed, so the tuple shape itself is no test).
   private pattern(p: Pat, subj: IRAtom, scope: Set<string>):
-    { test: { binds: Bind[]; atom: IRAtom } | null; binds: Bind[]; scope: Set<string> } {
+    { steps: MatchStep[]; scope: Set<string> } {
     switch (p.tag) {
       case "PWild":
-        return { test: null, binds: [], scope };
+        return { steps: [], scope };
       case "PVar": case "PTyped": {
         // `match n | n -> …` binds the subject to its own name: emitting `const n = n`
         // is a TDZ crash in JS. The rebind is identity — the name is already in scope
         // holding that value — so skip it. (eval gets this free via env child.)
-        if (subj.k === "Var" && subj.name === p.name) return { test: null, binds: [], scope };
+        if (subj.k === "Var" && subj.name === p.name) return { steps: [], scope };
         const ns = new Set(scope); ns.add(p.name);
-        return { test: null, binds: [{ name: p.name, comp: { k: "Atom", atom: subj } }], scope: ns };
+        return { steps: [{ s: "bind", bind: { name: p.name, comp: { k: "Atom", atom: subj } } }], scope: ns };
       }
       case "PLit": {
         const litAtom: IRAtom = { k: "Lit", lit: lowerLit(p.lit) };
         const t = this.fresh();
         return {
-          test: { binds: [{ name: t, comp: { k: "PrimOp", op: "==", args: [subj, litAtom] } }], atom: { k: "Var", name: t } },
-          binds: [], scope,
+          steps: [{ s: "test", binds: [{ name: t, comp: { k: "PrimOp", op: "==", args: [subj, litAtom] } }], atom: { k: "Var", name: t } }],
+          scope,
         };
       }
+      case "PTuple": {
+        // Project each slot to a fresh name, then recurse the sub-pattern against it.
+        // Projection binds precede the sub-pattern's steps, so nested tests see the
+        // already-extracted element. Scope accumulates left-to-right across slots.
+        const steps: MatchStep[] = [];
+        let sc = scope;
+        for (let i = 0; i < p.elems.length; i++) {
+          const slot = this.fresh();
+          steps.push({ s: "bind", bind: { name: slot, comp: { k: "Proj", tuple: subj, index: i } } });
+          const sub = this.pattern(p.elems[i]!, { k: "Var", name: slot }, sc);
+          steps.push(...sub.steps);
+          sc = sub.scope;
+        }
+        return { steps, scope: sc };
+      }
       default:
-        throw new CompileUnsupported(`match pattern ${p.tag} (heap-value destructuring — D1(iii))`);
+        throw new CompileUnsupported(`match pattern ${p.tag} (heap-value destructuring — D1(iii)+)`);
     }
   }
 
@@ -226,6 +259,13 @@ class Lowering {
       case "UnOp": {
         const x = this.norm(e.expr, scope);
         return { binds: x.binds, comp: { k: "PrimOp", op: "u" + e.op, args: [x.atom] } };
+      }
+      case "Tuple": {
+        // The first heap value (D1(iii)). Positional, fixed-arity; each element
+        // normalizes to an atom. Display is `(a, b, …)` — the runtime `$tuple`
+        // wrapper carries a tag so `$show` reproduces value.ts's VTuple exactly.
+        const parts = e.elems.map(x => this.norm(x, scope));
+        return { binds: parts.flatMap(p => p.binds), comp: { k: "Tuple", elems: parts.map(p => p.atom) } };
       }
       case "Call": {
         if (e.fn.tag !== "Var") throw new CompileUnsupported("call of a computed function");

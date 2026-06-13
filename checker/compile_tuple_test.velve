@@ -1,0 +1,49 @@
+@edition "2026.6"
+
+-- D1(iii): tuples compile — the first HEAP value to clear all three columns of the
+-- differential harness (check / run-eval / run-compiled byte-identical). A tuple is
+-- the thinnest cut of the heap-value core: positional, fixed-arity, no `type` decl
+-- and no constructor-name resolution. It introduces the runtime heap-tagging scheme
+-- (`$tuple` carries a `$t` tag so `$show` reproduces value.ts `display`'s `(a, b)`
+-- form exactly) that every later heap value — records, ctors, lists — will reuse.
+--
+-- Exercises: construction as a returned value (`pair`), construction + immediate
+-- destructure (`add`), a positional `PTuple` pattern with a LITERAL sub-pattern that
+-- can fall through (`describe`), a nested tuple pattern (`first`), and a guard over
+-- bound tuple elements (`order`). Each must print identically under eval and compiled.
+
+def pair(a: Number, b: Number): (Number, Number)
+  (a, b)
+
+def add(a: Number, b: Number): Number
+  match (a, b)
+    | (x, y) -> x + y
+
+def describe(p: (Number, Number)): String
+  match p
+    | (0, 0) -> "origin"
+    | (0, y) -> "on y"
+    | (x, 0) -> "on x"
+    | (x, y) -> "free"
+
+def first(t: ((Number, Number), Number)): Number
+  match t
+    | ((a, b), c) -> a
+
+def order(p: (Number, Number)): String
+  match p
+    | (x, y) if x > y -> "desc"
+    | (x, y) if x == y -> "eq"
+    | (x, y) -> "asc"
+
+def main(): Effect [io] ()
+  println(pair(1, 2))
+  println(add(3, 4))
+  println(describe((0, 0)))
+  println(describe((0, 5)))
+  println(describe((5, 0)))
+  println(describe((5, 5)))
+  println(first(((9, 8), 7)))
+  println(order((3, 1)))
+  println(order((2, 2)))
+  println(order((1, 9)))

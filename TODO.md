@@ -867,6 +867,29 @@ dimension machinery generalize?
   graded row moves (still partial). **Next: D1(iii)** — ADT `Ctor`s +
   constructor/tuple/record patterns + lists/records/tuples + closures (the heap-value
   core), still pre-effect.
+- [x] 🟢 **Phase D1(iii) — tuples compile (heap-value core opens) — DONE 2026-06**
+  (`core.ts` `Tuple`/`Proj` IR comps + `MatchStep[]` pattern compiler with `PTuple`;
+  `emitjs.ts` `$tuple` runtime + `$show` `$t`-tag dispatch; `compile_tuple_test.velve`).
+  The first HEAP value to clear all three differential columns. A tuple is the thinnest
+  cut of the core — positional, fixed-arity, **no `type` decl or constructor-name
+  resolution** (unlike Ctors). New: two IR computations (`Tuple` builds from atoms,
+  `Proj` reads element *i*) and one runtime convention every later heap value reuses —
+  heap values carry a `$t` tag (`$tuple(...) → {$t:"T", es}`) so `$show` reproduces
+  value.ts `display`'s `(a, b)` exactly. The scalar pattern compiler was generalized to
+  a flat `MatchStep[]` (ordered binds + truthy-tests); `PTuple` projects each slot and
+  **recurses**, so nested tuples + fallible sub-patterns fold into the same `If`/`Let`
+  spine (tuple shape itself is no test — arity is type-guaranteed). Known tradeoff:
+  back-to-front folding duplicates the fall-through tail per branch (naive decision
+  tree) — correct, differentially verified; join-point sharing is a later optimization.
+  **Honest slice split (again)**: D1(iii) was forecast as the whole heap-value core; as
+  built, **tuples shipped alone** and ctors/records/lists/closures slid forward. Green
+  fixture `compile_tuple_test.velve` compiles **byte-identically** to eval (10 lines);
+  the frontier twin `compile_frontier_test.velve` (constructor destructuring) is
+  unchanged — still refused cleanly (exit 2), flips when ctors land. TAIL-position
+  match only; destructuring `let`/params stay at the frontier. Harness: **17 match / 0
+  mismatch / 0 js-crash / 116 unsupported** across 238 files. SPEC untouched; no graded
+  row moves (still partial). **Next: D1(iv)** — ADT `Ctor`s + constructor patterns
+  (flips the frontier twin), then records, lists, closures — still pre-effect.
 
 ---
 

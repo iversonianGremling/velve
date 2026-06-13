@@ -58,6 +58,8 @@ function comp(c: IRComp): string {
       if (c.op === "u!" || c.op === "unot") return `(!${a[0]})`;
       throw new Error(`emitjs: unknown PrimOp '${c.op}'`);
     }
+    case "Tuple": return `$tuple(${c.elems.map(atom).join(", ")})`;
+    case "Proj":  return `${atom(c.tuple)}.es[${c.index}]`;
   }
 }
 
@@ -90,7 +92,9 @@ export function emitModule(mod: IRModule, callMain = true): string {
     '"use strict";',
     '// velve-core → js (D1) — values are JS primitives; the width tag is dropped here.',
     'const $unit = Symbol("unit");',
-    'const $show = (v) => v === $unit ? "()" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
+    '// Heap values carry a `$t` tag so $show dispatches to value.ts `display` exactly.',
+    'const $tuple = (...es) => ({ $t: "T", es });',
+    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
     ...Object.entries(BUILTIN_IMPL)
       .filter(([name]) => !userNames.has(name))
       .map(([name, impl]) => `const ${name} = ${impl};`),

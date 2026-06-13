@@ -509,6 +509,31 @@ exists (`compiler-architecture-design.md`).
     mismatch, 0 js-crash**, 116 unsupported. SPEC untouched; no graded row moves (still
     partial). Next: **D1(iii)** = ADT `Ctor`s + constructor/tuple/record patterns +
     lists/records/tuples + closures (the heap-value core), still pre-effect.
+  - **D1(iii) — tuples compile (the heap-value core opens) — DONE 2026-06.** The first
+    HEAP value to clear all three differential columns. A tuple is the thinnest cut of
+    the core: positional, fixed-arity, **no `type` decl and no constructor-name
+    resolution** (unlike Ctors). Two new IR computations — `Tuple` (build from atoms)
+    and `Proj` (read element *i*) — and one new runtime convention: heap values carry a
+    `$t` tag (`$tuple(...) → {$t:"T", es}`) so the JS `$show` reproduces value.ts
+    `display`'s `(a, b)` form exactly. The scalar pattern compiler was generalized to a
+    flat `MatchStep[]` (ordered binds + truthy-tests) so a `PTuple` projects each slot
+    and **recurses** — nested tuples and literal/var sub-patterns with fall-through all
+    fold into the same `If`/`Let` spine. Tuple shape itself is no test (arity is
+    type-guaranteed). Green fixture `compile_tuple_test.velve` (construct/return,
+    construct+destructure, literal sub-patterns that fall through, a nested
+    `((a,b),c)` pattern, and guards over bound elements) compiles **byte-identically**
+    to eval across 10 lines. Known tradeoff: back-to-front folding duplicates the
+    fall-through tail per branch (naive decision tree) — correct, differentially
+    verified; join-point sharing is a later optimization, not a correctness matter.
+    **Honest slice split (again)**: D1(iii) was forecast as the *whole* heap-value core;
+    as built, **tuples shipped alone** (the thinnest verifiable aggregate) and ctors/
+    records/lists/closures slid forward. The frontier twin `compile_frontier_test.velve`
+    (constructor destructuring) is unchanged — still refused cleanly (exit 2); it flips
+    when ADT ctors land. Still TAIL-position match only; destructuring `let`/params stay
+    at the frontier. Harness: **17 match, 0 mismatch, 0 js-crash**, 116 unsupported (238
+    files). SPEC untouched; no graded row moves (still partial). Next: **D1(iv)** = ADT
+    `Ctor`s + constructor patterns (flips the frontier twin), then records, lists,
+    closures — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,
