@@ -648,7 +648,18 @@ pre-existing corpus flips: `clause_heads_test`/`constfold_total_test`/`literal_p
 twin rolled to **reassignment** (`let mut x = 1; x = x + 5` — the spine lowers `let` to a
 `const`; `block`'s `SBind` refuses a reassigning bind). Velve clause params are literal/binder
 only (not ctor/tuple — a parse limit), so payload destructuring stays a body `match`.
-**Remaining for D1(xiv)+**: reassignment / mutable `let`; atom/duration literals; then
+
+**D1(xiv) shipped (2026-06) — reassignment of a `mut` binding (1 corpus flip).** A mutable
+binding and its reassignment lower: eval mutates the binding (env.set) yielding Unit, so a
+`let mut x = v` becomes a reassignable JS `let` (a new `mut` flag on the IR `Let`, `const`
+otherwise) and a bare `x = e` becomes a new `Assign` IR statement. Only a simple in-scope
+variable reaches the reassignment path — a field/index target is a separate `SAssign` (still
+frontier). Harness: **35 match / 0 mismatch / 0 js-crash / 109 unsupported** (249 files) —
++2 match (fixture `compile_reassign_test.velve`, byte-identical `12 / abc / 105 / 7`, plus
+one corpus flip `move_ok` — a `mut` Copy-scalar reassigned in place, whose affine machinery
+erases on the JS tier), −1 unsupported. The frontier twin rolled to an **atom literal**
+(`:red` — `lowerLit` refuses it; needs a `$atom`-tagged value with `:name` display).
+**Remaining for D1(xv)+**: atom/duration literals; field/index assignment; loops; then
 `Perform` in D2.
 
 ---

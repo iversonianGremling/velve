@@ -791,6 +791,27 @@ exists (`compiler-architecture-design.md`).
     left; the frontier stayed unsupported, multi-clause→reassignment). SPEC untouched; no
     graded row moves (still partial). Next: **D1(xiv)** = reassignment / mutable `let`
     (a JS `let` + assignment) — still pre-effect.
+  - **D1(xiv) — reassignment of a `mut` binding compiles (1 corpus flip) — DONE 2026-06.**
+    The value D1(xiii)'s guardrail was holding. A mutable binding and its reassignment now
+    lower: eval mutates the existing binding in its environment (env.set) and yields Unit,
+    so a `let mut x = v` lowers to a reassignable JS `let` (a new `mut` flag on the IR `Let`,
+    `const` otherwise) and a bare `x = e` lowers to a new `Assign` IR statement (emit
+    `x = e;`, yielding Unit via the continuation). Only a simple variable already in scope
+    reaches the reassignment path — a field/index target is a separate `SAssign` (still
+    frontier). Green fixture `compile_reassign_test.velve` (a numeric accumulator reassigned
+    twice each reading its old value, a `++` string accumulator, a reassignment from a
+    conditional value, repeated decrement) compiles **byte-identically** to eval (`12 / abc /
+    105 / 7`). **Honest baseline movement:** ONE pre-existing corpus file flipped
+    `unsupported`→`match` — `move_ok` (a `mut` Copy-scalar rebound/reassigned in place — the
+    move-semantics test, whose affine machinery erases on the JS tier where `mut` is a plain
+    reassignable binding), verified byte-identical. The frontier twin
+    `compile_frontier_test.velve` rolled to an **atom literal** (`:red` — `lowerLit` refuses
+    it; it needs a `$atom`-tagged runtime value whose `$show` reproduces `:name`) — the next
+    unrepresented form — still exit 2. Harness: **35 match, 0 mismatch, 0 js-crash**, 109
+    unsupported (249 files) — +2 match (the fixture + the flip), −1 unsupported (the flip
+    left; the frontier stayed unsupported, reassignment→atom). SPEC untouched; no graded row
+    moves (still partial). Next: **D1(xv)** = atom literals (`$atom`-tagged value, `:name`
+    display) — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

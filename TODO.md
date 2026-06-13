@@ -1122,6 +1122,26 @@ dimension machinery generalize?
   no graded row moves (still partial). **Next: D1(xiv)** — reassignment / mutable `let` (a JS `let` +
   assignment) — still pre-effect.
 
+- [x] 🟢 **Phase D1(xiv) — reassignment of a `mut` binding compiles (1 corpus flip) — DONE 2026-06**
+  (`core.ts` `mut` flag on IR `Let` + new `Assign` IR statement + reassignment branch in `block`'s
+  `SBind`; `emitjs.ts` `Let` mut→`let`/`const` + `Assign` emit; `compile_reassign_test.velve`). The value
+  D1(xiii)'s guardrail was holding. A mutable binding and its reassignment now lower: eval mutates the
+  existing binding (env.set) and yields Unit, so a `let mut x = v` lowers to a reassignable JS `let` (the
+  new `mut` flag, `const` otherwise) and a bare `x = e` lowers to the new `Assign` statement (emit
+  `x = e;`, yielding Unit via the continuation). Only a simple variable already in scope reaches the
+  reassignment path — a field/index target is a separate `SAssign` (still frontier). Green
+  `compile_reassign_test` (numeric accumulator reassigned twice each reading its old value, a `++` string
+  accumulator, a reassignment from a conditional value, repeated decrement) byte-identical to eval
+  (`12 / abc / 105 / 7`). **Honest baseline movement:** ONE pre-existing corpus file flipped
+  `unsupported`→`match` — `move_ok` (a `mut` Copy-scalar rebound/reassigned in place — the move-semantics
+  test, whose affine machinery erases on the JS tier where `mut` is a plain reassignable binding),
+  verified byte-identical. The frontier twin `compile_frontier_test` ROLLED reassignment→**atom literal**
+  (`:red` — `lowerLit` refuses it; needs a `$atom`-tagged runtime value whose `$show` reproduces
+  `:name`) — next unrepresented form — still exit 2. Harness: **35 match / 0 mismatch / 0 js-crash / 109
+  unsupported** across 249 files (+2 match = fixture + flip, −1 unsupported = the flip left; frontier
+  stayed unsupported). SPEC untouched; no graded row moves (still partial). **Next: D1(xv)** — atom
+  literals (`$atom`-tagged value, `:name` display) — still pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

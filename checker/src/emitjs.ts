@@ -110,7 +110,12 @@ function body(e: IRExpr, indent: string): string {
     case "Ret":
       return `${indent}return ${atom(e.atom)};`;
     case "Let":
-      return `${indent}const ${e.name} = ${comp(e.comp)};\n${body(e.body, indent)}`;
+      // `mut` ⇒ a reassignable `let`; otherwise `const`. Same binding either way.
+      return `${indent}${e.mut ? "let" : "const"} ${e.name} = ${comp(e.comp)};\n${body(e.body, indent)}`;
+    case "Assign":
+      // Reassign an existing `mut` binding (eval's env.set). Yields Unit — the body that
+      // follows carries the block's value (RET_UNIT when the reassignment was last).
+      return `${indent}${e.name} = ${comp(e.comp)};\n${body(e.body, indent)}`;
     case "If":
       return `${indent}if (${atom(e.cond)}) {\n${body(e.then, indent + "  ")}\n${indent}} else {\n${body(e.else_, indent + "  ")}\n${indent}}`;
     case "Fail":

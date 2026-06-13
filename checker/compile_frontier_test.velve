@@ -1,11 +1,11 @@
 @edition "2026.6"
 
--- D1(xiii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it REASSIGNS a mutable binding (`let mut x = 1` then `x = x + 5`).
--- eval mutates the binding in its environment; the compute spine lowers a `let` to a JS
--- `const` and has no reassignment statement — `block`'s `SBind` refuses a non-declaring
--- (reassigning) bind. The differential harness must report it `unsupported` — a CLEAN
--- refusal at the compiler frontier — never a miscompile.
+-- D1(xiv) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it uses an ATOM literal (`:red`). eval represents it as a VAtom that
+-- displays `:red`; `lowerLit` in the compiler refuses an atom literal — it would need a
+-- tagged runtime value (a `$atom("red")` wrapper whose `$show` reproduces value.ts's `:name`
+-- display, the same `$t`-tag scheme tuples/ctors/records/lists use). The differential
+-- harness must report it `unsupported` — a CLEAN refusal at the compiler frontier.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
@@ -14,13 +14,11 @@
 -- constructors; D1(v) PAST records; D1(vi) PAST lists; D1(vii) PAST closures-as-values;
 -- D1(viii) PAST first-class `def` references; D1(ix) PAST first-class BUILTIN references;
 -- D1(x) PAST short-circuit `&&`/`||`; D1(xi) PAST non-tail `if` as a value; D1(xii) PAST
--- non-tail `match` as a value; D1(xiii) PAST multi-clause `def`s — clause dispatch over the
--- parameter patterns (see compile_multiclause_test). The frontier now sits at REASSIGNMENT
--- of a mutable binding. This file reassigns one, so it still refuses; when mutable `let`
--- lowers (a later D1 slice, a JS `let` + assignment), it flips from `unsupported` to a
--- print with no edit.
+-- non-tail `match` as a value; D1(xiii) PAST multi-clause `def`s; D1(xiv) PAST reassignment
+-- of a `mut` binding (see compile_reassign_test). The frontier now sits at ATOM literals.
+-- This file uses one, so it still refuses; when atom literals lower (a later D1 slice, a
+-- `$atom`-tagged value), it flips from `unsupported` to a print with no edit.
 
 def main(): Effect [io] ()
-  let mut x = 1
-  x = x + 5
-  println(x)
+  let c = :red
+  println(c)

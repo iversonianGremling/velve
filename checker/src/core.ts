@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xiii) multi-clause): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit);
+// SCOPE (through D1(xiv) reassignment): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -33,8 +33,9 @@
 // `Cond` (D1(xi)) and the value-position `match` decision-spine reified by a `Block`
 // IIFE (D1(xii)); and MULTI-CLAUSE `def`s — clause dispatch over the parameter patterns,
 // compiled to one JS `function` whose body is a `match`-on-the-arguments decision-spine
-// (D1(xiii)). Reassignment (`mut`), atom/duration literals, and `Perform` (effects) are
-// next (D1(xiv)+, D2).
+// (D1(xiii)); and REASSIGNMENT of a `mut` binding — a `let mut` lowers to a JS `let`, a
+// bare `x = e` to an assignment yielding Unit (D1(xiv)). Field/index assignment (`SAssign`),
+// loops, atom/duration literals, and `Perform` (effects) are next (D1(xv)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
 
@@ -82,7 +83,8 @@ export type IRComp =
 // safety net, not a path the differential harness ever exercises.
 export type IRExpr =
   | { k: "Ret"; atom: IRAtom }                          // tail / trivial return
-  | { k: "Let"; name: string; comp: IRComp; body: IRExpr }
+  | { k: "Let"; name: string; comp: IRComp; body: IRExpr; mut?: boolean } // `mut` ⇒ a reassignable JS `let`
+  | { k: "Assign"; name: string; comp: IRComp; body: IRExpr } // reassign an existing `mut` binding (yields Unit)
   | { k: "If"; cond: IRAtom; then: IRExpr; else_: IRExpr }
   | { k: "Fail"; msg: string };                         // non-exhaustive fall-through
 
@@ -324,13 +326,23 @@ class Lowering {
     const last = rest.length === 0;
     switch (head.tag) {
       case "SBind": {
-        if (!head.declares) throw new CompileUnsupported("reassignment (D1 later)");
-        const name = patName(head.pat);
         const c = this.normComp(head.value, scope);
+        if (!head.declares) {
+          // Reassignment `x = e` (D1(xiv)): eval mutates the existing binding (env.set)
+          // and yields Unit. Only a simple variable already in scope reaches here — a
+          // field/index target is a separate `SAssign` (still frontier). The target must
+          // have been declared `mut` (a reassignable JS `let`); the checker guarantees it.
+          const target = patName(head.pat);
+          if (!scope.has(target)) throw new CompileUnsupported(`reassignment of unbound '${target}'`);
+          const cont = last ? RET_UNIT : this.block(rest, scope);   // a reassignment adds no binding
+          return wrap(c.binds, { k: "Assign", name: target, comp: c.comp, body: cont });
+        }
+        const name = patName(head.pat);
         const next = new Set(scope); next.add(name);
-        // A trailing `let` makes the block's value Unit (it binds, yields nothing).
+        // A trailing `let` makes the block's value Unit (it binds, yields nothing). A
+        // `mut` declaration lowers to a JS `let` so a later reassignment is legal.
         const cont = last ? RET_UNIT : this.block(rest, next);
-        return wrap(c.binds, { k: "Let", name, comp: c.comp, body: cont });
+        return wrap(c.binds, { k: "Let", name, comp: c.comp, mut: head.mutable, body: cont });
       }
       case "SExpr": {
         if (last) return this.tail(head.expr, scope);

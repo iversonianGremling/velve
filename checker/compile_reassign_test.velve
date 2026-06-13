@@ -1,0 +1,29 @@
+@edition "2026.6"
+
+-- D1(xiv) green fixture — reassignment of a `mut` binding. eval mutates the existing
+-- binding (env.set) and yields Unit; the compiler lowers a `let mut` to a reassignable JS
+-- `let` and a bare `x = e` to an assignment statement. Covers a numeric accumulator
+-- reassigned twice (each reading its own old value), a string accumulator built up with
+-- `++`, and a reassignment whose RHS is a conditional value. Byte-identical to eval.
+
+def main(): Effect [io] ()
+  let mut x = 1
+  x = x + 5
+  x = x * 2
+  println(x)              -- 12  : two reassignments, each reading the old x
+
+  let mut s = "a"
+  s = s ++ "b"
+  s = s ++ "c"
+  println(s)              -- abc : string accumulator
+
+  let mut total = 100
+  let bonus = if total > 50 then 5 else 0
+  total = total + bonus
+  println(total)          -- 105 : reassignment from a conditional value
+
+  let mut n = 10
+  n = n - 1
+  n = n - 1
+  n = n - 1
+  println(n)              -- 7   : repeated decrement
