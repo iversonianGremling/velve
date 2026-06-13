@@ -1,24 +1,26 @@
 @edition "2026.6"
 
--- D1(ix) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it uses the short-circuit boolean `&&`. eval evaluates it (lazy
--- in the right operand); the compute spine only lowers the STRICT arithmetic/comparison
--- PrimOps, and `&&`/`||`/`|>` need control flow (lazy evaluation of the second operand,
--- or a first-class pipeline) the lowerer does not yet emit — so `BinOp '&&'` is refused.
--- The differential harness must report it `unsupported` — a CLEAN refusal at the
--- compiler frontier — never a miscompile, never a JS crash.
+-- D1(x) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it uses an `if` as a VALUE in non-tail position (`let x = if …`).
+-- The lowerer handles `if` only in TAIL position (the `If`/`Ret` decision-spine); as the
+-- RHS of a `let` it reaches `normComp`'s default and is refused — a mid-expression `if`
+-- needs a value-producing conditional (the same `Cond` short-circuit `&&`/`||` now use,
+-- generalized to arbitrary branch values). The differential harness must report it
+-- `unsupported` — a CLEAN refusal at the compiler frontier — never a miscompile.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
 -- yet lower, loudly", asserted by the harness rather than by an error count. D1(ii)
 -- moved the frontier PAST scalar `match`; D1(iii) PAST tuples; D1(iv) PAST ADT
 -- constructors; D1(v) PAST records; D1(vi) PAST lists; D1(vii) PAST closures-as-values;
--- D1(viii) PAST first-class `def` references; D1(ix) PAST first-class BUILTIN references
--- — a builtin bound, passed, and displayed `<fn:name>` (see compile_builtinref_test).
--- The frontier now sits at SHORT-CIRCUIT booleans — `&&` (and its kin `||`, `|>`). This
--- file uses one, so it still refuses; when short-circuit lowering lands (a later D1
--- slice, as a lazy `if`), it flips from `unsupported` to a print with no edit.
+-- D1(viii) PAST first-class `def` references; D1(ix) PAST first-class BUILTIN references;
+-- D1(x) PAST short-circuit `&&`/`||` (lazy, lowered to a `Cond`; see
+-- compile_shortcircuit_test). (Pipe `|>` was never a frontier — it desugars to a
+-- saturated `Call`, e.g. `5 |> double` ≡ `double(5)`, and has compiled since D1(i).) The
+-- frontier now sits at NON-TAIL `if` AS A VALUE. This file uses one, so it still refuses;
+-- when value-position `if` lowers (a later D1 slice, reusing `Cond`), it flips from
+-- `unsupported` to a print with no edit.
 
 def main(): Effect [io] ()
-  let b = true && false
-  println(b)
+  let x = if 3 > 2 then 10 else 20
+  println(x)

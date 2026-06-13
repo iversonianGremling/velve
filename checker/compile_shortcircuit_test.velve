@@ -1,0 +1,34 @@
+@edition "2026.6"
+
+-- D1(x) green fixture — short-circuit `&&` / `||`. These are LAZY in the right operand
+-- (eval returns false/true without touching the right when the left decides it), so they
+-- lower NOT to a strict PrimOp but to a value-producing conditional `Cond` — `a && b` ≡
+-- `if a then b else false`, `a || b` ≡ `if a then true else b` — emitted as a JS ternary,
+-- itself short-circuit. The load-bearing test is `guard`: the right operand `100 / n > 9`
+-- would DIVIDE BY the guarded value, so eager evaluation when `n == 0` would diverge from
+-- eval; laziness keeps both columns byte-identical. Also covers a `&&` nested inside a
+-- function argument (the `Cond` composes like any comp) and chained `&&`/`||`.
+
+def both(a: Bool, b: Bool): Bool
+  a && b
+
+def either(a: Bool, b: Bool): Bool
+  a || b
+
+-- the right operand divides by n — only safe because `&&` is lazy when n == 0
+def guard(n: Number): Bool
+  n != 0 && 100 / n > 9
+
+def chain(a: Bool, b: Bool, c: Bool): Bool
+  a && b || c
+
+def main(): Effect [io] ()
+  println(both(true, false))       -- false
+  println(both(true, true))        -- true
+  println(either(false, true))     -- true
+  println(either(false, false))    -- false
+  println(guard(0))                -- false : right operand NOT evaluated (no div-by-zero)
+  println(guard(5))                -- true  : 100/5 = 20 > 9
+  println(guard(20))               -- false : 100/20 = 5, not > 9
+  println(chain(true, false, true))-- true  : (true && false) || true
+  println(both(guard(0), true))    -- false : a `&&`-value nested as an argument

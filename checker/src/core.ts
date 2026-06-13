@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(ix) function references): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
+// SCOPE (through D1(x) short-circuit): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -23,12 +23,14 @@
 // `<fn:<lambda>>` (D1(vii)); and FIRST-CLASS FUNCTION REFERENCES — a named `def` OR a
 // whitelisted builtin mentioned without calling it becomes a value (the JS
 // `function`/prelude `const` is itself a value), bound/passed/returned/called like any
-// closure and displayed `<fn:name>` (D1(viii) defs, D1(ix) builtins).
+// closure and displayed `<fn:name>` (D1(viii) defs, D1(ix) builtins); and SHORT-CIRCUIT
+// `&&`/`||` — lazy in the right operand, lowered to a value-producing `Cond` (D1(x)).
+// (Pipe `|>` desugars to a saturated `Call` upstream, so it has compiled since D1(i).)
 // The supported ctor names are the module's own `type … = | …` variants plus the core
 // data ctors eval defines globally (Ok/Error/Some/None). Everything else is refused
 // LOUDLY via CompileUnsupported — the frontier is explicit, never a silent miscompile.
-// Short-circuit `&&`/`||`/`|>`, destructuring `let`/params, `Perform` (effects), and
-// non-tail `if` joins are next (D1(x)+, D2).
+// Non-tail `if`/`match` AS A VALUE, destructuring `let`/params, and `Perform` (effects)
+// are next (D1(xi)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch } from "./ast.js";
 
@@ -63,7 +65,8 @@ export type IRComp =
   | { k: "Field"; obj: IRAtom; field: string }         // read a named field
   | { k: "List"; elems: IRAtom[] }                     // build a sequence (display `[a, b, …]`)
   | { k: "Index"; obj: IRAtom; index: IRAtom }         // read element `index` of a list
-  | { k: "Lambda"; params: string[]; body: IRExpr };   // an anonymous closure value — captures by lexical scope
+  | { k: "Lambda"; params: string[]; body: IRExpr }    // an anonymous closure value — captures by lexical scope
+  | { k: "Cond"; cond: IRAtom; then: IRExpr; else_: IRExpr }; // a value-producing conditional — the lazy `if` short-circuit `&&`/`||` lower to
 // Perform — D2.
 
 // Expressions — the ANF spine. `Match` does NOT survive into the IR: D1(ii) lowers
@@ -343,9 +346,25 @@ class Lowering {
         throw new CompileUnsupported(`free variable '${e.name}'`);
       }
       case "BinOp": {
-        // Short-circuit `&&`/`||` and pipe `|>` need control flow / first-class fns;
-        // they join in a later slice. Arithmetic/comparison/equality/`++` are pure
-        // strict PrimOps.
+        // Short-circuit `&&`/`||` (D1(x)) are LAZY in the right operand — eval returns
+        // `false`/`true` without touching the right when the left decides it (eval.ts
+        // evalBinOp). So they are NOT strict PrimOps: `a && b` ≡ `if a then b else false`,
+        // `a || b` ≡ `if a then true else b`. The left normalizes to an atom (always
+        // evaluated); the right lowers to a value-`IRExpr` placed in ONE branch of a
+        // `Cond`, so emitjs emits it inside a ternary branch and it runs only when
+        // reached. A `Cond` is an ordinary comp, so a `&&` nested in an argument/operand
+        // composes for free. (Pipe `|>` needs first-class application — still frontier.)
+        if (e.op === "&&" || e.op === "||") {
+          const l = this.norm(e.left, scope);
+          const right = this.tail(e.right, new Set(scope));   // the lazy operand, as a value-expr
+          const T: IRExpr = { k: "Ret", atom: { k: "Lit", lit: { t: "Bool", v: true } } };
+          const F: IRExpr = { k: "Ret", atom: { k: "Lit", lit: { t: "Bool", v: false } } };
+          const comp: IRComp = e.op === "&&"
+            ? { k: "Cond", cond: l.atom, then: right, else_: F }
+            : { k: "Cond", cond: l.atom, then: T, else_: right };
+          return { binds: l.binds, comp };
+        }
+        // Arithmetic/comparison/equality/`++` are pure strict PrimOps.
         if (!ARITH.has(e.op)) throw new CompileUnsupported(`operator '${e.op}' (D1 later)`);
         const l = this.norm(e.left, scope), r = this.norm(e.right, scope);
         return { binds: [...l.binds, ...r.binds], comp: { k: "PrimOp", op: e.op, args: [l.atom, r.atom] } };

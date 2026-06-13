@@ -84,7 +84,21 @@ function comp(c: IRComp): string {
     // displays every lambda as `<fn:<lambda>>` regardless of binding. `$show` then reads
     // `.name`: empty ⇒ `<lambda>` (a lambda), set ⇒ the def's name (a `def` reference).
     case "Lambda": return `$lam((${c.params.join(", ")}) => {\n${body(c.body, "    ")}\n  })`;
+    // A value-producing conditional (the lazy `if` short-circuit `&&`/`||` lower to). A
+    // JS ternary is itself short-circuit — the untaken branch is never evaluated — so a
+    // `&&`/`||`'s right operand runs only when the left lets control reach it, matching
+    // eval's laziness. A trivial branch (just a `Ret`) emits as its atom; a branch with
+    // its own `Let`/`If` spine wraps in an arrow-IIFE returning the value.
+    case "Cond": return `(${atom(c.cond)} ? ${exprValue(c.then)} : ${exprValue(c.else_)})`;
   }
+}
+
+// Emit an IRExpr as a single JS *expression* yielding its value — for a `Cond` branch.
+// A bare `Ret` is just its atom; anything with a statement spine (`Let`/`If`) becomes an
+// arrow-IIFE so the value is produced lazily, only when the ternary selects this branch.
+function exprValue(e: IRExpr): string {
+  if (e.k === "Ret") return atom(e.atom);
+  return `(() => {\n${body(e, "    ")}\n  })()`;
 }
 
 // Emit a function body as a block of statements terminating in a `return`.

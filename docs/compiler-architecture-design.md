@@ -593,8 +593,24 @@ infers `.name === "int"` (identical for calls, faithful for the value). Harness:
 <fn:floor>`), no corpus flip, the `int` rewrite perturbed no `int`-calling program. The
 frontier twin rolled to a **short-circuit `&&`** (`true && false` — eval is lazy; the spine
 lowers only strict PrimOps, `&&`/`||`/`|>` need control flow) and still refuses.
-**Remaining for D1(x)+**: short-circuit `&&`/`||`/`|>`; non-tail match value; then `Perform`
-in D2.
+
+**D1(x) shipped (2026-06) — short-circuit `&&`/`||` (the frontier twin flips again).** `&&`
+and `||` are now lowered, and crucially LAZY in the right operand (eval returns `false`/`true`
+without evaluating the right when the left decides it). `a && b` ≡ `if a then b else false`,
+`a || b` ≡ `if a then true else b`. New IR comp `Cond` (a value-producing conditional): the
+left is an atom, each branch a value-`IRExpr`; emitjs emits a **JS ternary** (itself
+short-circuit), a non-trivial branch wrapped in an arrow-IIFE so its spine runs only when
+selected. `Cond` is an ordinary comp, so a `&&` nested in an argument/operand composes for
+free. Laziness is verified under a guard — `guard(n) = n != 0 && 100 / n > 9` puts the
+division inside the then-branch, so `guard(0)` is `false` with no div-by-zero, byte-identical
+to eval. Harness: **26 match / 0 mismatch / 0 js-crash / 114 unsupported** (245 files) — +1
+match (fixture `compile_shortcircuit_test.velve`), no corpus flip. Forecast corrected: pipe
+`|>` was never a frontier — it desugars to a saturated `Call` (`5 |> double` ≡ `double(5)`)
+and has compiled since D1(i). The frontier twin rolled to a **non-tail `if` as a value**
+(`let x = if …` — `if` lowers in tail position only; as a `let` RHS it reaches `normComp`'s
+default) and still refuses.
+**Remaining for D1(xi)+**: non-tail `if`/`match` as a value (reuse `Cond`); destructuring
+`let`/params; then `Perform` in D2.
 
 ---
 

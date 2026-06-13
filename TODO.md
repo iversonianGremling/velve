@@ -1039,6 +1039,29 @@ dimension machinery generalize?
   untouched; no graded row moves (still partial). **Next: D1(x)** — short-circuit `&&`/`||` (lowered to a
   lazy `if`), then `|>` — still pre-effect.
 
+- [x] 🟢 **Phase D1(x) — short-circuit `&&`/`||` compile (the frontier twin flips again) — DONE 2026-06**
+  (`core.ts` `Cond` IR comp + `&&`/`||` lowering in `normComp` BinOp; `emitjs.ts` `Cond`→JS ternary +
+  `exprValue` IIFE helper; `compile_shortcircuit_test.velve`). The value D1(ix)'s guardrail was holding.
+  `&&`/`||` are now lowered and crucially **LAZY** in the right operand (eval returns false/true without
+  evaluating the right when the left decides it), so they are NOT strict PrimOps: `a && b` ≡ `if a then b
+  else false`, `a || b` ≡ `if a then true else b`. The new IR comp `Cond` (value-producing conditional)
+  carries the left as an atom + each branch as a value-`IRExpr`; emitjs emits a **JS ternary** (itself
+  short-circuit) with a non-trivial branch wrapped in an arrow-IIFE, so the right operand's spine runs
+  ONLY when control reaches that branch. `Cond` is an ordinary comp ⇒ a `&&` nested in an
+  argument/operand composes for free. **Load-bearing laziness test:** `guard(n) = n != 0 && 100 / n > 9`
+  compiles so the division sits INSIDE the ternary then-branch — `guard(0)` prints `false` with no
+  div-by-zero, byte-identical to eval (eager ANF evaluation would have diverged). Green
+  `compile_shortcircuit_test` (both/either, the divide-guard at 0/5/20, chained `a && b || c`, a
+  `&&`-value passed as an argument) byte-identical to eval (9 lines). **A forecast corrected:** pipe `|>`
+  was NEVER a frontier — it desugars to a saturated `Call` upstream (`5 |> double` ≡ `double(5)`) and has
+  compiled since D1(i); verified. So the frontier twin `compile_frontier_test` ROLLED
+  short-circuit→**non-tail `if` as a value** (`let x = if …` — the lowerer handles `if` in tail position
+  only; as a `let` RHS it reaches `normComp`'s default and refuses) — next unrepresented form — still
+  exit 2. **No pre-existing corpus file flipped.** Harness: **26 match / 0 mismatch / 0 js-crash / 114
+  unsupported** across 245 files (+1 match = fixture; unsupported unchanged). SPEC untouched; no graded
+  row moves (still partial). **Next: D1(xi)** — non-tail `if`/`match` as a value (reusing `Cond`) — still
+  pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

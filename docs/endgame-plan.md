@@ -698,6 +698,31 @@ exists (`compiler-architecture-design.md`).
     rewrite perturbed no `int`-calling program (0 mismatch). SPEC untouched; no graded row
     moves (still partial). Next: **D1(x)** = short-circuit `&&`/`||` (lowered to a lazy
     `if`), then `|>` — still pre-effect.
+  - **D1(x) — short-circuit `&&`/`||` compile (the frontier twin flips again) — DONE
+    2026-06.** The value D1(ix)'s guardrail was holding. `&&` and `||` are now lowered —
+    and crucially they are **LAZY** in the right operand (eval returns `false`/`true`
+    without evaluating the right when the left decides it), so they are NOT strict
+    PrimOps. `a && b` ≡ `if a then b else false`, `a || b` ≡ `if a then true else b`. The
+    new IR computation `Cond` (a value-producing conditional) carries the left as an atom
+    and each branch as a value-`IRExpr`; emitjs emits it as a **JS ternary**, itself
+    short-circuit, so the right operand's spine (wrapped in an arrow-IIFE when it has its
+    own `Let`s) runs only when control reaches that branch. Because `Cond` is an ordinary
+    comp, a `&&` nested inside a function argument or another operand composes for free.
+    The load-bearing test is laziness under a guard: `guard(n) = n != 0 && 100 / n > 9`
+    compiles so the division sits **inside** the ternary's then-branch — `guard(0)` prints
+    `false` with no div-by-zero, byte-identical to eval (eager ANF evaluation would have
+    diverged). Green fixture `compile_shortcircuit_test.velve` (both/either, the divide
+    guard at 0/5/20, a chained `a && b || c`, and a `&&`-value passed as an argument)
+    compiles byte-identically across 9 lines. **A forecast corrected:** pipe `|>` was
+    never a frontier — it desugars to a saturated `Call` upstream (`5 |> double` ≡
+    `double(5)`) and has compiled since D1(i); verified. So the frontier twin
+    `compile_frontier_test.velve` rolled to a **non-tail `if` as a value** (`let x = if …`
+    — the lowerer handles `if` in tail position only; as a `let` RHS it reaches
+    `normComp`'s default and refuses) — the next unrepresented form — still exit 2. No
+    pre-existing corpus file flipped. Harness: **26 match, 0 mismatch, 0 js-crash**, 114
+    unsupported (245 files) — +1 match (the fixture), unsupported unchanged. SPEC
+    untouched; no graded row moves (still partial). Next: **D1(xi)** = non-tail `if`/`match`
+    as a value (reusing `Cond`) — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,
