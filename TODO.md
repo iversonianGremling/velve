@@ -1242,6 +1242,31 @@ dimension machinery generalize?
   the `loop` construct (`while`-style iteration with `break`/`continue`) — the last pure-compute frontier
   before the D2 effects wall.
 
+- [x] 🟢 **Phase D1(xx) — the `loop` construct compiles (the pure-compute surface closes) — DONE
+  2026-06** (`core.ts` new `Loop` IRComp + `Break`/`Continue` IRExpr nodes + `Loop` case in `normComp` +
+  new `loopBlock`/`loopBranch` CPS pass; `emitjs.ts` `Loop` emit + `loopBody` statement-mode emitter +
+  `Break`/`Continue` guards in `body`; `compile_loop_test.velve`). The `loop` guardrail D1(xix) left was
+  holding. An unbounded imperative loop now lowers: eval runs the body forever in one shared env (a `mut`
+  declared outside persists and mutates across iterations), `break` escapes, `continue` re-iterates,
+  falling off the end loops again. The compiler emits a `Loop` as an IIFE around a labeled `while (true)`
+  returning a break value (bare `break` leaves the `$unit` default); the body is lowered by a CPS pass
+  that threads the "iterate again" terminator (`RET_UNIT`, emitted as a fall-through) INTO each branch —
+  so a `break`/`continue` buried in an `if` becomes real labeled control flow (a value-position `Cond`
+  could not express it). The per-loop IIFE scopes the `$loop` label, so nested loops never collide;
+  `return` inside a loop refuses (it escapes the def, not the loop). Green `compile_loop_test` (counting
+  break-loop; `continue` skipping evens; **nested loops**; loop mutating a list in place via index-assign)
+  byte-identical to eval (`10` / `9` / `9` / `[2,4,6]`). (`loop` is statement-position only — not a
+  `let`-RHS — and `break` is bare in compilable contexts; the surface rejects break-with-value where
+  tried, so the loop's value is always discarded-then-Unit. The `$r` machinery stays correct for that and
+  is simply never exercised.) The frontier twin `compile_frontier_test` ROLLED loop→**TYPE TEST**
+  (`r is Ok(v)` — a runtime tag check binding the payload; `TypeTest` hits `normComp`'s `default`) — next
+  unrepresented form — still exit 2. **No pre-existing corpus file flipped** (every corpus `loop` is
+  entangled with `await`, still refused). Harness: **42 match / 0 mismatch / 0 js-crash / 108 unsupported**
+  across 255 files (+1 match = fixture; unsupported unchanged). SPEC untouched; no graded row moves (still
+  partial). **The pure value / literal / control-flow / data / imperative-loop surface is now fully
+  compiled.** **Next: D1(xxi)** — type tests (`e is Ctor(b)` — tag compare + payload bind), then the D2
+  effects wall (`Perform`/`await`).
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

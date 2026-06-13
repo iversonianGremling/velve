@@ -104,6 +104,30 @@ function comp(c: IRComp): string {
     // An integer range (D1(xviii)) — a `$range` fill producing the same `$list` value a
     // literal `[…]` builds (eval's VList-of-VNum). `inclusive` picks `..=` vs `..`.
     case "Range": return `$range(${atom(c.from)}, ${atom(c.to)}, ${c.inclusive})`;
+    // An unbounded loop (D1(xx)) — an IIFE around a labeled `while (true)`. `break v` sets the
+    // result `$r` and labeled-breaks out; bare `break` leaves `$r` at its `$unit` default;
+    // `continue` re-iterates; falling off the body's end re-iterates too (the `while (true)`).
+    // The IIFE scopes `$r`/`$loop` per loop, so nested loops (each its own IIFE) never collide.
+    case "Loop": return `(() => {\n  let $r = $unit;\n  $loop: while (true) {\n${loopBody(c.body, "    ")}  }\n  return $r;\n})()`;
+  }
+}
+
+// Emit a loop BODY in statement mode. Differs from `body()` in three node kinds: a `Ret`
+// (control fell off the body) emits nothing — the `while (true)` simply re-iterates and the
+// trailing value is discarded, as eval discards each iteration's block value; a `Break` sets
+// `$r` (when it carries a value) and labeled-breaks; a `Continue` labeled-continues. The
+// structural nodes (`Let`/`Assign`/`IndexSet`/`If`/`Fail`) emit as in `body()` but recurse
+// through `loopBody` so a nested `break`/`continue` stays in loop-statement mode.
+function loopBody(e: IRExpr, indent: string): string {
+  switch (e.k) {
+    case "Ret": return "";
+    case "Break": return e.value !== null ? `${indent}$r = ${atom(e.value)};\n${indent}break $loop;\n` : `${indent}break $loop;\n`;
+    case "Continue": return `${indent}continue $loop;\n`;
+    case "Let": return `${indent}${e.mut ? "let" : "const"} ${e.name} = ${comp(e.comp)};\n${loopBody(e.body, indent)}`;
+    case "Assign": return `${indent}${e.name} = ${comp(e.comp)};\n${loopBody(e.body, indent)}`;
+    case "IndexSet": return `${indent}${atom(e.obj)}.es[${atom(e.index)}] = ${atom(e.value)};\n${loopBody(e.body, indent)}`;
+    case "If": return `${indent}if (${atom(e.cond)}) {\n${loopBody(e.then, indent + "  ")}${indent}} else {\n${loopBody(e.else_, indent + "  ")}${indent}}\n`;
+    case "Fail": return `${indent}throw new Error(${JSON.stringify(e.msg)});\n`;
   }
 }
 
@@ -147,6 +171,11 @@ function body(e: IRExpr, indent: string): string {
       return `${indent}${atom(e.obj)}.es[${atom(e.index)}] = ${atom(e.value)};\n${body(e.body, indent)}`;
     case "If":
       return `${indent}if (${atom(e.cond)}) {\n${body(e.then, indent + "  ")}\n${indent}} else {\n${body(e.else_, indent + "  ")}\n${indent}}`;
+    case "Break":
+    case "Continue":
+      // `break`/`continue` only arise inside a loop body, which `loopBody` (not `body`) emits.
+      // Reaching here means a loop node leaked into value/def-body position — a lowering bug.
+      throw new Error(`${e.k} outside a loop body`);
     case "Fail":
       // The non-exhaustive fall-through. Unreachable on check-passing programs (the
       // `exhaust` pass guarantees coverage); emitted as a hard throw so a future

@@ -1,12 +1,12 @@
 @edition "2026.6"
 
--- D1(xix) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it uses a `loop` (an unbounded imperative loop exited by `break`).
--- eval runs the body repeatedly, mutating the `mut` counter/accumulator, until a `break`
--- escapes; the loop is Unit-typed and the result comes from the accumulator read after it.
--- The compute spine has no loop lowering — `tail`/`block` reach the `Loop` AST node (and
--- `break`/`continue` are their own nodes) and refuse it. The differential harness must
--- report it `unsupported` — a CLEAN refusal at the compiler frontier, never a miscompile.
+-- D1(xx) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it uses a TYPE TEST (`r is Ok(v)` — a runtime tag check that also
+-- binds the matched payload). eval evaluates the subject and returns a Bool from its
+-- constructor tag (binding the payload in the `then` scope); the compute spine has no
+-- type-test lowering — `normComp`/`norm` reach the `TypeTest` AST node and refuse it (the
+-- `default` arm of `normComp`). The differential harness must report it `unsupported` — a
+-- CLEAN refusal at the compiler frontier, never a miscompile.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
@@ -17,21 +17,18 @@
 -- D1(x) PAST short-circuit `&&`/`||`; D1(xi) PAST non-tail `if` as a value; D1(xii) PAST
 -- non-tail `match` as a value; D1(xiii) PAST multi-clause `def`s; D1(xiv) PAST reassignment;
 -- D1(xv) PAST atom literals; D1(xvi) PAST duration literals; D1(xvii) PAST `for`
--- comprehensions; D1(xviii) PAST integer ranges; D1(xix) PAST INDEX ASSIGNMENT (`xs[i] = v`,
--- an in-place list-element write; see compile_assign_test). The frontier now sits at the
--- `loop` construct. This file uses one, so it still refuses; when loops lower (a later D1
--- slice, a JS `while (true)` with `break`/`continue`), it flips from `unsupported` to a print
--- with no edit.
+-- comprehensions; D1(xviii) PAST integer ranges; D1(xix) PAST index assignment; D1(xx) PAST
+-- the `loop` construct (`loop … break`/`continue`; see compile_loop_test). The frontier now
+-- sits at TYPE TESTS (`e is Ctor(binder)`). This file uses one, so it still refuses; when
+-- type tests lower (a later D1 slice, a tag compare + payload bind), it flips from
+-- `unsupported` to a print with no edit.
 
-def sumTo(n: Number): Number
-  mut i = 0
-  mut total = 0
-  loop
-    if i >= n
-      break
-    total = total + i
-    i = i + 1
-  total
+def describe(r: Result(Number, String)): String
+  if r is Ok(v)
+    "got {v}"
+  else
+    "err"
 
 def main(): Effect [io] ()
-  println(sumTo(5))
+  println(describe(Ok(5)))
+  println(describe(Error("bad")))

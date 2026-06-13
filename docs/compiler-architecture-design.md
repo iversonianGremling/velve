@@ -725,8 +725,25 @@ eval's `Field` branch is defensive/unreachable), so the slice is list-index only
 `compile_assign_test.velve`, byte-identical across literal / computed / read-modify-write / aliasing
 cases — `let mut ys = xs` shares the list, both writes see it, matching eval), no corpus flip. The
 frontier twin rolled to the **`loop` construct** (`loop … break` — the spine has no loop lowering).
-**Remaining for D1(xx)+**: the `loop` construct (`while`-style iteration with `break`/`continue`);
-then `Perform` in D2.
+
+**D1(xx) shipped (2026-06) — the `loop` construct (the pure-compute surface closes).** An unbounded
+imperative loop now lowers. eval runs the body forever in one shared env (a `mut` declared outside
+persists and mutates across iterations), `break` escapes, `continue` re-iterates, falling off the end
+loops again. The compiler adds a `Loop` IRComp (an IIFE around a labeled `while (true)` returning a
+break value — bare `break` leaves the `$unit` default) plus `Break`/`Continue` IR nodes, and a new CPS
+pass `loopBlock`/`loopBranch` that threads the "iterate again" terminator INTO each branch — so a
+`break`/`continue` buried in an `if` becomes real labeled control flow (a value-position `Cond` can't
+express it). The per-loop IIFE scopes the `$loop` label, so nested loops never collide; `return` inside
+a loop refuses (it escapes the def, not the loop). Harness: **42 match / 0 mismatch / 0 js-crash / 108
+unsupported** (255 files) — +1 match (fixture `compile_loop_test.velve`, byte-identical across a counting
+break-loop / a `continue` skipping evens / nested loops / a loop mutating a list in place), no corpus
+flip (every corpus `loop` is entangled with `await`, still refused). `loop` is statement-position only
+and `break` is bare in compilable contexts, so the loop's value is always the discarded-then-Unit case;
+the `$r` machinery stays correct for it and is simply never exercised. The frontier twin rolled to a
+**TYPE TEST** (`r is Ok(v)` — a runtime tag check binding the payload; `TypeTest` hits `normComp`'s
+`default`). **The pure value / literal / control-flow / data / imperative-loop surface is now fully
+compiled.**
+**Remaining for D1(xxi)+**: type tests (`e is Ctor(b)`); then the D2 effects wall (`Perform`/`await`).
 
 ---
 

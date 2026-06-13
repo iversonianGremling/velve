@@ -914,6 +914,30 @@ exists (`compiler-architecture-design.md`).
     108 unsupported (254 files) — +1 match (the fixture), unsupported unchanged. SPEC untouched; no graded
     row moves (still partial). Next: **D1(xx)** = the `loop` construct (`while`-style iteration with
     `break`/`continue`) — the last pure-compute frontier before the D2 effects wall.
+  - **D1(xx) — the `loop` construct compiles (the pure-compute surface closes) — DONE 2026-06.**
+    The `loop` guardrail D1(xix) left was holding. An unbounded imperative loop now lowers: eval runs
+    the body forever in one shared env (so a `mut` declared outside persists and mutates across
+    iterations), `break` escapes, `continue` re-iterates, and falling off the body's end loops again.
+    The compiler adds a `Loop` IRComp (emitted as an IIFE around a labeled `while (true)` returning a
+    break value — bare `break` leaves the `$unit` default) plus `Break`/`Continue` IR nodes. The body
+    is lowered by a new CPS pass `loopBlock`/`loopBranch` that threads the "iterate again" terminator
+    (`RET_UNIT`, emitted as a fall-through) INTO each branch — so a `break`/`continue` buried in an `if`
+    becomes real labeled control flow, which a value-position `Cond` could not express. The per-loop
+    IIFE scopes the `$loop` label, so nested loops never collide. `return` inside a loop refuses (it
+    escapes the def, not the loop — a later slice). Green fixture `compile_loop_test.velve` (a counting
+    break-loop; a `continue` that skips evens; **nested loops**; and a loop that mutates a list in place
+    via index-assignment) compiles **byte-identically** to eval (`10` / `9` / `9` / `[2,4,6]`). (`loop`
+    is statement-position only — it cannot be a `let`-RHS — and `break` is bare in the compilable
+    contexts; the surface rejects break-with-value where I tried it, so the loop's value is always the
+    discarded-then-Unit case. The `$r` break-value machinery stays correct for that and is simply never
+    exercised.) The frontier twin rolled to a **TYPE TEST** (`r is Ok(v)` — a runtime tag check that
+    binds the payload; the spine has no type-test lowering, `TypeTest` hits `normComp`'s `default`) —
+    the next unrepresented form, the first pure remainder past the loop — still exit 2. **No pre-existing
+    corpus file flipped** (every corpus `loop` is entangled with `await`, which still refuses). Harness:
+    **42 match, 0 mismatch, 0 js-crash**, 108 unsupported (255 files) — +1 match (the fixture),
+    unsupported unchanged. SPEC untouched; no graded row moves (still partial). **The pure value /
+    literal / control-flow / data / imperative-loop surface is now fully compiled.** Next: **D1(xxi)** =
+    type tests (`e is Ctor(b)` — tag compare + payload bind), then the D2 effects wall (`Perform`/`await`).
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

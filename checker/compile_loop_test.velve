@@ -1,0 +1,65 @@
+@edition "2026.6"
+
+-- D1(xx): the `loop` construct compiles (an unbounded imperative loop with `break`/`continue`).
+-- eval runs the body forever in one shared env (so a `mut` declared outside persists and
+-- mutates across iterations), `break` escapes, `continue` jumps to the next iteration, and
+-- falling off the body re-iterates. The compiler lowers a `loop` to an IIFE around a labeled
+-- `while (true)`: `break` → `break $loop`, `continue` → `continue $loop`, fall-through →
+-- re-iterate. A loop-body `if` threads its continuation into each branch, so a `break`/
+-- `continue` buried in a branch becomes real labeled control flow — byte-identical to eval,
+-- asserted by the differential harness. Covers: a counting break-loop, a `continue` that
+-- skips evens, NESTED loops (each its own IIFE so the `$loop` label never collides), and a
+-- loop that mutates a list in place via index-assignment.
+
+def sumTo(n: Number): Number
+  mut i = 0
+  mut total = 0
+  loop
+    if i >= n
+      break
+    total = total + i
+    i = i + 1
+  total
+
+def sumOdds(n: Number): Number
+  mut i = 0
+  mut total = 0
+  loop
+    if i >= n
+      break
+    i = i + 1
+    if i % 2 == 0
+      continue
+    total = total + i
+  total
+
+def countPairs(n: Number): Number
+  mut count = 0
+  mut a = 0
+  loop
+    if a >= n
+      break
+    mut b = 0
+    loop
+      if b >= n
+        break
+      count = count + 1
+      b = b + 1
+    a = a + 1
+  count
+
+def doubleInPlace(xs: List(Number)): List(Number)
+  mut ys = xs
+  mut i = 0
+  loop
+    if i >= length(xs)
+      break
+    ys[i] = ys[i] * 2
+    i = i + 1
+  ys
+
+def main(): Effect [io] ()
+  println(sumTo(5))
+  println(sumOdds(6))
+  println(countPairs(3))
+  println(doubleInPlace([1, 2, 3]))

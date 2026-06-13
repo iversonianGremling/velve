@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xix) index-assign): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
+// SCOPE (through D1(xx) loops): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -43,8 +43,11 @@
 // producing the same `$list` a literal `[…]` builds (D1(xviii)); and INDEX ASSIGNMENT —
 // `xs[i] = v`, an in-place list-element write (`SAssign`), mutating the backing `.es` array
 // exactly as eval mutates `elems` (D1(xix); the surface has no record-field-assign form, and
-// a pointer `p.* = v` refuses). The `loop` construct (`while`-style imperative iteration with
-// `break`/`continue`) and `Perform` (effects) are next (D1(xx)+, D2).
+// a pointer `p.* = v` refuses); and the `loop` construct — an unbounded imperative loop
+// lowered to an IIFE around a labeled `while (true)`, with `break`/`continue` as real labeled
+// control flow and a CPS loop-body lowering that threads the "iterate again" terminator into
+// each branch (D1(xx)). TYPE TESTS (`e is Ctor(b)`), then `Perform`/`await` (effects) are next
+// (D1(xxi)+, D2 — the loop closes the pure-compute/control-flow surface before the effects wall).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
 
@@ -84,7 +87,8 @@ export type IRComp =
   | { k: "Cond"; cond: IRAtom; then: IRExpr; else_: IRExpr } // a value-producing conditional — the lazy `if` short-circuit `&&`/`||` lower to
   | { k: "Block"; body: IRExpr }                        // reify an arbitrary value-`IRExpr` (e.g. a `match` decision-spine) as a value
   | { k: "For"; clauses: IRForClause[]; body: IRExpr }  // a list comprehension — nested generators × filters building a list
-  | { k: "Range"; from: IRAtom; to: IRAtom; inclusive: boolean }; // an integer fill `from..to` (`..` exclusive, `..=` inclusive) → a list
+  | { k: "Range"; from: IRAtom; to: IRAtom; inclusive: boolean } // an integer fill `from..to` (`..` exclusive, `..=` inclusive) → a list
+  | { k: "Loop"; body: IRExpr };                        // an unbounded imperative loop — `break` escapes with a value, `continue` re-iterates
 // Perform — D2.
 
 // A lowered `for`-comprehension clause. A generator binds a simple name to each
@@ -108,6 +112,8 @@ export type IRExpr =
   | { k: "Assign"; name: string; comp: IRComp; body: IRExpr } // reassign an existing `mut` binding (yields Unit)
   | { k: "IndexSet"; obj: IRAtom; index: IRAtom; value: IRAtom; body: IRExpr } // `xs[i] = v` — in-place list-element write (yields Unit)
   | { k: "If"; cond: IRAtom; then: IRExpr; else_: IRExpr }
+  | { k: "Break"; value: IRAtom | null }                // escape the enclosing `loop` with a value (null ⇒ Unit)
+  | { k: "Continue" }                                   // skip to the enclosing `loop`'s next iteration
   | { k: "Fail"; msg: string };                         // non-exhaustive fall-through
 
 export interface IRFn { name: string; params: string[]; body: IRExpr }
@@ -397,6 +403,80 @@ class Lowering {
     }
   }
 
+  // A LOOP-BODY block (D1(xx)). Unlike `block`, which lowers a non-last `if` to a value
+  // `Cond` (a ternary), a loop body must thread its continuation INTO each branch so that a
+  // `break`/`continue` buried in a branch compiles to real labeled control flow rather than
+  // a value. `cont` is what runs when control falls off these statements — `RET_UNIT` at the
+  // top (which emitjs renders as "fall to the next `while (true)` iteration"), or, inside a
+  // branch, the statements that follow the `if`. A `break`/`continue` terminates the spine
+  // (the rest is dead). `return` inside a loop refuses — it escapes the def, not the loop,
+  // and the IIFE the loop emits to would catch it wrongly; a later slice. A `match` in a loop
+  // body rides the generic effect path (its value `Block` is discarded) — correct UNLESS an
+  // arm itself breaks/continues, which would mislower; the harness would catch that, and no
+  // such program is in range.
+  private loopBlock(stmts: Stmt[], scope: Set<string>, cont: IRExpr): IRExpr {
+    if (stmts.length === 0) return cont;
+    const head = stmts[0]!;
+    const rest = stmts.slice(1);
+    switch (head.tag) {
+      case "SBreak": {
+        if (head.value) { const v = this.norm(head.value, scope); return wrap(v.binds, { k: "Break", value: v.atom }); }
+        return { k: "Break", value: null };
+      }
+      case "SReturn":
+        throw new CompileUnsupported("`return` inside a loop");
+      case "SBind": {
+        const c = this.normComp(head.value, scope);
+        if (!head.declares) {
+          const target = patName(head.pat);
+          if (!scope.has(target)) throw new CompileUnsupported(`reassignment of unbound '${target}'`);
+          return wrap(c.binds, { k: "Assign", name: target, comp: c.comp, body: this.loopBlock(rest, scope, cont) });
+        }
+        const name = patName(head.pat);
+        const next = new Set(scope); next.add(name);
+        return wrap(c.binds, { k: "Let", name, comp: c.comp, mut: head.mutable, body: this.loopBlock(rest, next, cont) });
+      }
+      case "SAssign": {
+        const t = head.target;
+        if (t.tag !== "Index") throw new CompileUnsupported(`assignment target ${t.tag}`);
+        const v = this.norm(head.value, scope);
+        const o = this.norm(t.obj, scope);
+        const i = this.norm(t.index, scope);
+        return wrap([...v.binds, ...o.binds, ...i.binds], { k: "IndexSet", obj: o.atom, index: i.atom, value: v.atom, body: this.loopBlock(rest, scope, cont) });
+      }
+      case "SExpr":
+        return this.loopBranch(head.expr, scope, this.loopBlock(rest, scope, cont));
+    }
+  }
+
+  // Lower one loop-body branch/statement-expression with continuation `cont`. Handles the
+  // control-flow forms structurally (`break`/`continue`/`if`/`Do`) and threads `cont` into
+  // the fall-through paths; any other expression is evaluated for effect (its value bound to
+  // a discard temp) before `cont`. An `if` shares one `cont` across both branches — a branch
+  // that falls through reaches it, one that breaks/continues never does.
+  private loopBranch(e: Expr, scope: Set<string>, cont: IRExpr): IRExpr {
+    switch (e.tag) {
+      case "Break": {
+        if (e.value) { const v = this.norm(e.value, scope); return wrap(v.binds, { k: "Break", value: v.atom }); }
+        return { k: "Break", value: null };
+      }
+      case "Continue":
+        return { k: "Continue" };
+      case "Do":
+        return this.loopBlock(e.stmts, new Set(scope), cont);
+      case "If": {
+        const c = this.norm(e.cond, scope);
+        const then = this.loopBranch(e.then, new Set(scope), cont);
+        const els = e.else_ ? this.loopBranch(e.else_, new Set(scope), cont) : cont;
+        return wrap(c.binds, { k: "If", cond: c.atom, then, else_: els });
+      }
+      default: {
+        const c = this.normComp(e, scope);
+        return wrap(c.binds, { k: "Let", name: this.fresh(), comp: c.comp, body: cont });
+      }
+    }
+  }
+
   // Normalize an expression to an ATOM, accumulating the `Let`-able binds it needs.
   private norm(e: Expr, scope: Set<string>): { binds: Bind[]; atom: IRAtom } {
     if (e.tag === "Lit") return { binds: [], atom: { k: "Lit", lit: lowerLit(e.lit) } };
@@ -547,6 +627,18 @@ class Lowering {
         const inner = new Set(scope);
         for (const pn of params) inner.add(pn);
         return { binds: [], comp: { k: "Lambda", params, body: this.tail(e.body, inner) } };
+      }
+      case "Loop": {
+        // An unbounded imperative loop (D1(xx)). eval runs the body block forever, sharing
+        // one env so a `mut` declared OUTSIDE persists and mutates across iterations; a
+        // `break v` escapes (the loop's value is `v`, or Unit if bare), a `continue` jumps to
+        // the next iteration, and falling off the body's end re-iterates. The body lowers via
+        // `loopBlock`, a CPS block lowering that threads the "iterate again" terminator
+        // (`RET_UNIT`) into each branch — so a `break`/`continue` deep inside an `if` becomes
+        // real labeled control flow (a value-position `Cond` could not express it). emitjs
+        // wraps the result in an IIFE around a labeled `while (true)` returning the break value.
+        const body = this.loopBlock(e.stmts, new Set(scope), RET_UNIT);
+        return { binds: [], comp: { k: "Loop", body } };
       }
       case "Range": {
         // An integer range (D1(xviii)). eval requires both bounds to be numbers and fills
