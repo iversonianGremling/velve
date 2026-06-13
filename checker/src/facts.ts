@@ -59,6 +59,7 @@ import type { Module, Decl, Expr, Stmt, Pat, Branch, FnClause } from "./ast.js";
 import type { Span } from "./span.js";
 import type { Diagnostic, ResolutionMap } from "./resolve.js";
 import type { Type } from "./types.js";
+import { WITNESS_DEMANDS, boundsWitnessOf, type WitnessDemand } from "./infer.js";
 
 export type CmpOp = "==" | "!=" | "<" | "<=" | ">" | ">=";
 
@@ -119,7 +120,10 @@ function walkDecls(decls: Decl[], inNonZero: boolean, resolutions: ResolutionMap
 // and the callee must be THE BUILTIN (a user fn shadowing `length` is opaque
 // — the resolutions map distinguishes them); a `mut` list never carries
 // length facts, because a push under the fact would falsify it.
-export interface BoundsObligation { facts: Fact[]; index: Expr; obj: string; span: Span }
+// `witness` marks a Tier-1.5 relational-witness DEMAND (infer.ts): the
+// "index" is a call argument at a `Index(length(xs))`-shaped param, proved
+// against the CALLER's list — the same query, different error prose.
+export interface BoundsObligation { facts: Fact[]; index: Expr; obj: string; span: Span; witness?: string }
 
 export interface BoundsResult { diagnostics: Diagnostic[]; residue: BoundsObligation[] }
 
@@ -130,8 +134,9 @@ export function checkBounds(mod: Module, types: Map<Expr, Type>, resolutions: Re
 }
 
 export function boundsFloorDiags(residue: BoundsObligation[]): Diagnostic[] {
-  return residue.map(o => boundsError(o.span,
-    `no fact proves the index within '${o.obj}' on this path — guard it (\`if i >= 0 && i < length(${o.obj})\`)`));
+  return residue.map(o => boundsError(o.span, o.witness
+    ? `no fact proves the argument within '${o.obj}' on this path — witness '${o.witness}' demands 0 <= value < length(${o.obj})`
+    : `no fact proves the index within '${o.obj}' on this path — guard it (\`if i >= 0 && i < length(${o.obj})\`)`));
 }
 
 function walkBoundsDecls(decls: Decl[], inBounds: boolean, types: Map<Expr, Type>, resolutions: ResolutionMap, out: BoundsResult): void {
@@ -142,11 +147,60 @@ function walkBoundsDecls(decls: Decl[], inBounds: boolean, types: Map<Expr, Type
     }
     if (inBounds && d.tag === "DFn")
       for (const [i, c] of d.clauses.entries())
-        walkFacts(c.body, clauseEnv(d.clauses, i), (e, env) => {
+        walkFacts(c.body, [...clauseEnv(d.clauses, i), ...witnessSeeds(c)], (e, env) => {
+          const demand = WITNESS_DEMANDS.get(e);
+          if (demand) proveWitnessArg(e, demand, env, out);
           if (e.tag === "Index" && e.index.tag !== "Range")
             proveIndex(e, env, types, out);
         }, resolutions);
   }
+}
+
+// ── The Tier-1.5 relational witness (north-star §3.3) ────────────────────────
+//
+// SEED side: a param ascribed a bounds-witness refinement — `Index(length(xs))`
+// with the `0 <= value && value < n` predicate shape (infer.boundsWitnessOf) —
+// ASSUMES its facts in the clause body: `i >= 0` and `i < length(xs)`. The
+// callee's read then discharges with no guard. Sound within the proved region
+// by assume/guarantee: every caller in a `proofs: [bounds]` scope is forced to
+// DISCHARGE the same facts at the call (the demand below); a caller outside
+// any proved scope keeps today's skip and can still fault the callee — the
+// same standing as any unproved code, and the runtime read faults loudly.
+function witnessSeeds(c: FnClause): Fact[] {
+  const seeds: Fact[] = [];
+  for (const param of c.params) {
+    const pat = param.pat;
+    if (pat.tag !== "PVar" && pat.tag !== "PTyped") continue;
+    const w = boundsWitnessOf(param.ascription);
+    if (!w) continue;
+    const lenE: Expr = { tag: "Call", fn: varE("length", param.span),
+                         args: [varE(w.listParam, param.span)], named: [], span: param.span };
+    seeds.push(mkFact(varE(pat.name, param.span), ">=", numE(0, param.span)));
+    seeds.push(mkFact(varE(pat.name, param.span), "<", lenE));
+  }
+  return seeds;
+}
+
+// DEMAND side: infer recorded this argument as flowing into a witness param
+// with the caller's list substituted in (`d.obj` is null when that argument
+// wasn't a bare name). Same two-sided query as a direct index read — floor,
+// then Z3 — because the read it licenses happens inside the callee.
+function proveWitnessArg(e: Expr, d: WitnessDemand, env: Env, out: BoundsResult): void {
+  if (d.list === null) {
+    out.diagnostics.push(boundsError(e.span,
+      `the argument is demanded as witness '${d.ref}' but the list it indexes is not a name — bind it (\`let xs = …\`) so length facts can attach`));
+    return;
+  }
+  const lit = numLit(e);
+  if (lit !== null && lit < 0) {
+    out.diagnostics.push(boundsError(e.span,
+      `the literal argument ${lit} is negative — witness '${d.ref}' demands 0 <= value < length(${d.list})`));
+    return;
+  }
+  if (entailsInBounds(env, e, d.list, lit)) return;
+  if (translatable(e)) out.residue.push({ facts: env, index: e, obj: d.list, span: e.span, witness: d.ref });
+  else out.diagnostics.push(boundsError(e.span,
+    `the argument is demanded as witness '${d.ref}' but is not a provable term — bind it to a name and guard that`));
 }
 
 function boundsError(span: Span, detail: string): Diagnostic {

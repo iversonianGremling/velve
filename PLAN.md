@@ -788,6 +788,39 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       binary-search showcase is the natural fixture once it lands
       (fractional-index float semantics make its measure facts a slice of
       their own — probed, deliberately not rushed into this one).
+- [x] **The Tier-1.5 relational witness — `Index(length(xs))`
+      (north-star §3.3)**: ✅ DONE (2026-06, SPEC §2.7 + §12.7,
+      `index_witness_test`/`_bad` — 0 errors + runs `60/40/22/-1/30`, and
+      exactly 4 errors; baselines unchanged except the four new rows). The
+      last named → A+ ingredient: ties an index to THAT list, which the
+      InBounds ADT deliberately doesn't fake. As built: NOT a new type or
+      vocabulary word — the existing dependent-refinement surface
+      (`type Index n = Number where 0 <= value && value < n`, used
+      `Index(length(xs))` over a sibling param) joined to the existing
+      bounds fact pipeline by two bridges. DEMAND (infer.ts records a
+      `WITNESS_DEMANDS` entry per call argument constEval can't settle;
+      facts.ts proves it inside `proofs: [bounds]` scopes — interval floor,
+      then Z3 as a `BoundsObligation` with witness-aware prose): check once
+      at a guard, spend at every call the branch covers; a cross-list spend
+      (`crossed` checks xs, spends on ys) is refuted with the model that
+      splits them (`length(xs) = 1, length(ys) = 0`). SEED (facts.ts
+      `witnessSeeds`): the callee assumes its witness params' facts, so
+      `xs[i]` in the body needs NO guard — assume/guarantee at the
+      signature; sound in the proved region because proved callers
+      discharged the demand, and an unproved caller keeps today's skip (the
+      gradient) with the loud runtime fault as the floor. v1 honest bounds
+      (documented in SPEC): params only — return-position witnesses and the
+      `Result`-gate spelling (`checkBounds(i, xs)`) need binder seeding,
+      the named follow-on; fn-as-value / partial application escape the
+      demand; the demanded list must be a bare name. `_bad` pins the
+      relational tie on BOTH bridges (demand-side cross-list, seed-side
+      wrong-read), the missing lower guard, and the nameless list. Zero
+      grammar changes, zero eval.ts changes (the witness is transparent
+      Number at runtime). RE-GRADE: Type-core A → A+ (north-star §1) — the
+      gradient complete in kind (Tiers 0/1/1.5/2); not claimed: cheaper
+      hard proofs than F★, Idris-native dependent ergonomics,
+      `arith`/`overflow`. The binary-search showcase stays queued behind
+      its own measure-facts slice.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

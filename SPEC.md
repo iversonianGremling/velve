@@ -53,6 +53,7 @@ means there is a green fixture exercising it under `checker/`.
 | Module-private constructors (`@private type`) | ✅ Built (2026-06) | §7.1, `private_ctor_test`/`_bad`: an ADT's constructors seal at the module boundary (no forging by call, no representation-dependence by pattern); the type name stays public. The soundness primitive for the refined-type tier (north-star §3.5 confirmed → shipped). Resolver scope stays flat — privacy is a use-site check. |
 | Refined-type library (Tier 1) | ✅ Built (2026-06) | §7.1, `refined_types_test`/`_bad`: `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — smart-constructor gates, closed ops, faulting ops through the gate; `divBy(n, NonZero)` makes division total and `getAt(xs, InBounds)` makes indexing safe **as type errors**, no solver. The library module is proof-carrying (`proofs: [total, exhaustive, handled]`). Pure library add — zero checker changes. Tier-1 bound: `InBounds` is not relational (Tier 1.5). |
 | `SortedList` — the semantic archetype | ✅ Built (2026-06) | §7.1, `sorted_list_test`/`_bad`: sortedness has no structural proxy (north-star §3.2), so it ships by the construct-it route — order checked once at the gate (`sortedList` rejects, `fromAny` folds the closed insert), closed ops (`slInsert` filter-split, `slMerge`) preserve it by construction, and `slMin` is O(1) `head` whose *correctness* precondition the type makes unforgeable. Proof-carrying module; pure library add — zero checker changes. The `_bad` twin's doctrinal pin: `proofs: [sorted]` is a vocabulary error — value invariants stay types. `where proof.sorted` (Tier 2) stays PROPOSED. |
+| Relational witness (Tier 1.5) | ✅ Built (2026-06) | §2.7, `index_witness_test`/`_bad`: `Index(length(xs))` — a dependent refinement of the in-range shape — ties an index to THAT list under `proofs: [bounds]`. Caller side: every argument at a witness param is PROVED from path facts (floor → Z3); callee side: the signature seeds the facts, so the read needs no guard. Check once, spend many; an index checked against `xs` and spent on `ys` is refuted with the model that splits them. v1: params only (return-position/`Result`-payload transport is the named follow-on); fn-as-value escapes the demand. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | Call children (`card()` composition) | ✅ Built (2026-06) | §11.1, `call_child_test`/`_bad`: a bare lowercase component call is a `child` grammar form — composed views nest for real (closes the last children-flattening residual); a call child resolves, type-checks, and effect-checks like a call anywhere. |
@@ -270,6 +271,36 @@ refinement 'InBounds'`: the bound `n` folds to `length [10,20,30] = 3`), and
 list literals and `length`/`listLength` of a constant list. When a dependent argument
 isn't constant-foldable (e.g. the list comes from a variable) the check is conservatively
 skipped — the value still type-checks via the transparent base.
+
+**The relational witness** *(Tier 1.5, SHIPPED 2026-06,
+`index_witness_test`/`_bad`; north-star §3.3)*. Inside a `proofs: [bounds]`
+scope (§12.7) the conservative skip above is **replaced by a proof**, for
+dependent refinements of the canonical in-range shape — predicate
+`0 <= value && value < n` (either operand/conjunct order), `n` the single
+value-param, instantiated `Index(length(xs))` over a sibling param. Two
+fact-env bridges make the type *relational* — tied to **that** list, the tie
+the `InBounds` ADT (§7.1) deliberately does not fake:
+
+- **Demand** (caller side): every argument at a witness param must be proved
+  `0 ≤ v < length(actual list)` from the path facts in force at the call —
+  the same interval-floor → Z3 pipeline as a direct index read, because the
+  read it licenses happens inside the callee. Check once at a guard, spend
+  the witness at every call the branch covers; an index checked against `xs`
+  and spent on `ys` is refuted with the model that splits them
+  (`length(xs) = 1, length(ys) = 0`).
+- **Seed** (callee side): the callee *assumes* its witness params' facts, so
+  the body's read needs no guard — the signature is the witness. Sound within
+  the proved region by assume/guarantee at the signature: every proved caller
+  discharged the demand. (An unproved caller outside any proof scope keeps
+  the skip — the gradient — and the runtime read still faults loudly.)
+
+The demanded list argument must be a bare name (bind it first — length facts
+attach to immutable names), mirroring the direct-read rule. v1 honest bounds:
+**params only** — return-position witnesses and `Result`-payload transport
+(`checkBounds(i, xs): Result(Index(length(xs)), :oob)`, the gate spelling)
+need binder seeding, a named follow-on — and the demand attaches to direct
+full-arity calls (a witness-param fn passed as a value or partially applied
+escapes it, the same standing as an unproved caller).
 
 ### 2.8 Tainted types
 
@@ -2684,6 +2715,15 @@ Checkable today:
   (§7.1), construct the proof instead of deriving it. Scope-local; v1 scope:
   function bodies, index *reads* (a write through `xs[i] =` requires `mut`,
   which kills length facts — proved writes are the witness type's territory).
+  **The relational witness rides this obligation** *(Tier 1.5, 2026-06,
+  `index_witness_test`/`_bad`; §2.7)*: an argument at an
+  `Index(length(xs))`-shaped dependent-refinement param is itself a bounds
+  obligation — the read it licenses happens in the callee — proved by the
+  same floor → Z3 pipeline against the *caller's* list; the callee
+  conversely *assumes* its witness params' facts (assume/guarantee at the
+  signature), so its read needs no guard. This moves the obligation across
+  the call boundary without widening the vocabulary: the witness transports
+  the in-range fact, the fault class stays `bounds`.
 
 Obligations come in two enforcement shapes, and the difference is principled:
 **`total` is a call-graph obligation** (its fault — non-termination — can hide

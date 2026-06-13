@@ -1,0 +1,35 @@
+-- The relational witness, violated four ways (north-star §3.3, SPEC §12.7).
+-- The tie is to THAT list: a fact about length(xs) buys nothing about ys —
+-- pinned on BOTH bridges (demand and seed). Expected: exactly 4 errors.
+@edition "2026.6"
+
+type Index n = Number where 0 <= value && value < n
+
+module slots
+  proofs: [bounds]
+
+  def at(xs: List(Number), i: Index(length(xs))): Number
+    xs[i]
+
+  -- 1: THE RELATIONAL PIN, demand side — checked against xs, spent on ys.
+  -- Z3 answers with a model where ys is shorter.
+  def crossed(xs: List(Number), ys: List(Number), i: Number): Number
+    if i >= 0 && i < length(xs) then at(ys, i) else -1
+
+  -- 2: the relational pin, seed side — the witness licenses xs, the body
+  -- reads ys. The seeded facts are about the RIGHT list only.
+  def wrongRead(xs: List(Number), ys: List(Number), i: Index(length(xs))): Number
+    ys[i]
+
+  -- 3: half a guard — the upper side holds, the lower side is open
+  -- (i may be negative; the demand is two-sided like the read it licenses).
+  def halfGuarded(xs: List(Number), i: Number): Number
+    if i < length(xs) then at(xs, i) else -1
+
+  -- 4: the list is not a name — no binding for length facts to attach to,
+  -- so the demand is a conservative error (bind it first).
+  def anonymous(xs: List(Number), ys: List(Number), i: Number): Number
+    if i >= 0 then at(concat([xs, ys]), i) else -1
+
+def main(): Number
+  0

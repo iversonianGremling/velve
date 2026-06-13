@@ -22,7 +22,7 @@ remaining gap is a live *design* choice.
 
 | Field | Now | A+ exemplar(s) | What closes the gap | Gap is… |
 |---|---|---|---|---|
-| **Type core** | **A** *(2026-06)* | F★ / Liquid Haskell (SMT refinements); Idris / Lean (full dependent) | The old A− was the **conservative skip** — Velve bailed on hard obligations instead of discharging them. (**User generics shipped 2026-06**, SPEC §2.12 — implicit def-signature type vars, polymorphic at call sites / rigid in the body.) (**Proof-gradient surface live 2026-06**, SPEC §12.6–12.7 — `@total` + the `proofs: [...]` module scope; `total`/`exhaustive`/`handled` checkable, 3 of the 6 obligations.) **A− → A re-graded 2026-06** — this row's named next lever landed: **§5.1 constEval widening** (`constfold_total_test`/`_bad`) — the refinement folder executes `@total` predicates at check time, so the skip set shrinks by exactly the code that proved it terminates. The skip is now *opt-out-able per predicate* (mark it `@total`), which changes its character: what remains skipped is the un-asked-for frontier, not a refusal. Honest bound: this fold is also the *only* check a plain refined call gets (runtime enforcement is the explicit `T.parse` boundary), and `Number ≠ Nat` keeps it fuel-bounded. **Refined-type library SHIPPED 2026-06** (SPEC §7.1, `refined_types_test`/`_bad`): `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — gates from raw `Number`, closed ops with no re-check, `divBy`/`getAt` deleting the zero/out-of-bounds cases as type errors; a pure library add (zero checker changes, the §3.5 prediction exact), itself proof-carrying (`proofs: [total, exhaustive, handled]`). **`nonzero` + the fact env SHIPPED 2026-06** (`facts.ts`, SPEC §12.7, `proof_nonzero_test`/`_bad`): the flow-sensitive fact environment — §3.1 catch 1, the named "real engineering lift, bigger than the solver call" — now exists (comparison facts from if/match/guards/filters/literal clause heads, mutation kills, no-solver interval entailment), discharging the fourth obligation. **The Tier-2 Z3 back-end SHIPPED one slice later 2026-06** (`smt.ts`, `proof_nonzero_z3_test`/`_bad`): the floor's residue goes to Z3 as refutation over ℝ — the pinned `a != b ⟹ a - b != 0` case *graduated from `_bad` to green*, counterexample models surface in the errors, the solver loads lazily (~120 ms) and only ever removes floor errors. **The `proof.terminates` measure check SHIPPED 2026-06** (`terminates.ts`, SPEC §12.6, `proof_terminates_test`/`_bad`): `@total`'s `n/2` residue now falls through to Z3 — unit-decreasing floored measure from path facts (`F ⟹ arg ≤ n−1 ∧ n ≥ 0` over ℝ), automatic under `@total`, no new surface; non-constant decreases (`shrink(n - k, k)` under `k >= 1`) prove, the loose-guard failures answer with the model that breaks them (`n = 1`, `k = 1/2`, `k = -1`). **`bounds` SHIPPED 2026-06** (SPEC §12.7, `proof_bounds_test`/`_bad`): every list index read proved `0 ≤ i < length(xs)` — the fact env's first **function symbol** (`length(xs)`, Int-sorted, `≥ 0` asserted; Int-sortedness turns `> 0` into `≥ 1`, so `xs[length(xs) - 1]` proves), two queries per read with the leaking side named in the error; 5 of the 6 obligations now checkable. **`SortedList` SHIPPED 2026-06** (SPEC §7.1, `sorted_list_test`/`_bad`): the §3.2 semantic archetype, by the **construct-it** route — sortedness has no structural proxy, so the order check runs once at the gate and every closed op preserves it by construction (`fromAny` sorts by folding the closed insert; `slMin` is O(1) `head` whose *correctness* precondition the type makes unforgeable); a pure library add (zero checker changes, twice in a row now), and the `_bad` twin's `proofs: [sorted]` vocabulary-error pin *enforces* the §3.4 operations/values split. The `proof.sorted` Z3 spelling stays a proposed alternative, no longer the only path. Remaining → A+: the **Tier-1.5 relational witness** (`Index(xs)` — `InBounds` is deliberately non-relational). | **Build** — next lever: the Tier-1.5 witness primitive (`Index(xs)`), the last named → A+ ingredient; a `bounds`+`terminates` binary-search showcase is the natural fixture once it lands. |
+| **Type core** | **A+** *(2026-06)* | F★ / Liquid Haskell (SMT refinements); Idris / Lean (full dependent) | The old A− was the **conservative skip** — Velve bailed on hard obligations instead of discharging them. (**User generics shipped 2026-06**, SPEC §2.12 — implicit def-signature type vars, polymorphic at call sites / rigid in the body.) (**Proof-gradient surface live 2026-06**, SPEC §12.6–12.7 — `@total` + the `proofs: [...]` module scope; `total`/`exhaustive`/`handled` checkable, 3 of the 6 obligations.) **A− → A re-graded 2026-06** — this row's named next lever landed: **§5.1 constEval widening** (`constfold_total_test`/`_bad`) — the refinement folder executes `@total` predicates at check time, so the skip set shrinks by exactly the code that proved it terminates. The skip is now *opt-out-able per predicate* (mark it `@total`), which changes its character: what remains skipped is the un-asked-for frontier, not a refusal. Honest bound: this fold is also the *only* check a plain refined call gets (runtime enforcement is the explicit `T.parse` boundary), and `Number ≠ Nat` keeps it fuel-bounded. **Refined-type library SHIPPED 2026-06** (SPEC §7.1, `refined_types_test`/`_bad`): `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — gates from raw `Number`, closed ops with no re-check, `divBy`/`getAt` deleting the zero/out-of-bounds cases as type errors; a pure library add (zero checker changes, the §3.5 prediction exact), itself proof-carrying (`proofs: [total, exhaustive, handled]`). **`nonzero` + the fact env SHIPPED 2026-06** (`facts.ts`, SPEC §12.7, `proof_nonzero_test`/`_bad`): the flow-sensitive fact environment — §3.1 catch 1, the named "real engineering lift, bigger than the solver call" — now exists (comparison facts from if/match/guards/filters/literal clause heads, mutation kills, no-solver interval entailment), discharging the fourth obligation. **The Tier-2 Z3 back-end SHIPPED one slice later 2026-06** (`smt.ts`, `proof_nonzero_z3_test`/`_bad`): the floor's residue goes to Z3 as refutation over ℝ — the pinned `a != b ⟹ a - b != 0` case *graduated from `_bad` to green*, counterexample models surface in the errors, the solver loads lazily (~120 ms) and only ever removes floor errors. **The `proof.terminates` measure check SHIPPED 2026-06** (`terminates.ts`, SPEC §12.6, `proof_terminates_test`/`_bad`): `@total`'s `n/2` residue now falls through to Z3 — unit-decreasing floored measure from path facts (`F ⟹ arg ≤ n−1 ∧ n ≥ 0` over ℝ), automatic under `@total`, no new surface; non-constant decreases (`shrink(n - k, k)` under `k >= 1`) prove, the loose-guard failures answer with the model that breaks them (`n = 1`, `k = 1/2`, `k = -1`). **`bounds` SHIPPED 2026-06** (SPEC §12.7, `proof_bounds_test`/`_bad`): every list index read proved `0 ≤ i < length(xs)` — the fact env's first **function symbol** (`length(xs)`, Int-sorted, `≥ 0` asserted; Int-sortedness turns `> 0` into `≥ 1`, so `xs[length(xs) - 1]` proves), two queries per read with the leaking side named in the error; 5 of the 6 obligations now checkable. **`SortedList` SHIPPED 2026-06** (SPEC §7.1, `sorted_list_test`/`_bad`): the §3.2 semantic archetype, by the **construct-it** route — sortedness has no structural proxy, so the order check runs once at the gate and every closed op preserves it by construction (`fromAny` sorts by folding the closed insert; `slMin` is O(1) `head` whose *correctness* precondition the type makes unforgeable); a pure library add (zero checker changes, twice in a row now), and the `_bad` twin's `proofs: [sorted]` vocabulary-error pin *enforces* the §3.4 operations/values split. The `proof.sorted` Z3 spelling stays a proposed alternative, no longer the only path. **The Tier-1.5 relational witness SHIPPED 2026-06** (`index_witness_test`/`_bad`, SPEC §2.7): `Index(length(xs))` — a dependent refinement of the in-range shape — ties an index to *that* list through two fact-env bridges: a caller in a `proofs: [bounds]` scope must PROVE every witness argument from path facts (interval floor → Z3), and the callee ASSUMES its signature (assume/guarantee), so the read needs no guard; an index checked against `xs` and spent on `ys` is refuted with the model that splits them (`length(xs) = 1, length(ys) = 0`). **A → A+ re-graded 2026-06** — the last named ingredient landed, and the gradient is now complete *in kind*: Tier 0 (constEval), Tier 1 (`@total` + the constructed-type roster through `SortedList`), Tier 1.5 (the relational witness), Tier 2 (Z3: nonzero/terminates/bounds), one closed-vocabulary surface, both honest routes for semantic invariants. What A+ does **not** claim: cheaper hard proofs than F★ (nonlinear residue still costs lemmas), Idris-native dependent ergonomics (the `Vec n` flex — Velve's witness is the length-indexed relational fragment, params-only v1), or the last two obligations (`arith`/`overflow` stay loud errors). The remaining deltas are depth, not kind. | **Extend** — named follow-ons: the witness gate spelling (`Result`-payload binder seeding for `checkBounds(i, xs)`), `arith`/`overflow`, and the `bounds`+`terminates` binary-search showcase (its fractional-index measure facts are a slice of their own). |
 | **UI / styling** | A | SwiftUI (ergonomics) + Elm (purity); **no shipping language** has accessibility-as-proof | Ceiling already above the field. **§2.1 duality closed** (paren-form elements), the **theme system shipped 4/4** (typed `Surface` tokens → `using` clause → derived `Theme` record → `theme` read-only reactive root: `std/color` now has a real consumer; accessibility-as-proof fires on token, `using`-surface, computed, and live-root colours), and **responsive is built end-to-end** — closed `Breakpoint`, `Clamp` band, the read-only `viewport` root, the `responsive` keyword, and the **prop-site auto-collapse** of a `Responsive(Length)` against the live `viewport.breakpoint` (re-collapsing on `setViewport`, the viewport sibling of `setTheme`). Re-graded A− → **A** (2026-06): the prior hold was "responsive/inputmap design-only" — responsive is shipped, and `inputmap` is an input/event item (event-row §3.2). Residual is polish (compile-time vs runtime cycle detection; §2.1 handler/spread tail), not a pillar. | **Build** — A→A+ is table-stakes breadth (§2), not a single lever. |
 | **Event / state** | A *(2026-06)* | Erlang/OTP + Temporal + XState — Velve already unifies all three | Both named gaps shipped 2026-06: per-stream **backpressure** (`drop`/`buffer N`/`block` at decl site, policy-exempt `Done`, `stream_policy_test`) and **`await`→step-goto** in machine steps (lowering fix, `machine_await_test` — the idiomatic stream-draining machine works). Re-graded A− → **A**. The `inputmap` **core shipped 2026-06** (SPEC §10.5, `inputmap_test`/`_bad`): typed pattern-match table over a stream, conflict analysis ("bound twice"/"shadowed" — the dual of exhaustiveness, as designed), labels retained, drain-loop runtime. **Help-as-derived-data shipped too** (`inputmap_help_test`/`_bad`): a dedicated `Inputmap` type + `help(map) : List({pattern, label})` — the auto-help differentiator's data layer, check-time-typed. **And `++` layering** (`inputmap_layer_test`/`_bad`): maps are values, `default ++ userOverrides` replaces-in-place/appends, cross-stream layering is a check error (the type carries the stream). **And chord-refinement literals** (`inputmap_chord_test`/`_bad`): `Push("Ctl+S")` is a check-time typo — the literal-pattern refinement fold, general to every match site. **And `keymap` sugar** (`keymap_test`/`_bad`): `keymap N` ≡ `inputmap N over Key`, proven by layering a keymap with a plain inputmap over `Key`. A→A+ residual: remaining breadth — std `Key` device library + physical-key prefix, focus-zone scoping, the *rendered* overlay element. | **Build** — inputmap breadth (the overlay element waits on the element-DSL render path; the Key library waits on a host keyboard source). |
 | **Error handling** | A+ *(2026-06)* | Rust (`Result`+`?`+`thiserror`); Swift typed `throws`; Zig inferred error sets | B→B+ was readability (ternary deleted). **B+→A** (SPEC §2.6, `error_adt_test`/`_bad`): named error ADTs — prelude `ParseError`, stringly-error use a check error, map-at-the-boundary convention; `try` soundness closed (`try_sound_test`/`_bad`). **A→A+ shipped 2026-06** (SPEC §2.13, `error_rows{,_match}_test`/`_bad`): **inferred error rows v1** — `Result T _` infers the raised ctor set with zero threading (the §4 hybrid: Zig ergonomics inside), named-ADT pins check ctor-set inclusion with escapees listed (reviewed contract at the edge), and rows are directly matchable with exhaustiveness over the **actual raised set** incl. "can never match" arms — the combination none of the references ship (Zig has no reviewed pin, Rust threads everything, Swift's `throws` set is declared not derived). **Ctor shadowing fixed 2026-06** (`ctor_shadow_test`/`_bad`): shared ctor names resolve by expected type in expression position and scrutinee type in patterns — declaration order no longer matters. **Late contributions fixed 2026-06** (`row_late_test`/`_bad`): a callee error type still unresolved at the `?` is re-judged at end of module — landed in the row or rejected, never silently dropped. **Pin fix-its shipped 2026-06** (`row_fixit_test`/`_bad`): failing pins name the smallest edit (re-pin with a covering ADT, or add the missing variants). S3 closed. Residuals (honest): mixed-arity shared names keep last-decl-wins (runtime-ambiguous — needs an eval redesign, not a rows slice); prose `parseInt`/`parseFloat` remain. **Row variables shipped 2026-06** (v2/S4b, SPEC §2.13 v2 block, `row_tails_test`/`_bad`): generic row defs with per-call-site rows — a callback's error var is a tail, the same def pins differently at each call, matches are exhaustive over *this* call's set. | **v2 done** (S4a fn-type ascriptions + S4b row tails + S4c effect tails shipped — the §4 convergence built at E1 scope); remaining residuals are the documented eval-side/prose items, not rows work. |
@@ -167,7 +167,7 @@ proposed Tier-2 alternative.
 |---|---|---|---|---|
 | 0 | Refinement + `.parse` boundary | literal/foldable checks | no | **built** (constEval) |
 | 1 | **`@total`** (structural) + **correct-by-construction types** (`Natural`, `NonZero`, `Positive`, `InBounds(n)`, `SortedList`) | termination + **intrinsic** invariants (counts, div-by-zero, bounds) | **no** | **BUILT (2026-06)** — `@total`: SPEC §12.6, `total_test`/`_bad`; **refined-type library SHIPPED**: SPEC §7.1, `refined_types_test`/`_bad`; **`SortedList` SHIPPED 2026-06** (`sorted_list_test`/`_bad` — the §3.2 semantic case, by the construct-it route) |
-| 1.5 | **Witness tokens** — `checkBounds(i, xs) : Result(Index(xs), :oob)`, then proof-requiring ops | **relational** facts | no | needs 1 primitive (below) |
+| 1.5 | **Witness tokens** — `Index(length(xs))` dependent-refinement params, demanded at calls / assumed in bodies | **relational** facts | floor, Z3 residue | **BUILT (2026-06)** — `index_witness_test`/`_bad`, SPEC §2.7: under `proofs: [bounds]` the caller PROVES every witness argument from path facts, the callee assumes its signature (assume/guarantee); cross-list spends refuted with the splitting model. v1: params only — the `Result`-gate spelling (`checkBounds(i, xs)`) needs binder seeding, the named follow-on |
 | 2 | **Z3 `std/proof`** — `proof.sorted`, `proof.terminates`, arbitrary predicates | semantic / termination residue, zero ceremony | **yes** | **two slices BUILT (2026-06)**: the `nonzero` back-end (`smt.ts`, `proof_nonzero_z3_test`/`_bad`) and the **`proof.terminates` measure check** (`terminates.ts`, `proof_terminates_test`/`_bad` — automatic under `@total`, unit-decreasing floored measure from path facts; `halve(n/2)` and non-constant `shrink(n-k, k)` prove) — refutation over ℝ, counterexample models in errors, lazy-loaded, floor fallback when uninstalled; `proof.sorted` + the `std/proof` *spelling* remain **proposed stub** (SPEC §std/proof) |
 
 `@total` itself already mirrors this shape internally (`totality-design.md §3`): **Tier-1
@@ -201,7 +201,9 @@ library module is itself **proof-carrying** (`proofs: [total, exhaustive, handle
 gradient eats its own cooking), and `InBounds` is the **non-relational** Tier-1 cut: it
 witnesses "an index that passed a bounds check", not "an index into *that* list" — the tie
 to a specific list is exactly Tier 1.5's witness-token primitive, deliberately not faked
-here. Zero checker changes: the "pure library add" prediction held exactly.
+here **(and since 2026-06, delivered there: `Index(length(xs))`,
+`index_witness_test`/`_bad`)**. Zero checker changes: the "pure library add" prediction
+held exactly.
 
 ### 3.4 `Proof [...]` — proofs as the dual of effects
 
@@ -348,7 +350,8 @@ the re-grade below argues the construct's A+, not cheaper proofs):
    zero/out-of-bounds cases as *type errors*. The "pure library add" prediction held —
    zero checker changes, and the module is itself proof-carrying
    (`proofs: [total, exhaustive, handled]`). `InBounds` is the honest non-relational cut
-   (Tier 1.5 owns the list-tie). **`SortedList` completed the Tier-1 roster** (2026-06,
+   (Tier 1.5 owns the list-tie — and has since delivered it, see item 5).
+   **`SortedList` completed the Tier-1 roster** (2026-06,
    `sorted_list_test`/`_bad`): the semantic case shipped by the construct-it route —
    gate checks once, closed ops preserve by construction, `slMin`'s *correctness*
    precondition unforgeable — again a pure library add with zero checker changes, and
@@ -360,11 +363,11 @@ the re-grade below argues the construct's A+, not cheaper proofs):
    marks every module def implicitly `@total` (the downward gate then fires automatically);
    `exhaustive` hardens clause-head gaps to errors in every edition, ahead of the 2026.6 gate.
    Per-def `Proof [obligation] T` and per-block `@proof[...]{}` remain PROPOSED in SPEC.
-5. 🟢 Z3 **Tier-2** + relational witnesses — later, opt-in, for the semantic residue.
-   *(Tier 2 is now LIVE for three obligations (2026-06, four slices): the fact env
-   (`facts.ts`) shipped with `nonzero` and pinned the Z3 hand-off as a concrete error;
-   the Z3 back-end (`smt.ts`) then landed and the pinned case graduated from `_bad` to
-   green (`proof_nonzero_z3_test`) — the floor-pin-graduate cadence is the per-obligation
+5. ✅ Z3 **Tier-2** + relational witnesses — SHIPPED across five slices (2026-06).
+   *(Tier 2 LIVE for three obligations: the fact env (`facts.ts`) shipped with
+   `nonzero` and pinned the Z3 hand-off as a concrete error; the Z3 back-end
+   (`smt.ts`) then landed and the pinned case graduated from `_bad` to green
+   (`proof_nonzero_z3_test`) — the floor-pin-graduate cadence is the per-obligation
    rollout working at the solver tier; then `proof.terminates` rode the same engine
    (`terminates.ts`) — `@total`'s `n/2` residue proves automatically, with the same
    counterexample-in-the-error contract; then `bounds` (`proof_bounds_test`/`_bad`)
@@ -372,13 +375,18 @@ the re-grade below argues the construct's A+, not cheaper proofs):
    nonzero `_bad` pin `n / length(xs)` to green a second time, now guarded and proved.
    The semantic case then shipped on the OTHER honest route — `SortedList` (2026-06,
    `sorted_list_test`/`_bad`), construct-it, no solver at all, exactly as §3.2 predicted
-   the no-ceremony/no-solver trade. Still open: the Tier-1.5 relational witness; the
-   `proof.sorted` Z3 spelling stays a proposed *alternative*, no longer the only path
-   to the semantic case.)*
+   the no-ceremony/no-solver trade. **And the Tier-1.5 relational witness closed the
+   roster** (2026-06, `index_witness_test`/`_bad`, SPEC §2.7): `Index(length(xs))`
+   dependent-refinement params, demanded at calls from the caller's path facts and
+   assumed in callee bodies — the existing dependent-refinement surface and the
+   existing bounds pipeline, joined by two fact-env bridges; a cross-list spend is
+   refuted with the model that splits the lists. Residue, named: the `Result`-gate
+   spelling (`checkBounds(i, xs): Result(Index(length(xs)), :oob)`) needs binder
+   seeding; the `proof.sorted` Z3 spelling stays a proposed *alternative*.)*
 
-Items 1–4 are done (2026-06; item 3 landed one slice after the re-grade below), so the
-type system *is* now the opt-in spectrum and only the Tier-2/relational residue (item 5)
-remains.
+Items 1–5 are all done (2026-06), so the type system *is* now the opt-in spectrum,
+end to end — every tier shipped, both honest routes for semantic invariants, the
+relational tie delivered.
 
 **Re-grade (2026-06) — the A+ argued over the shipped surface.** This is no longer a thesis
 defended by design prose; it's defended by fixtures (`total_test`/`_bad`,
@@ -412,7 +420,9 @@ was its last named ingredient — §1) and the construct-level A+ for the gradie
 and the promoted follow-on landed — **§5.1 constEval widening SHIPPED** (2026-06,
 `constfold_total_test`/`_bad`), re-grading that row A− → A (§1); then item 3 landed too
 (refined-type library SHIPPED 2026-06, `refined_types_test`/`_bad` — zero checker changes),
-leaving Tier 2 + the Tier-1.5 relational witness as its remaining → A+ path. And permanently: Velve
+leaving Tier 2 + the Tier-1.5 relational witness as its remaining → A+ path — **both of
+which then shipped** (Tier 2 across four slices; the witness 2026-06,
+`index_witness_test`/`_bad`), re-grading Type-core A → A+ (§1). And permanently: Velve
 will not, and shouldn't try to, win the field's A+ on *cheaper hard proofs* — that path runs
 straight through the readability the language exists to protect.
 
@@ -700,8 +710,8 @@ The most useful cut for prioritization:
   target unblocks the most rows at once (Games + Animation entirely, the perf ceiling under
   everything).
 - **Live design choice still open** — Type-core (the gradient's *surface*, `@private type`,
-  and the Tier-1 refined-type library all shipped 2026-06; what's open is Tier-2 Z3, the
-  Tier-1.5 relational witness, and the finer proof scopes, §3),
+  the Tier-1 refined-type library, Tier-2 Z3, and the Tier-1.5 relational witness all
+  shipped 2026-06; what's open is the finer proof scopes + the witness gate spelling, §3),
   Error-handling (the infer-and-pin hybrid + row inference, §4), Low-level (units-of-measure,
   §5).
 
@@ -715,13 +725,13 @@ The most useful cut for prioritization:
 - **A+ exemplar choices**: field/practitioner consensus, not controlled study — same caveat as
   `call-syntax-design.md §7`.
 - **§3 proof tiers + `Proof [...]`**: no longer design-on-design — Tier-1 `@total`, the
-  module-scope `Proof [...]` surface, the §5.1 constEval payback, and the Tier-1
-  refined-type library are built (2026-06, SPEC §12.6–12.7 / §2.6 / §7.1), and the
+  module-scope `Proof [...]` surface, the §5.1 constEval payback, the Tier-1
+  refined-type library, Tier-2 Z3 (nonzero/terminates/bounds), and the Tier-1.5
+  relational witness are built (2026-06, SPEC §12.6–12.7 / §2.6–2.7 / §7.1), and the
   propagation/boundary rule (proofs flow down) survived compiler contact as the downward
-  call gate. Still theses: the finer scopes, the Tier-1.5 relational witness, and Tier-2
-  Z3. The frontier-capability claim is sound on feature-composition; the *construct's* A+
-  is argued (§3.6 re-grade); the type-core row holds **A**, not A+ — its remaining path is
-  Tier 2 + the relational witness.
+  call gate. Still theses: the finer scopes and the witness gate spelling. The type-core
+  row's **A+** (2026-06 re-grade, §1) is argued over this shipped surface — complete in
+  kind, with the depth residue (ergonomics, arith/overflow) named, not waved at.
 - **§4 hybrid + §5 redefinition**: rubric/mechanism reframings, *not* shipped work — they change
   *what we measure* and *how we'd build it*, not what exists. `ms*ms → Duration²` is a direct
   consequence of units-of-measure (F# is the existence proof).

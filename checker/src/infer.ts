@@ -345,6 +345,86 @@ let FN_SIGS = new Map<string, ParamSlot[]>();
 let TOTAL_FNS = new Map<string, FnClause[]>();
 const ALIAS_RESOLVING = new Set<string>();   // cycle guard
 
+// ── The Tier-1.5 relational witness (north-star §3.3, SPEC §12.7) ────────────
+// A dependent refinement is a BOUNDS WITNESS when its predicate is exactly the
+// in-range shape — `0 <= value && value < n` (either operand order, either
+// conjunct order) with `n` the refinement's single value-param — and the use
+// site instantiates `n` with `length(p)` over a sibling param. Unlike the
+// InBounds ADT (SPEC §7.1), the witness is RELATIONAL: it ties the index to
+// THAT list, through two fact-env bridges in facts.ts:
+//   • DEMAND (caller side): a call argument at a witness param that constEval
+//     can't settle is recorded here, keyed by the argument's AST node; inside
+//     a `proofs: [bounds]` scope facts.ts must PROVE it from path facts
+//     (interval floor → Z3), else it errors. Outside a proved scope the
+//     demand stays today's skip — the proof gradient, unchanged.
+//   • SEED (callee side): a proved-scope fn ASSUMES its own witness params'
+//     facts (facts.ts `witnessSeeds`), so the body's read discharges with no
+//     guard. Sound within the proved region by assume/guarantee at the
+//     signature: every proved caller discharged the demand. An unproved
+//     caller can still fault the callee — the same standing as any call out
+//     of an unproved scope, and the runtime read still faults loudly.
+// v1 honest bounds: params only (no return-position witnesses, no Ok-payload
+// transport — the gate spelling needs binder seeding, a named follow-on), and
+// the demand attaches to direct full-arity calls (a witness-param fn passed
+// as a value or partially applied escapes it).
+export interface WitnessDemand { list: string | null; ref: string }
+export let WITNESS_DEMANDS = new Map<Expr, WitnessDemand>();
+
+// `length(p)` over a bare name — the only bound spelling v1 accepts.
+function lenOverVar(e: Expr): string | null {
+  if (e.tag !== "Call" || e.fn.tag !== "Var" || e.fn.name !== "length") return null;
+  if (e.args.length !== 1 || e.named.length > 0) return null;
+  const a = e.args[0];
+  return a && a.tag === "Var" ? a.name : null;
+}
+
+// The predicate shape test: `0 <= value && value < n` with `n` the single
+// value-param. Returns `n` or null.
+function boundsWitnessParam(refName: string): string | null {
+  const r = REFINEMENTS.get(refName);
+  if (!r || r.params.length !== 1) return null;
+  const n = r.params[0]!;
+  const p = r.pred;
+  if (p.tag !== "BinOp" || p.op !== "&&") return null;
+  const isValue = (e: Expr) => e.tag === "Var" && e.name === "value";
+  const isZero  = (e: Expr) => e.tag === "Lit" && e.lit.tag === "Num" && e.lit.value === 0;
+  const isN     = (e: Expr) => e.tag === "Var" && e.name === n;
+  const lower = (a: Expr) => a.tag === "BinOp" &&
+    ((a.op === ">=" && isValue(a.left) && isZero(a.right)) ||
+     (a.op === "<=" && isZero(a.left) && isValue(a.right)));
+  const upper = (a: Expr) => a.tag === "BinOp" &&
+    ((a.op === "<" && isValue(a.left) && isN(a.right)) ||
+     (a.op === ">" && isN(a.left) && isValue(a.right)));
+  return (lower(p.left) && upper(p.right)) || (lower(p.right) && upper(p.left)) ? n : null;
+}
+
+// Demand-side view: from a use-site Refinement TYPE (pred name + dependent
+// arg exprs from the signature), the callee param the bound measures.
+function witnessUseOf(pt: Type & { tag: "Refinement" }): { ref: string; listParam: string } | null {
+  if (!pt.args) return null;
+  const n = boundsWitnessParam(pt.pred);
+  if (n === null) return null;
+  const r = REFINEMENTS.get(pt.pred)!;
+  const dep = pt.args[r.params.indexOf(n)];
+  if (!dep) return null;
+  const listParam = lenOverVar(dep);
+  return listParam === null ? null : { ref: pt.pred, listParam };
+}
+
+// Seed-side view (facts.ts entry): from a param's ASCRIPTION, the witness
+// info — refinement name + the sibling param the index is tied to.
+export function boundsWitnessOf(ref: TypeRef | null): { refName: string; listParam: string } | null {
+  if (!ref || ref.tag !== "TRNamed") return null;
+  const r = REFINEMENTS.get(ref.name);
+  if (!r) return null;
+  const n = boundsWitnessParam(ref.name);
+  if (n === null) return null;
+  const arg = ref.args[r.params.indexOf(n)];
+  if (!arg || arg.tag !== "TRExpr") return null;
+  const listParam = lenOverVar(arg.expr);
+  return listParam === null ? null : { refName: ref.name, listParam };
+}
+
 function resolveRef(ref: TypeRef, tp: Map<string, Type>, sagas?: Map<string, Type>): Type {
   switch (ref.tag) {
     case "TRNamed": {
@@ -1435,6 +1515,7 @@ export function infer(mod: Module, resolutions: ResolutionMap): InferResult {
   FN_PARAMS = new Map();
   FN_SIGS = new Map();
   TOTAL_FNS = new Map();
+  WITNESS_DEMANDS = new Map();
   ALIAS_RESOLVING.clear();
   ADT_CTORS = new Map();
   ROW_DEPS = [];
@@ -2281,8 +2362,19 @@ class Inferrer {
             if (pt.tag !== "Refinement") continue;
             const refinement = REFINEMENTS.get(pt.pred);
             if (!refinement) continue;
+            // A bounds-witness param whose check constEval can't settle is
+            // recorded as a DEMAND on the argument node; facts.ts enforces it
+            // inside `proofs: [bounds]` scopes (skip elsewhere — the gradient).
+            const recordDemand = () => {
+              const w = witnessUseOf(pt);
+              if (!w) return;
+              const j = paramNames.indexOf(w.listParam);
+              const listE = j >= 0 ? argExprs[j] : undefined;
+              WITNESS_DEMANDS.set(argExprs[i]!,
+                { list: listE?.tag === "Var" ? listE.name : null, ref: pt.pred });
+            };
             const v = constEval(argExprs[i]!, callEnv);
-            if (v === undefined) continue;                 // not constant → runtime-checked
+            if (v === undefined) { recordDemand(); continue; }   // not constant → runtime-checked
             // Bind the predicate environment: `value` = this argument, plus any
             // dependent type-params resolved from the call (e.g. `n` = listLength list).
             const penv = new Map<string, ConstVal>([["value", v]]);
@@ -2296,7 +2388,7 @@ class Inferrer {
                 penv.set(refinement.params[k]!, dv);
               }
             }
-            if (unresolved) continue;
+            if (unresolved) { recordDemand(); continue; }
             if (constEval(refinement.pred, penv) === false)
               err(this.ctx, argExprs[i]!.span,
                 `value ${JSON.stringify(v)} does not satisfy refinement '${pt.pred}'`);

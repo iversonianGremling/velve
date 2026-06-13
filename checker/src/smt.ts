@@ -90,12 +90,15 @@ export async function discharge(residue: Obligation[], jobs: MeasureJob[], bound
         : null;
       if (high?.verdict === "unsat") continue;  // both sides proved
       const r = high ?? low;
+      // A witness obligation is a call ARGUMENT demanded in range for the
+      // callee's read (Tier-1.5, facts.ts) — same query, honest prose.
+      const what = ob.witness ? "the argument" : "the index";
       const side = high ? `may reach length('${ob.obj}')` : "may be negative";
       const detail = r.verdict === "sat"
-        ? `the index ${side} — Z3 found a model consistent with every fact on this path (${r.example})`
-        : `the index ${side} — Z3 returned unknown, conservatively rejected`;
+        ? `${what} ${side} — Z3 found a model consistent with every fact on this path (${r.example})`
+        : `${what} ${side} — Z3 returned unknown, conservatively rejected`;
       diags.push({ kind: "error", span: ob.span,
-        message: `proof obligation 'bounds': cannot prove the index in range — ${detail} (the module declares proofs: [bounds])` });
+        message: `proof obligation 'bounds': cannot prove ${ob.witness ? `witness '${ob.witness}'` : "the index in range"} — ${detail} (the module declares proofs: [bounds])` });
     }
   } finally {
     em.PThread.terminateAllThreads();
