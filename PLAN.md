@@ -1071,10 +1071,16 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       (inert unless `OnSurface` is defined). No new logic-model concept — it is the
       existing refinement mechanism. **Remaining for an A− UI grade:** call-syntax phase 2
       (§2.1) + theme/responsive, not this.
-- [ ] **Unified numeric/dimension design note** (§3.4): reconcile `Number` /
-      `Duration` / `Px·Fr·Pct` / planned sized types. Recommendation on the table:
-      make *dimensioned numbers* the general mechanism (F#-style units), derive
-      `Duration`/`Length`/angle from it. **Write the note before the compiled target.**
+- [x] **Unified numeric/dimension design note** (§3.4): **WRITTEN 2026-06**
+      (`docs/numeric-dimension-design.md`, Phase B slice B1). Reconciles `Number` /
+      `Duration` / `Px·Fr·Pct` / planned sized types into *one* dimensional algebra:
+      `Number` is the dimensionless case, units are a new `United` type variant
+      (refinement-flavored `type Meters = Number unit m`, NOT transparent to base —
+      `m + s` errors; shape discipline, solver-invisible), sized types are range
+      refinements over `Number` + an IR width tag (erase-on-JS / primitive-on-native),
+      conversions are explicit-casts-only, literals default dimensionless and coerce
+      via annotation (range-folded at check time). Pins B2 (units) and B3 (sized
+      types + the 7th `overflow` obligation) as implementation, not redesign.
 - [ ] *(optional)* `is Ok(a)` payload binding / flow-narrowing after `if x is Ok` —
       the terse "is this Ok and give me the value" sugar, replacing the dropped
       `user? a | b`.

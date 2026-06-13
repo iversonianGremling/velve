@@ -182,16 +182,21 @@ Low-level is the worst grade standing (**B−**). The north-star redefinition
 (§5): the A+ axis is **units-of-measure as the general mechanism + sized
 types**, not eight scattered numeric sketches.
 
-- **B1. Unified numeric/dimension design note** *(1 slice, doc)*. Already an
-  unchecked PLAN box. Settles, in writing: `Number` stays the one runtime
-  numeric on JS; sized types per Decision 2 (range refinements, IR tag,
-  erase-on-JS / primitive-on-native); units as a check-time annotation
-  algebra erased on every target; how `Number`, sized, and united types
-  convert (explicit casts only?); literal defaulting. The note also fixes
-  the unit SYNTAX — recommended: refinement-flavored
-  (`type Meters = Number unit m`, `type Velocity = Number unit m/s`) over
-  F#-style angle brackets, to stay inside existing grammar shapes if
-  possible. Reviewer input most valuable here.
+- **B1. Unified numeric/dimension design note** *(1 slice, doc)*. **SHIPPED
+  2026-06** (`docs/numeric-dimension-design.md`; the unchecked PLAN box is now
+  checked). Settled, in writing, with the two reviewer-input decisions taken:
+  `Number` stays the one runtime numeric on JS; sized types are range
+  refinements over `Number` + an IR width tag (erase-on-JS /
+  primitive-on-native); units are a **new `{ tag: "United", base, dims }` Type
+  variant** — a check-time shape discipline the solver never sees (NOT
+  transparent to base, so `m + s` errors), erased on every target. **Reviewer
+  decisions:** (1) unit SYNTAX is refinement-flavored `type Meters = Number unit
+  m` / `type Velocity = Number unit m/s` (over F#-style angle brackets — those
+  collide with comparison/`Named`-args in the GLR grammar; over constructor-only,
+  which gives no `m/s` composition); (2) conversions are **explicit-casts-only**
+  (no silent coercion across dimension/width; literals default dimensionless and
+  coerce into an annotated `Number`-based type, range-folded at check time). The
+  note carries the rest-of-B slice plan (B2 i/ii/iii, B3 i/ii).
 - **B2. Units of measure** *(2–3 slices)*. The algebra: `*`/`/` add/subtract
   exponent vectors, `+`/`-`/comparison require equal units, unitless
   literals coerce via constructors (`meters(5)`) or annotation. Pure

@@ -367,15 +367,18 @@ unit algebra — excellent) · `Px/Fr/Pct` lengths (UI-only) · planned
 legal the way `gap=8` coerces? Is `Float32` a `Number`? Can `Duration`'s
 dimension machinery generalize?
 
-- [ ] 🔴 Write the unified numeric/dimension design note. The `Duration`
-  algebra (`100ms * 3` ok, `100ms * 50ms` error, `400ms/100ms : Number`) is
-  the best piece — consider making *dimensioned numbers* the general mechanism
-  and deriving Duration, Length, angle, etc. from it (F#-style units of
-  measure). That would turn three ad-hoc systems into one concept. **See
-  `docs/north-star-grades.md §5`** for the worked argument: under a two-axis rubric
-  (sized types + first-class dimensions) this is already ≈B+/A−, and `100ms * 50ms`
-  *should* be legal as `Duration²` (physics) — the current rejection is the tell that
-  Duration is a one-off, not a general unit system.
+- [x] 🟢 **Write the unified numeric/dimension design note — DONE 2026-06**
+  (`docs/numeric-dimension-design.md`, Phase B slice B1). One algebra:
+  `Number` is the dimensionless case; units are a new solver-invisible `United`
+  type variant (`type Meters = Number unit m`, NOT transparent to base — so
+  `100ms * 50ms → Duration²` is *legal* and `m + s` errors); sized types
+  (`u8…i32`) are range refinements over `Number` + an IR width tag (erase-on-JS /
+  native-primitive); conversions are explicit-casts-only; the 7th proof word
+  `overflow` rides the existing `bounds` fact-env/Z3 path. Duration/Length/angle
+  all derive from the one concept. Queued for build as B2 (units) + B3 (sized
+  types + `overflow`). The `Duration` algebra (`100ms * 3` ok, `400ms/100ms :
+  Number`) was the best piece — now generalized rather than special-cased. **See
+  `docs/north-star-grades.md §5`** for the worked two-axis argument.
 - [ ] 🟡 Resolve `Number` internal repr before the compiled target (overflow
   semantics, bit ops on floats — `mask & flag` in the fixtures is already
   doing implementation-defined work).
