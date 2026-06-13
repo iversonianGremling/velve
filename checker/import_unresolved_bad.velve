@@ -1,0 +1,19 @@
+-- C1 soundness rider: an unresolved import is an ERROR, not a silent `Unknown`.
+-- `Unknown` is the checker's post-diagnostic RECOVERY type (unify treats it as a
+-- no-op so one failure doesn't cascade) — it must never be minted as "absence"
+-- with no error, or a program that names things that don't exist type-checks
+-- clean. Before this slice, `import { nope } from "Nonexistent"` bound `nope` to
+-- `Unknown` and `nope(1)` checked green. Now the import itself is rejected.
+-- Two distinct failures are pinned: a module that doesn't exist, and a real
+-- module missing the named export.
+-- Expected: 2 errors — unresolved module 'Nonexistent'; 'String' has no export 'bogusFn'.
+@edition "2026.6"
+
+import { nope } from "Nonexistent"
+import { bogusFn } from "String"
+
+def usesNope(): Number
+  nope(1)
+
+def usesBogus(): String
+  bogusFn("x")

@@ -361,7 +361,8 @@ export class Lowerer {
     const names: { name: string; alias: string | null }[] = [];
 
     const importNames = n.namedChildren.filter(c => c.type === "import_name");
-    if (importNames.length > 0) {
+    const named = importNames.length > 0;  // the braced `{ … }` form
+    if (named) {
       for (const imp of importNames) {
         const ids = imp.namedChildren;
         names.push(ids.length === 2
@@ -375,7 +376,11 @@ export class Lowerer {
       }
     }
 
-    return { tag: "DImport", path, names, span: this.sp(n) };
+    // `import js "pkg" as x` lowers to the same path+single-name shape as
+    // `import x from "pkg"`; the `js` literal (an anonymous token) is the only
+    // thing that distinguishes them, so flag it for infer's resolve check.
+    const foreign = n.children.some(c => c.type === "js");
+    return { tag: "DImport", path, names, ...(foreign ? { foreign: true } : {}), ...(named ? { named: true } : {}), span: this.sp(n) };
   }
 
   // ── Functions ───────────────────────────────────────────────────────────────

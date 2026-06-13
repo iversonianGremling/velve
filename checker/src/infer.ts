@@ -1867,25 +1867,48 @@ class Inferrer {
           // real declarations bind the names with their true schemes; skip so we
           // don't shadow them with an `Unknown` placeholder.
           if (decl.local) break;
+          // `import js "pkg" as x` — a foreign JS value with no Velve module to
+          // resolve against. Bind opaquely (Unknown) by DESIGN; not an error.
+          if (decl.foreign) {
+            for (const { name, alias } of decl.names) env.defineMono(alias ?? name, { tag: "Unknown" });
+            break;
+          }
+          // The path must name a stdlib module (file-relative paths are `local`,
+          // handled above; foreign ones are flagged). If it resolves to nothing,
+          // that is a hard error — an unresolved import must NOT bind `Unknown`
+          // silently, or every later use of the name type-checks against a name
+          // that doesn't exist. `Unknown` is the post-diagnostic recovery type;
+          // we still bind it so a single import error doesn't cascade.
+          const mod = stdlibModule(decl.path);
+          if (!mod) {
+            this.ctx.diagnostics.push({ kind: "error", span: decl.span,
+              message: `cannot resolve import '${decl.path}' — not a known stdlib module, a file-relative path ('./' or '../'), or a foreign \`import js\` — check the spelling, or the module hasn't shipped yet` });
+            for (const { name, alias } of decl.names) env.defineMono(alias ?? name, { tag: "Unknown" });
+            break;
+          }
           // Named imports: `import { split, join } from "String"` — each name looked
           // up individually so polymorphic schemes are preserved.
           // Bare import: `import math from "std/math"` — bind the alias as a record
           // of all the module's exports (functions monomorphically instantiated).
-          const isNamed = decl.names.length > 1 ||
+          // Braces (`decl.named`) are an unambiguous named import; the bare form
+          // is a namespace alias UNLESS its single name is itself a member.
+          const isNamed = decl.named === true || decl.names.length > 1 ||
             (decl.names.length === 1 && stdlibLookup(decl.path, decl.names[0]!.name) !== null);
           if (isNamed) {
             for (const { name, alias } of decl.names) {
               const scheme = stdlibLookup(decl.path, name);
               const bindName = alias ?? name;
               if (scheme) env.define(bindName, scheme);
-              else env.defineMono(bindName, { tag: "Unknown" });
+              else {
+                this.ctx.diagnostics.push({ kind: "error", span: decl.span,
+                  message: `module '${decl.path}' has no export '${name}'` });
+                env.defineMono(bindName, { tag: "Unknown" });
+              }
             }
           } else {
             // Namespace import — bind the module alias as a record of its exports.
-            const mod = stdlibModule(decl.path);
             const bindName = decl.names[0]?.alias ?? decl.names[0]?.name ?? decl.path;
-            if (mod) env.defineMono(bindName, moduleRecordType(mod));
-            else env.defineMono(bindName, { tag: "Unknown" });
+            env.defineMono(bindName, moduleRecordType(mod));
           }
           break;
         }

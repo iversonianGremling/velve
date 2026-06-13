@@ -2052,6 +2052,18 @@ boundary *across files* (the smart constructor is the only way in). Bare-name
 file-local import currently makes the imported module's public members
 resolvable program-wide rather than only the names it lists (a later tightening).
 
+**An unresolved import is an error** *(2026-06, `import_unresolved_bad`/`import_foreign_test`)*.
+A path that names neither a known stdlib module, nor a file-relative module
+(`./`/`../`), nor a foreign `import js "pkg" as x` is rejected — *"cannot resolve
+import '…'"* — and a braced named import of a missing export is *"module 'M' has
+no export 'x'"*. Previously such a name bound silently to the recovery type
+(`Unknown`, which `unify` treats as a no-op) and every later use type-checked
+against a name that does not exist. The rule is now: **`Unknown` is minted only
+after a diagnostic** — it is the don't-cascade recovery type, never a silent
+stand-in for absence. The one deliberate exception is `import js` (foreign JS
+interop): it has no Velve module to resolve against, so it binds `Unknown` *by
+design* and its members stay lenient — a stated opacity, not a silent give-up.
+
 ---
 
 ## 8. Transactions

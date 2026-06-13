@@ -272,7 +272,19 @@ export type Decl =
        // is satisfied BY the merged decls — resolve/infer/eval skip its own
        // binding so the real (cross-file) declarations bind the names instead.
        // Falsy for stdlib/ambient imports, which keep the per-module binding path.
-       local?: boolean }                                                     & Node)
+       local?: boolean;
+       // `import js "pkg" as x` — a foreign JS-interop value. It resolves to no
+       // Velve module by design, so it binds opaquely (Unknown) WITHOUT being
+       // flagged as an unresolved-import error. The bare `import x from "pkg"`
+       // form lowers identically otherwise, so the lowerer sets this to tell the
+       // two apart.
+       foreign?: boolean;
+       // True iff the braced form `import { a, b } from "M"` was used — an
+       // unambiguous NAMED import (each `a`/`b` must be an export of `M`). The
+       // bare form `import x from "M"` is a namespace alias (or a member shorthand
+       // when `x` is itself an export). Lowering otherwise loses the braces, so
+       // the namespace-vs-named decision can't be reconstructed downstream.
+       named?: boolean }                                                      & Node)
 
   | ({ tag: "DModule";
        name: string;

@@ -311,6 +311,16 @@ Phase D's neutral IR being the down payment). The proof vocabulary closes.
     eval skip its placeholder binding. *Honest:* the green consumer's *check*
     passes pre-loader too (lenient `Unknown` for unknown imports/types), so the
     behavioral proof is `run` (pre-loader dies `undefined variable: natural`).
+  - **(i) rider — unresolved imports are errors — DONE 2026-06**
+    (`import_unresolved_bad`/`import_foreign_test`). Closes the honesty gap
+    above: a path that resolves to no stdlib module, no file, and isn't a foreign
+    `import js` is now a hard error ("cannot resolve import"), and a braced named
+    import of a missing export is "module 'M' has no export 'x'" — rather than
+    binding the name to `Unknown` and type-checking clean. Invariant: `Unknown`
+    is the post-diagnostic recovery type, minted only after an error (the one
+    exception, `import js` foreign interop, is opaque by design). Side benefit:
+    `import_refined_test`'s *check* now depends on the loader too. Two small
+    AST flags (`foreign`, `named`) carry the brace/`js` info lowering discarded.
   - **(ii)** eval loading + CLI multi-file entry — largely falls out of (i)
     (the merge already makes `run` work end-to-end on the consumer).
   - **(iii)** `std/` on disk — `std/refined`, `std/sorted`, later `std/units` —

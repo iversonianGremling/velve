@@ -1,0 +1,19 @@
+-- C1 soundness rider, green half: `import js "pkg" as x` is the ONE import that
+-- legitimately resolves to no Velve module — it's a foreign JS-interop value. It
+-- binds opaquely (Unknown) BY DESIGN, so the new unresolved-import error must NOT
+-- fire on it, and its members stay lenient (Unknown absorbs `stripe.charge`).
+-- This is the deliberate exception to "Unknown only after a diagnostic": foreign
+-- is a stated opacity, not a silent give-up. Alongside, a real stdlib named
+-- import resolves the normal way — the two coexist.
+-- Expected: clean.
+@edition "2026.6"
+
+import { toUpper } from "String"
+import js "stripe-js" as stripe
+
+def shout(s: String): String
+  toUpper(s)
+
+-- The foreign value is opaque: any access type-checks (we never run this).
+def charge(amount: Number): Number
+  stripe.charge(amount)

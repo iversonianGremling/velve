@@ -619,6 +619,23 @@ dimension machinery generalize?
   corpus migrated off inclusion; selective-visibility enforcement (only listed
   names visible, vs the current flatten-on-merge) is a later tightening. LSP
   follows.
+  **Rider DONE 2026-06 — unresolved imports are errors** (`import_unresolved_bad`/
+  `import_foreign_test`): closing the C1(i) honesty gap. A path resolving to
+  neither a stdlib module, a file-relative module, nor a foreign `import js` is
+  now rejected ("cannot resolve import '…'"), and a braced named import of a
+  missing export is "module 'M' has no export 'x'". Before, both bound the name
+  to the recovery type `Unknown` (which `unify` no-ops) and any later use
+  type-checked clean — the silent-leniency hole. Invariant now enforced:
+  **`Unknown` is minted only after a diagnostic** (recovery, not absence); the
+  sole deliberate exception is `import js` foreign interop (opaque by design,
+  flagged so the error doesn't fire). Needed two small lower-time AST flags —
+  `foreign` (the `js` form lowers identically to a bare import otherwise) and
+  `named` (the `{…}` braces, which lowering discarded — so a braced single-name
+  non-member used to misclassify as a namespace alias). Baseline: clean fixtures
+  unchanged; `examples/particle_system.velve` 26→29 errors (its imports of the
+  unshipped `std/gpu`/`std/audio`/`std/low` now fail honestly — already red from
+  a syntax error). This also makes `import_refined_test`'s *check* depend on the
+  loader (remove it → "cannot resolve import './import_refined_lib'").
 
 ---
 
