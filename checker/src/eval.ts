@@ -1660,6 +1660,13 @@ function cmpOp(l: Value, r: Value, f: (a: number, b: number) => boolean): Value 
   throw new RuntimeError(`comparison requires two numbers or two strings`);
 }
 
+// sortBy key ordering  same num-or-string rule the `<`/`>` operators use (cmpOp).
+function keyGt(a: Value, b: Value): boolean {
+  if (a.tag === "VNum" && b.tag === "VNum") return a.v > b.v;
+  if (a.tag === "VStr" && b.tag === "VStr") return a.v > b.v;
+  throw new RuntimeError(`sortBy keys must be two numbers or two strings, got ${display(a)} and ${display(b)}`);
+}
+
 function equal(a: Value, b: Value): boolean {
   if (a.tag !== b.tag) return false;
   switch (a.tag) {
@@ -2231,13 +2238,19 @@ export function patchHOF(env: Env, ev: Evaluator): void {
     return { tag: "VBool", v: true };
   });
   def("sortBy", async args => {
-    // Insertion sort with an async comparator (comparators may call back in).
-    const f = args[0]!, list = [...toList(args[1]!)];
+    // Key-fn form, data-first: sortBy(xs, keyFn) returns xs sorted ascending by the
+    // extracted key. Matches infer (sortBy : (List a, a -> b) -> List a) and the
+    // listMap/listFilter convention, so it chains under |>. Keys are read once up
+    // front (decorate-sort-undecorate), then a stable insertion sort  the key
+    // extractor is async and may call back into the scheduler.
+    const list = [...toList(args[0]!)], f = args[1]!;
+    const keys: Value[] = [];
+    for (const x of list) keys.push(await ev.applyFn(f, [x], "sortBy"));
     for (let i = 1; i < list.length; i++) {
-      const x = list[i]!;
+      const x = list[i]!, kx = keys[i]!;
       let j = i - 1;
-      while (j >= 0 && num(await ev.applyFn(f, [list[j]!, x], "sortBy")) > 0) { list[j + 1] = list[j]!; j--; }
-      list[j + 1] = x;
+      while (j >= 0 && keyGt(keys[j]!, kx)) { list[j + 1] = list[j]!; keys[j + 1] = keys[j]!; j--; }
+      list[j + 1] = x; keys[j + 1] = kx;
     }
     return { tag: "VList", elems: list };
   });

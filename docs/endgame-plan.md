@@ -124,13 +124,21 @@ facts, callees assume their signatures) just shipped. What's left in-arc:
   stash; additive corpus test). Per-def first (it rides the type-annotation
   surface); per-block only if wanted after — it may honestly be cut: the
   module scope has covered every real fixture so far.
-- **A5. `sortBy` infer/eval reconciliation** *(1 slice, small)*. Known
-  engine bug: infer types `sortBy(xs, keyFn)` (list-first, one-arg key);
-  eval implements `sortBy(cmp, xs)` (comparator-first, two-arg). Decide one
-  (key-fn form matches the other HOF builtins' fn-first convention:
-  `sortBy(keyFn, xs)`), fix the other side, fixture pins both type and
-  runtime behavior. NB: eval.ts contains a non-UTF8 byte — search with
-  `grep -a`, edit via latin1-encoded node scripts only.
+- **A5. `sortBy` infer/eval reconciliation** *(1 slice, small)*. **SHIPPED
+  2026-06** (`sortby_test`/`_bad`). The divergence was total: infer typed
+  `sortBy(xs, keyFn)` (list-first, one-arg key) while eval read `args[0]` as a
+  two-arg comparator and `args[1]` as the list — so every type-checking call
+  crashed at runtime. Reconciled onto the **key-fn form**, fixing the **eval**
+  side: the actual codebase convention is data-first, not fn-first (`listMap`/
+  `listFilter` are `(list, fn)` and chain under `|>`), so infer's signature was
+  already right and consistent — eval was the outlier. eval now reads
+  keys once up front (decorate–sort–undecorate), then a stable insertion sort by
+  the extracted key; a new `keyGt` orders num-or-string keys with the same rule
+  as the `<`/`>` operators (`cmpOp`). Green pins both number and string keys
+  (identity/negated/distance, lexicographic); the `_bad` pins exactly 3 errors —
+  the old comparator convention is now a type error in both ways (two-arg key fn;
+  comparator-first arg order). NB: eval.ts contains a non-UTF8 byte — edited via a
+  latin1 node script so offset 3509 is preserved byte-for-byte.
 
 **Exit:** vocabulary 6/7 checkable (`overflow` waits on B), the witness flow
 complete in both positions, the showcase fixture exists, the one known
@@ -326,7 +334,10 @@ the backend and breadth are then build phases, not open questions.
 
 - **Phase A done** = binary-search fixture green under
   `proofs: [bounds, total]`-equivalent + gate-spelling fixture green +
-  `arith` in the checkable list + sortBy divergence closed.
+  `arith` in the checkable list + sortBy divergence closed. **All four met
+  (2026-06)** — `proof_binsearch_test`, `index_gate_test`, `proof_arith_test`,
+  `sortby_test`. What remains in-arc is optional/deferred: A4 (finer proof
+  scopes, possibly cut) and the A1 `let`-direct tail-position follow-on.
 - **Phase B done** = `proofs: [overflow]` fixture green with a Z3 model in
   the `_bad`; `ms*ms → Duration²` pin green; Low-level row re-graded with
   the fixture named.

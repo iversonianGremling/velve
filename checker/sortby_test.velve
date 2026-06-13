@@ -1,0 +1,18 @@
+-- A5 (endgame): sortBy is the key-fn form, data-first. sortBy(xs, keyFn) returns
+-- xs ordered ascending by the extracted key, and infer/eval now agree on one
+-- signature: sortBy : (List a, a -> b) -> List a. Previously infer said key-fn,
+-- list-first while eval implemented a two-arg comparator, comparator-first — so
+-- any type-checking call crashed at runtime. Reconciled onto the key-fn form: it
+-- matches the listMap/listFilter data-first convention and chains under |>.
+
+def main(): Effect [io] ()
+  let nums  = [5, 3, 9, 1, 7]
+  let asc   = sortBy(nums, fn (x) -> x)                  -- identity key → ascending
+  let desc  = sortBy(nums, fn (x) -> 0 - x)              -- negated key → descending
+  let near4 = sortBy(nums, fn (x) -> (x - 4) * (x - 4))  -- squared distance from 4; ties stay stable
+  let words = ["pear", "apple", "fig", "date"]
+  let lex   = sortBy(words, fn (w) -> w)                 -- string key → lexicographic (keyGt's VStr branch)
+  println(asc)
+  println(desc)
+  println(near4)
+  println(lex)

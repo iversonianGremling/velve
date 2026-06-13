@@ -1,0 +1,10 @@
+-- A5 _bad twin: the OLD eval convention (two-arg comparator, comparator-first) is
+-- now a type error against the reconciled key-fn signature. Exactly 3 errors.
+
+def twoArg(): List(Number)
+  let nums = [3, 1, 2]
+  sortBy(nums, fn (a b) -> a - b)   -- two-arg comparator; the key fn takes one arg → 1 error
+
+def swapped(): List(Number)
+  let nums = [3, 1, 2]
+  sortBy(fn (x) -> x, nums)         -- comparator-first order; sortBy is list-first → 2 errors

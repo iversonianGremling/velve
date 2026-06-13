@@ -890,6 +890,25 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       serves `bounds`/`nonzero`/`arith`. Zero grammar changes, zero eval.ts changes.
       NO re-grade: type-core holds A+; this completes the no-new-surface half of the
       Phase A proof arc.
+- [x] **`sortBy` infer/eval reconciliation (endgame A5)**: ✅ DONE (2026-06,
+      `sortby_test`/`_bad` — 0 errors + runs `[1,3,5,7,9]` / `[9,7,5,3,1]` /
+      `[5,3,1,7,9]` / `[apple,date,fig,pear]`, and exactly 3 errors). Closes the
+      live divergence flagged in the SortedList box above: infer typed
+      `sortBy(xs, keyFn)` (list-first, one-arg key) but eval read `args[0]` as a
+      two-arg comparator and `args[1]` as the list — so EVERY type-checking call
+      crashed at runtime. Reconciled onto the **key-fn form, fixing eval** (not
+      infer): the real codebase convention is data-first, not the plan's assumed
+      fn-first — `listMap`/`listFilter` are `(list, fn)` and chain under `|>`, so
+      infer's signature was already right and eval was the outlier. eval now reads
+      keys once (decorate–sort–undecorate), then a stable insertion sort by the
+      extracted key; new `keyGt` orders num-or-string keys with the `<`/`>` rule
+      (`cmpOp`). Green pins number AND string keys; `_bad` pins exactly 3 errors —
+      the old comparator convention is a type error both ways (two-arg key fn;
+      comparator-first order). Only `eval.ts` changed (latin1 edit, the non-UTF8
+      byte at offset 3509 preserved); check baseline untouched, run baseline
+      untouched except the two new rows. With this + A3 + A2 + A1's `Ok`-half, all
+      four Phase-A-done criteria are met; A4 (may be cut) and A1's `let`-direct
+      follow-on are the only in-arc remainder.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →
