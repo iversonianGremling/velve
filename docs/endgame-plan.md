@@ -373,7 +373,32 @@ Phase D's neutral IR being the down payment). The proof vocabulary closes.
     checked; green runs 42/10/5/350. Baseline 229→232, 0 CRASH, pre-existing
     corpus byte-identical. NOT a re-grade — Low-level already moved B−→A− at
     B3(ii); the held-back `+` is Phase D native IR.
-    *Remaining in C1:* LSP.
+  - **(vi) LSP support — DONE 2026-06** (`scripts/lsp_smoke.mjs`; `src/lsp.ts`
+    made loader-aware + testable). The LSP server already existed (diagnostics /
+    hover / go-to-definition / completion / semantic tokens) but **bypassed the
+    loader** — it lowered the open buffer directly, so the entire C1 import
+    machinery was dead in-editor. Closed by routing analysis through
+    `loadProgram(file, openDocs)`: a new optional `openDocs` map (abspath → live
+    text) lets the open — possibly unsaved, possibly diskless — buffer override
+    disk while every imported file still loads normally, so an `import` resolves
+    its transitive cone in the editor exactly as the CLI does. Also: `findExprAt`
+    gained a `source` filter (the merged module now holds imported decls — a
+    cursor position must not match an identically-placed expr in another file);
+    go-to-definition returns the binding's true file (`span.source`) so jumps
+    **cross files** into a library; diagnostics are scoped to the open file
+    (`span.source === abs`, so a library's errors don't smear onto the importer);
+    and the LSP now surfaces the `arith`/`overflow` floors B2/B3 added, alongside
+    the existing nonzero/bounds floors (all conservative — the CLI's Z3 verdict is
+    authoritative). The server's query logic was extracted into exported pure
+    functions behind a main-module guard, so `scripts/lsp_smoke.mjs` drives it
+    headless (8 checks incl. cross-file definition into `std/units`); a real stdio
+    `initialize` handshake confirms the server still launches. Baseline 232→232
+    (LSP isn't a `.velve` fixture; the loader/find edits are optional-param-guarded
+    so the CLI path is byte-identical — stash-rebuild-diff EMPTY), 0 CRASH. Honest
+    gaps left (design §9): no lazy per-symbol queries / debounce / incremental cache
+    yet — a `didChange` re-analyzes the whole open program. NOT a graded north-star
+    row (the board tracks language design, not tooling) → no re-grade.
+    *C1 complete.*
 - **C2. `is Ok(a)` payload binding / flow narrowing** *(1 slice)*. The
   optional PLAN box: `if x is Ok(a)` binds the payload in the then-branch
   (and feeds the fact env — cheap synergy with A1's binder seeding;

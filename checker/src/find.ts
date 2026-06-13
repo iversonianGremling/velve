@@ -166,11 +166,17 @@ function visitStmt(s: Stmt, fn: (e: Expr) => void): void {
 // ── Position lookup ───────────────────────────────────────────────────────────
 
 // Returns the innermost (smallest-span) expression containing the position.
-export function findExprAt(mod: Module, line: number, char: number): Expr | null {
+// `source`, when given, restricts the search to exprs from that file — essential
+// once the loader (C1) merges imported files' decls into one module, since a
+// position in the open file could otherwise match an identically-placed expr in
+// an imported file (spans carry per-file offsets, so spanSize wouldn't separate
+// them).
+export function findExprAt(mod: Module, line: number, char: number, source?: string): Expr | null {
   let best: Expr | null = null;
   let bestSize = Infinity;
 
   visitAllExprs(mod, expr => {
+    if (source !== undefined && expr.span.source !== source) return;
     if (!contains(expr.span, line, char)) return;
     const size = spanSize(expr.span);
     if (size < bestSize) {

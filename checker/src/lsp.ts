@@ -13,13 +13,18 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import Parser from "tree-sitter";
 // @ts-ignore
 import Velve from "tree-sitter-velve";
-import { Lowerer } from "./lower.js";
+import { resolve as resolvePath } from "node:path";
+import { pathToFileURL } from "node:url";
+import { loadProgram } from "./loader.js";
 import { resolve } from "./resolve.js";
 import { infer } from "./infer.js";
 import { checkExhaustiveness } from "./exhaust.js";
 import { checkTotality, candidateFloorDiags } from "./total.js";
 import { checkHandled } from "./handled.js";
-import { checkNonZero, checkBounds, residueFloorDiags, boundsFloorDiags } from "./facts.js";
+import {
+  checkNonZero, checkBounds, checkArith, checkOverflow,
+  residueFloorDiags, boundsFloorDiags, arithFloorDiags, overflowFloorDiags,
+} from "./facts.js";
 import { typeToString } from "./types.js";
 import { findExprAt } from "./find.js";
 import type { Expr, Module } from "./ast.js";
@@ -33,8 +38,9 @@ parser.setLanguage(Velve);
 
 // ── Per-file analysis cache ───────────────────────────────────────────────────
 
-interface Analysis {
-  mod: Module;
+export interface Analysis {
+  file: string;          // absolute path of the open buffer (== span.source for its decls)
+  mod: Module;           // the MERGED program (entry + transitively imported files)
   types: Map<Expr, Type>;
   resolutions: ResolutionMap;
   snapshots: ScopeSnapshot[];
@@ -43,37 +49,64 @@ interface Analysis {
   tree: ReturnType<typeof parser.parse>;
 }
 
+export interface LspDiagnostic {
+  range: { start: { line: number; character: number }; end: { line: number; character: number } };
+  severity: DiagnosticSeverity;
+  message: string;
+  source: string;
+}
+
 const cache = new Map<string, Analysis>();
 
-function analyze(uri: string, text: string): { analysis: Analysis; lspDiags: ReturnType<typeof toLspDiag>[] } {
+// Analyze the live buffer of `uri` (text `text`), resolving its imports through
+// the loader so the C1 multi-file machinery works in-editor exactly as the CLI
+// does. The open buffer overrides disk via `openDocs`, so unsaved edits — and a
+// brand-new file with no disk copy yet — type-check against the saved libraries
+// they import.
+export function analyzeText(uri: string, text: string): { analysis: Analysis; lspDiags: LspDiagnostic[] } {
   const file = uriToPath(uri);
-  const tree = parser.parse(text);
-  const lowerer = new Lowerer(file);
-  const mod  = lowerer.lower(tree);
-  const ld   = lowerer.diagnostics;
+  const abs  = resolvePath(file);
+
+  const { mod, diagnostics: loadDiags } = loadProgram(file, new Map([[abs, text]]));
   const { resolutions, diagnostics: rd, snapshots, globals } = resolve(mod);
   const { types, diagnostics: id, nameToTypeString }         = infer(mod, resolutions);
   const ed                                                   = checkExhaustiveness(mod, types);
   const tr                                                   = checkTotality(mod, resolutions);
   const td                                                   = [...tr.diagnostics, ...candidateFloorDiags(tr.candidates)];
   const hd                                                   = checkHandled(mod, types);
-  // The LSP pipeline is sync, so the nonzero/bounds residues surface as the
-  // conservative floor errors; the CLI's Z3 verdict is authoritative.
-  const nzr                                                  = checkNonZero(mod, resolutions);
-  const bdr                                                  = checkBounds(mod, types, resolutions);
-  const nd                                                   = [...nzr.diagnostics, ...residueFloorDiags(nzr.residue),
-                                                                ...bdr.diagnostics, ...boundsFloorDiags(bdr.residue)];
+  // The LSP pipeline is synchronous, so the four proof obligations that finish
+  // in Z3 on the CLI surface here as their CONSERVATIVE floor errors (what the
+  // sync pass couldn't discharge). The CLI's Z3 verdict is authoritative and can
+  // only ever remove these — the editor errs toward flagging the unproved.
+  const nzr = checkNonZero(mod, resolutions);
+  const bdr = checkBounds(mod, types, resolutions);
+  const ar  = checkArith(mod, resolutions);
+  const ov  = checkOverflow(mod, types, resolutions);
+  const fd  = [
+    ...nzr.diagnostics, ...residueFloorDiags(nzr.residue),
+    ...bdr.diagnostics, ...boundsFloorDiags(bdr.residue),
+    ...ar.diagnostics,  ...arithFloorDiags(ar.residue),
+    ...ov.diagnostics,  ...overflowFloorDiags(ov.residue),
+  ];
 
-  const analysis: Analysis = { mod, types, resolutions, snapshots, globals, nameToTypeString, tree };
+  const analysis: Analysis = {
+    file: abs, mod, types, resolutions, snapshots, globals, nameToTypeString,
+    tree: parser.parse(text),  // local parse — semantic tokens need the open file's CST
+  };
   cache.set(uri, analysis);
 
-  return {
-    analysis,
-    lspDiags: [...ld, ...rd, ...id, ...ed, ...td, ...hd, ...nd].map(toLspDiag),
-  };
+  // Only this file's own diagnostics belong on this file's URI. Errors that
+  // originate inside an imported library carry that library's span.source and
+  // surface when THAT file is opened — not smeared onto the importer's lines.
+  // (Import-resolution errors are reported against the importer's `import` span,
+  // whose source IS this file, so they pass the filter.)
+  const own = [...loadDiags, ...rd, ...id, ...ed, ...td, ...hd, ...fd]
+    .filter(d => d.span.source === abs);
+
+  return { analysis, lspDiags: own.map(toLspDiag) };
 }
 
-function toLspDiag(d: { kind: string; span: { start: { line: number; col: number }; end: { line: number; col: number } }; message: string }) {
+function toLspDiag(d: { kind: string; span: { start: { line: number; col: number }; end: { line: number; col: number } }; message: string }): LspDiagnostic {
   return {
     range: {
       start: { line: d.span.start.line, character: d.span.start.col },
@@ -89,54 +122,14 @@ function uriToPath(uri: string): string {
   try { return new URL(uri).pathname; } catch { return uri; }
 }
 
-// ── LSP connection ────────────────────────────────────────────────────────────
-
-const connection = createConnection(ProposedFeatures.all);
-const documents  = new TextDocuments(TextDocument);
-
-// Semantic token legend — order must match TOKEN_TYPE_* constants below.
-const SEMANTIC_TOKEN_LEGEND = {
-  tokenTypes:     ["enumMember", "label"],
-  tokenModifiers: [],
-};
-const TOKEN_ENUM_MEMBER = 0;  // value atom: :idle, :ok, :running …
-const TOKEN_LABEL       = 1;  // step-label atom: :reserve, :done, :abort as transition targets
-
-connection.onInitialize((): InitializeResult => ({
-  capabilities: {
-    textDocumentSync:   TextDocumentSyncKind.Full,
-    hoverProvider:      true,
-    definitionProvider: true,
-    completionProvider: { triggerCharacters: [] },
-    semanticTokensProvider: {
-      legend: SEMANTIC_TOKEN_LEGEND,
-      full:   true,
-    },
-  },
-  serverInfo: { name: "velve-lsp", version: "0.1.0" },
-}));
-
-// ── Diagnostics ───────────────────────────────────────────────────────────────
-
-function recheck(doc: TextDocument): void {
-  const { lspDiags } = analyze(doc.uri, doc.getText());
-  connection.sendDiagnostics({ uri: doc.uri, diagnostics: lspDiags });
+function pathToUri(path: string): string {
+  try { return pathToFileURL(path).href; } catch { return path; }
 }
-
-documents.onDidOpen(e    => recheck(e.document));
-documents.onDidChangeContent(e => recheck(e.document));
-documents.onDidClose(e   => {
-  cache.delete(e.document.uri);
-  connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
-});
 
 // ── Hover ─────────────────────────────────────────────────────────────────────
 
-connection.onHover(({ textDocument, position }: TextDocumentPositionParams): Hover | null => {
-  const a = cache.get(textDocument.uri);
-  if (!a) return null;
-
-  const expr = findExprAt(a.mod, position.line, position.character);
+export function hoverAt(a: Analysis, line: number, character: number): Hover | null {
+  const expr = findExprAt(a.mod, line, character, a.file);
   if (!expr) return null;
 
   // Don't surface the whole saga/machine as one giant `String` hover — that fires
@@ -157,28 +150,27 @@ connection.onHover(({ textDocument, position }: TextDocumentPositionParams): Hov
       end:   { line: expr.span.end.line,   character: expr.span.end.col   },
     },
   };
-});
+}
 
 // ── Go to definition ──────────────────────────────────────────────────────────
 
-connection.onDefinition(({ textDocument, position }: TextDocumentPositionParams): Location | null => {
-  const a = cache.get(textDocument.uri);
-  if (!a) return null;
-
-  const expr = findExprAt(a.mod, position.line, position.character);
+export function definitionAt(a: Analysis, line: number, character: number): Location | null {
+  const expr = findExprAt(a.mod, line, character, a.file);
   if (!expr || expr.tag !== "Var") return null;
 
   const binding = a.resolutions.get(expr as Expr & { tag: "Var" });
   if (!binding) return null;
 
+  // The binding's span carries its own file (span.source) — so a jump to a name
+  // defined in an imported library lands in THAT file, not the open one.
   return {
-    uri: textDocument.uri,
+    uri: pathToUri(binding.span.source),
     range: {
       start: { line: binding.span.start.line, character: binding.span.start.col },
       end:   { line: binding.span.end.line,   character: binding.span.end.col   },
     },
   };
-});
+}
 
 // ── Completion ────────────────────────────────────────────────────────────────
 
@@ -193,12 +185,7 @@ function kindToCompletionKind(kind: BindingKind): CompletionItemKind {
   }
 }
 
-connection.onCompletion(({ textDocument, position }): CompletionItem[] => {
-  const a = cache.get(textDocument.uri);
-  if (!a) return [];
-
-  const { line, character } = position;
-
+export function completionsAt(a: Analysis, line: number, character: number): CompletionItem[] {
   function posInSpan(s: { start: { line: number; col: number }; end: { line: number; col: number } }): boolean {
     if (line < s.start.line || line > s.end.line) return false;
     if (line === s.start.line && character < s.start.col) return false;
@@ -222,7 +209,6 @@ connection.onCompletion(({ textDocument, position }): CompletionItem[] => {
 
   const seen = new Set<string>();
   const items: CompletionItem[] = [];
-
   const nts = a.nameToTypeString;
 
   function addScope(scope: Scope | null): void {
@@ -249,9 +235,17 @@ connection.onCompletion(({ textDocument, position }): CompletionItem[] => {
   }
 
   return items;
-});
+}
 
 // ── Semantic tokens ──────────────────────────────────────────────────────────
+
+// Semantic token legend — order must match TOKEN_TYPE_* constants below.
+const SEMANTIC_TOKEN_LEGEND = {
+  tokenTypes:     ["enumMember", "label"],
+  tokenModifiers: [],
+};
+const TOKEN_ENUM_MEMBER = 0;  // value atom: :idle, :ok, :running …
+const TOKEN_LABEL       = 1;  // step-label atom: :reserve, :done, :abort as transition targets
 
 // An atom_lit is a step-label (not a value) when it's the transition target
 // in step_goto/step_inline, the name in a saga_step definition, or the
@@ -301,17 +295,73 @@ function encodeSemanticTokens(
   return data;
 }
 
-connection.onRequest("textDocument/semanticTokens/full",
-  ({ textDocument }: { textDocument: { uri: string } }): SemanticTokens => {
-    const a = cache.get(textDocument.uri);
-    if (!a) return { data: [] };
-    const tokens: { line: number; col: number; len: number; type: number }[] = [];
-    collectAtomTokens(a.tree.rootNode, tokens);
-    return { data: encodeSemanticTokens(tokens) };
+export function semanticTokensFor(a: Analysis): SemanticTokens {
+  const tokens: { line: number; col: number; len: number; type: number }[] = [];
+  collectAtomTokens(a.tree.rootNode, tokens);
+  return { data: encodeSemanticTokens(tokens) };
+}
+
+// ── LSP connection (only wired up when run as the server, not on import) ───────
+
+function main(): void {
+  const connection = createConnection(ProposedFeatures.all);
+  const documents  = new TextDocuments(TextDocument);
+
+  connection.onInitialize((): InitializeResult => ({
+    capabilities: {
+      textDocumentSync:   TextDocumentSyncKind.Full,
+      hoverProvider:      true,
+      definitionProvider: true,
+      completionProvider: { triggerCharacters: [] },
+      semanticTokensProvider: {
+        legend: SEMANTIC_TOKEN_LEGEND,
+        full:   true,
+      },
+    },
+    serverInfo: { name: "velve-lsp", version: "0.1.0" },
+  }));
+
+  function recheck(doc: TextDocument): void {
+    const { lspDiags } = analyzeText(doc.uri, doc.getText());
+    connection.sendDiagnostics({ uri: doc.uri, diagnostics: lspDiags });
   }
-);
 
-// ── Start ─────────────────────────────────────────────────────────────────────
+  documents.onDidOpen(e          => recheck(e.document));
+  documents.onDidChangeContent(e => recheck(e.document));
+  documents.onDidClose(e         => {
+    cache.delete(e.document.uri);
+    connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
+  });
 
-documents.listen(connection);
-connection.listen();
+  connection.onHover(({ textDocument, position }: TextDocumentPositionParams): Hover | null => {
+    const a = cache.get(textDocument.uri);
+    return a ? hoverAt(a, position.line, position.character) : null;
+  });
+
+  connection.onDefinition(({ textDocument, position }: TextDocumentPositionParams): Location | null => {
+    const a = cache.get(textDocument.uri);
+    return a ? definitionAt(a, position.line, position.character) : null;
+  });
+
+  connection.onCompletion(({ textDocument, position }): CompletionItem[] => {
+    const a = cache.get(textDocument.uri);
+    return a ? completionsAt(a, position.line, position.character) : [];
+  });
+
+  connection.onRequest("textDocument/semanticTokens/full",
+    ({ textDocument }: { textDocument: { uri: string } }): SemanticTokens => {
+      const a = cache.get(textDocument.uri);
+      return a ? semanticTokensFor(a) : { data: [] };
+    }
+  );
+
+  documents.listen(connection);
+  connection.listen();
+}
+
+// Start the server only when launched directly (`node dist/lsp.js --stdio`).
+// Importing this module for tests gets the pure functions WITHOUT opening a
+// stdio connection (createConnection would otherwise seize stdin/stdout).
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  main();
+}

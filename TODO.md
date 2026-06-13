@@ -720,7 +720,39 @@ dimension machinery generalize?
   — that check fires at constructor/arg sites only; closing it is a small follow-on,
   not bundled here. Baseline 229→232, 0 CRASH, pre-existing corpus byte-identical.
   NOT a re-grade (Low-level already A− at B3(ii); held-back `+` is Phase D native IR).
-  Remaining in C1: LSP.
+
+  **C1(vi) LSP support — DONE 2026-06** (`checker/scripts/lsp_smoke.mjs`;
+  `src/lsp.ts` made loader-aware + testable; `src/loader.ts`/`src/find.ts` small
+  riders). The LSP server already shipped diagnostics / hover / go-to-definition /
+  completion / semantic tokens, but **bypassed the loader** — it lowered the open
+  buffer directly, so the whole C1 import machinery was dead in-editor (an
+  `import { meters } from "std/units"` left `meters` undefined). Closed by routing
+  analysis through `loadProgram(file, openDocs)`: a new optional `openDocs` map
+  (abspath → live text) lets the open — possibly unsaved, possibly diskless — buffer
+  override disk while every imported file still loads from disk, so imports resolve
+  their transitive cone in-editor exactly as the CLI does. Riders, each earning its
+  keep: `findExprAt` gained a `source` filter (the merged module now carries
+  imported decls, so a cursor must not match an identically-placed expr in another
+  file); go-to-definition returns the binding's true file via `span.source`, so a
+  jump **crosses into** `std/units.velve`; diagnostics are scoped to the open file
+  (`span.source === abs`) so a library's own errors don't smear onto the importer's
+  lines; and the LSP now also surfaces the `arith`/`overflow` floors B2/B3 added
+  (alongside the pre-existing nonzero/bounds floors — all conservative; the CLI's Z3
+  verdict is authoritative and only ever removes them). The query logic was extracted
+  into exported pure functions (`analyzeText`/`hoverAt`/`definitionAt`/
+  `completionsAt`/`semanticTokensFor`) behind a main-module guard, so
+  `scripts/lsp_smoke.mjs` drives them headless over in-memory buffers — 8 checks:
+  imports resolve in-buffer (0 errors), hover `d : Meters`, same-file definition,
+  **cross-file** definition into `std/units`, completion of imported names, semantic
+  tokens for a `:idle` atom, and two error cases (a plain type error + an unresolvable
+  import, each on the right line). A real stdio `initialize` handshake confirms the
+  server still launches as `node dist/lsp.js --stdio`. Baseline 232→232 (the LSP is
+  no `.velve` fixture; the loader/find edits are optional-param-guarded, so the CLI
+  path is **byte-identical** — stash-rebuild-diff EMPTY), 0 CRASH. **Honest gaps
+  (design §9):** no lazy per-symbol queries, debounce, incremental firewall reuse, or
+  shared query cache yet — a `didChange` is a full re-analysis of the open program.
+  NOT a graded north-star row (the board tracks language design, not tooling) → no
+  re-grade. **C1 complete.**
 
 ---
 

@@ -231,6 +231,28 @@ Roslyn/rust-analyzer style, no second implementation to drift. The LSP then:
 The §6 feature-gating means hovering a pure function **never wakes the borrow
 checker** — interactivity stays proportional to what you're actually looking at.
 
+> **AS BUILT (2026-06, C1(vi)).** `lsp.ts` ships and serves five capabilities over
+> stdio — diagnostics, hover, go-to-definition (incl. **cross-file**, via the
+> binding's own `span.source`), completion, and semantic tokens for atom/step
+> labels. What it shares with the batch compiler today is the **passes**, not yet a
+> query cache: each `didChange` re-runs the whole frontend (lower → resolve → infer
+> → exhaust → totality → handled → the four fact floors) on the open file's program.
+> The "dependency cone" claim *does* hold — the server is **loader-aware** (C1):
+> `analyzeText` calls `loadProgram(file, openDocs)` with the live, possibly-unsaved
+> buffer overriding disk, so an `import` resolves its transitive cone in-editor
+> exactly as the CLI does, and a brand-new file with no disk copy still type-checks
+> against the saved libraries it imports. Diagnostics are scoped to the open file
+> (`span.source === abs`), so a library's own errors don't smear onto the importer's
+> lines; the four Z3-backed obligations surface as their **conservative floors** (the
+> LSP pipeline is sync — the CLI's Z3 verdict is authoritative and only ever removes
+> floor errors). **Not yet built:** lazy per-symbol queries, debounce, incremental
+> reuse of §5's firewall, and the shared query cache — a `didChange` is a full
+> re-analysis. The query functions (`analyzeText`/`hoverAt`/`definitionAt`/
+> `completionsAt`/`semanticTokensFor`) are exported pure, and the connection wiring
+> sits behind a main-module guard, so `scripts/lsp_smoke.mjs` drives them headless
+> (8 checks: import resolution in-buffer, hover, both same- and cross-file
+> definition, completion of imported names, semantic tokens, two error cases).
+
 ---
 
 ## 10. Build order — seams now, heavy machinery later

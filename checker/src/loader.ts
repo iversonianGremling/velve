@@ -67,7 +67,13 @@ function fileExists(file: string): boolean {
   try { readFileSync(file, "utf8"); return true; } catch { return false; }
 }
 
-export function loadProgram(entryFile: string): LoadResult {
+// `openDocs` maps an ABSOLUTE file path to in-memory source text. It exists for
+// the editor (lsp.ts): the open buffer may differ from — or not yet exist on —
+// disk, so its live text must override `readFileSync` while every other file the
+// program imports still loads from disk. Keying by abspath (the same key `load`
+// uses for `onStack`/`loaded`) means a buffer for ANY file in the graph wins,
+// not just the entry, so cross-file edits are seen before a save.
+export function loadProgram(entryFile: string, openDocs?: Map<string, string>): LoadResult {
   const parser = new Parser();
   parser.setLanguage(Velve);
 
@@ -101,12 +107,18 @@ export function loadProgram(entryFile: string): LoadResult {
     // as a cycle BEFORE we recurse — including a cycle through the entry file.
     onStack.add(file);
     let src: string;
-    try {
-      src = readFileSync(file, "utf8");
-    } catch {
-      // Reported against the importer via the DImport span (see caller).
-      onStack.delete(file);
-      return { source: file, decls: [], edition: "2026.1" } as Module;
+    const open = openDocs?.get(file);
+    if (open !== undefined) {
+      // Live editor buffer — may be unsaved or have no disk file at all.
+      src = open;
+    } else {
+      try {
+        src = readFileSync(file, "utf8");
+      } catch {
+        // Reported against the importer via the DImport span (see caller).
+        onStack.delete(file);
+        return { source: file, decls: [], edition: "2026.1" } as Module;
+      }
     }
     const tree = parser.parse(src);
     diagnostics.push(...collectParseErrors(tree.rootNode as any, file));
@@ -123,7 +135,8 @@ export function loadProgram(entryFile: string): LoadResult {
       let dep: string;
       if (isLocalPath(decl.path)) {
         dep = resolveLocal(file, decl.path);
-        if (!fileExists(dep)) {
+        // An open editor buffer counts as "exists" even with no disk file yet.
+        if (!openDocs?.has(dep) && !fileExists(dep)) {
           diagnostics.push({ kind: "error", span: decl.span,
             message: `cannot resolve import '${decl.path}' — no file at ${dep}` });
           continue;
