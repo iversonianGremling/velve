@@ -498,7 +498,7 @@ export function boundsWitnessOf(ref: TypeRef | null): { refName: string; listPar
 // author's discipline, the same trust refined-types places in its gate predicates.
 // Type names are `upper_id` in the grammar, so the family ships as `U8`…`I32`
 // (the gate fns are the lowercase `u8`…`i32`, exactly the Natural/natural split).
-function widthOf(name: string): { bits: number; signed: boolean } | undefined {
+export function widthOf(name: string): { bits: number; signed: boolean } | undefined {
   const m = /^([UI])(8|16|32)$/.exec(name);
   return m ? { bits: Number(m[2]), signed: m[1] === "I" } : undefined;
 }

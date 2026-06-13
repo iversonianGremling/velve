@@ -64,8 +64,8 @@ open questions:
 
 The fact environment (`facts.ts`), Z3 back-end (`smt.ts`), and the
 `proofs: [...]` vocabulary (`total bounds nonzero arith overflow exhaustive
-handled`; 6 of 7 checkable — `arith` shipped 2026-06, only `overflow` waits on
-Phase B; `exhaustive` became always-on 2026-06, `vocab_cleanup_test`/`_bad` —
+handled`; **all 7 checkable as of 2026-06** — `arith` then `overflow` (B3(ii))
+closed the set; `exhaustive` became always-on 2026-06, `vocab_cleanup_test`/`_bad` —
 enforced regardless of declaration, the word kept for intent/back-compat) are
 live. The Tier-1.5 relational witness
 (`Index(length(xs))` dependent-refinement params: callers prove from path
@@ -104,7 +104,7 @@ facts, callees assume their signatures) just shipped. What's left in-arc:
   discharged on the same floor + Z3 the other obligations already speak
   (`sqrt(a * a)` and `if a > b then log(a - b)` prove guard-free; out-of-domain
   model in the error). Scope-local. `proof_scope_bad`'s not-checkable pin moved
-  `arith` → `overflow`. **Vocabulary 6/7; only `overflow` (Phase B) remains.**
+  `arith` → `overflow`, then B3(ii) retired it entirely. **Vocabulary 7/7 — complete.**
 - **A3. Fractional-measure slice + binary-search showcase** *(1 slice)*.
   **SHIPPED 2026-06** (`proof_binsearch_test`/`_bad`): the floor-aware step
   turned out to need NO change to terminates.ts — the fix is to admit `floor(e)`
@@ -170,7 +170,7 @@ facts, callees assume their signatures) just shipped. What's left in-arc:
   comparator-first arg order). NB: eval.ts contains a non-UTF8 byte — edited via a
   latin1 node script so offset 3509 is preserved byte-for-byte.
 
-**Exit:** vocabulary 6/7 checkable (`overflow` waits on B), the witness flow
+**Exit:** vocabulary 7/7 checkable as of B3(ii) (2026-06), the witness flow
 complete in both positions, the showcase fixture exists, the one known
 infer/eval divergence closed.
 
@@ -266,6 +266,24 @@ types**, not eight scattered numeric sketches.
   operands carry a width must prove the result in range — same fact-env +
   Z3 pipeline as `bounds` (interval floor for literal/guarded cases, solver
   residue with the model in the error). **Vocabulary complete: 7/7.**
+    - **B3(ii) SHIPPED 2026-06** (`proof_overflow_test`/`_bad`). Under
+      `proofs: [overflow]` every `+`/`-`/`*` whose operands carry a width tag
+      runs the SAME two-sided Z3 query as `bounds`, against the width range
+      (unsigned `[0, 2^bits−1]`, signed `[−2^(bits−1), 2^(bits−1)−1]`) instead of
+      a list length. Each width-carrying param **seeds** its range (`0 ≤ a ≤ 255`
+      for `a: U8`, the assume side of the gate's guarantee), so a guarded op
+      proves and the unguarded one reports the out-of-range model. As built: the
+      width tag rides only ascribed PARAMS, so an operand is always a name — the
+      result never folds to a constant, the proof is inherently relational, and
+      the floor forwards every translatable result to Z3 (the B1 "interval floor
+      for the literal case" is vacuous, noted as built). Width is lost on
+      intermediate results (`(a+b)+c` checks only the inner op — Phase D's native
+      lowering propagates it); div / unary-minus INT_MIN corner deferred. The
+      lower.ts not-yet-checkable guard is now a forward safety net only (all 7
+      checkable). Baseline diff: the two new fixtures, plus the two anticipated
+      re-pins (`proof_scope_bad`/`proof_fnscope_bad` — which the fixture comments
+      *predicted*, "this pin was bounds, then arith, …" — flipped from the
+      not-checkable error to a REAL overflow, each held at its 5-error count).
 
 **Exit:** Low-level re-grades B− → **A−** by the row's own definition (the
 two named mechanisms shipped; the held-back + is the native representation,
@@ -424,9 +442,10 @@ the backend and breadth are then build phases, not open questions.
   `sortby_test`. The A1 `let`-direct tail-position follow-on also shipped
   (`index_let_test`/`_bad`). What remains in-arc is optional/deferred: A4
   (finer proof scopes, possibly cut).
-- **Phase B done** = `proofs: [overflow]` fixture green with a Z3 model in
-  the `_bad`; `ms*ms → Duration²` pin green; Low-level row re-graded with
-  the fixture named.
+- **Phase B done** ✅ (2026-06) = `proofs: [overflow]` fixture green with a Z3
+  model in the `_bad` (`proof_overflow_test`/`_bad`); `ms*ms → Duration²` pin
+  green; Low-level row re-graded with the fixture named. B2(iii) general
+  `std/units` is the only optional remainder, deferred to after Phase C imports.
 - **Phase C done** = `std/refined` imported (not included) by a green
   fixture; corpus baselines hold through the registry refactor.
 - **Phase D done** = every corpus fixture's compiled output ≡ eval output;

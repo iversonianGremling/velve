@@ -1,0 +1,29 @@
+-- The failing twin of proof_overflow_test: every unguarded fixed-width op the
+-- `overflow` obligation must REJECT. Each `def` is in a `proofs: [overflow]`
+-- scope, so the solver runs its two-sided range query and fails (SAT model in
+-- the error). Expected: exactly 4 errors.
+@edition "2026.6"
+
+module sizedmath_bad
+  proofs: [overflow]
+
+  type U8 = Number where 0 <= value && value <= 255
+
+  -- Unguarded add: a, b ∈ [0, 255] admits a + b = 510 > 255 (upper overflow).
+  def badAdd(a: U8, b: U8): U8
+    a + b
+
+  -- Unguarded subtract: b > a drives a - b below 0 (lower overflow).
+  def badSub(a: U8, b: U8): U8
+    a - b
+
+  -- Unguarded multiply: 255 * 255 = 65025 ≫ 255 (upper overflow).
+  def badMul(a: U8, b: U8): U8
+    a * b
+
+  -- The fixed-width gotcha: guarding the SUM, not the operands. The then-arm's
+  -- `a + b` proves under the guard fact — but the CONDITION's own `a + b` is
+  -- evaluated (and on real hardware, wraps) before the compare, so it carries
+  -- no guard and overflows. Exactly the embedded-C trap the obligation closes.
+  def gotcha(a: U8, b: U8): U8
+    if a + b <= 255 then a + b else 255

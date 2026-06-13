@@ -8,6 +8,8 @@
 
 module leaky
 
+  type U8 = Number where 0 <= value && value <= 255
+
   -- 1: `proofs: [bounds]` on an unguarded read — i can be anything.
   def raw(xs: List(Number), i: Number): Number
     proofs: [bounds]
@@ -28,11 +30,12 @@ module leaky
     proofs: [fast]
     1
 
-  -- 5: `overflow` is in the vocabulary but not checkable yet — declaring it
-  -- would promise an unenforced guarantee.
-  def wide(): Number
+  -- 5: `proofs: [overflow]` on an unguarded fixed-width add — a + b on two U8s
+  -- can exceed 255 (overflow was the last word made checkable, in B3(ii); the
+  -- clause is now held to it, declared = enforced).
+  def wide(a: U8, b: U8): U8
     proofs: [overflow]
-    1
+    a + b
 
 def main(): Number
   raw([1, 2], 0)

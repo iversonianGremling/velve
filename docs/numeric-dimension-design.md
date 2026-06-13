@@ -177,14 +177,13 @@ check time where operands are constant, per the §5.1 constEval payback).
 ### 3.2 The seventh obligation — `overflow`
 
 The proof vocabulary's last word (`total bounds nonzero arith overflow
-exhaustive handled` — 6/7 checkable today). Under `proofs: [overflow]`, every
-arithmetic op whose operands carry a width must **prove the result stays in
-range**:
+exhaustive handled` — **7/7 checkable as of B3(ii), 2026-06**). Under
+`proofs: [overflow]`, every arithmetic op whose operands carry a width must
+**prove the result stays in range**:
 
-- Discharged on the **same fact-env + Z3 path as `bounds`**: interval floor for
-  the literal/guarded case (`a: u8, b: u8` with `a + b` under a guard `a + b <=
-  255` proves guard-free), solver residue with the **out-of-range model in the
-  error** otherwise.
+- Discharged on the **same fact-env + Z3 path as `bounds`**: the two-sided query
+  (result < min OR result > max, both UNSAT ⟹ in range) against the width range,
+  with the **out-of-range model in the error** otherwise.
 - Scope-local like the other obligations (module head `proofs:`, per-function
   `proofs:` clause — A4 — or implied by role).
 - Only fires on operands that *carry a width*; bare `Number` arithmetic is
@@ -192,9 +191,26 @@ range**:
   ±Infinity on JS doubles, and that is documented, not gated, until a value asks
   for a width).
 
-> **Vocabulary complete: 7/7 once B3 ships.** `overflow` is the only word that
-> needed a substrate (sized types) before it could be built — which is exactly
-> why it waited on Phase B.
+> **B3(ii) AS BUILT (2026-06)** — `proof_overflow_test`/`_bad`. Three as-built
+> notes refine the sketch above:
+> 1. **No interval floor.** The width tag rides only ASCRIBED PARAMS, so a width
+>    op's operand is always a NAME — the result never folds to a closed constant,
+>    the proof is inherently relational, and the floor forwards every translatable
+>    result straight to Z3. The "interval floor for the literal/guarded case" is
+>    vacuous (a guarded sum like `if a <= 255 - b then a + b` proves at the
+>    SOLVER, seeded with the operand ranges + the path guard — not at a floor).
+> 2. **Guard the operands, not the sum.** Each width param SEEDS its range
+>    (`0 ≤ a ≤ 255`); the safe idiom is `if a <= 255 - b then a + b` — guarding
+>    `a + b <= 255` is REJECTED because the condition's own `a + b` is formed (and
+>    on real hardware, wraps) before the compare, exactly the embedded-C trap.
+> 3. **Width is lost on intermediate results.** `(a + b) + c` checks only the
+>    inner op — the outer `+`'s left operand is a bare-Number BinOp result. Phase
+>    D's native lowering is where the tag propagates through. The div / unary-minus
+>    INT_MIN corner is a documented deferred gap.
+
+> **Vocabulary complete: 7/7.** `overflow` was the only word that needed a
+> substrate (sized types) before it could be built — which is exactly why it
+> waited on Phase B; B3(ii) closed it.
 
 ---
 
@@ -281,7 +297,12 @@ the width tags this note specs are the down payment on it.
   different widths don't silently unify. Predicate/width consistency trusts the
   canonical name (a `U8` declared `where value <= 99` would still tag `bits: 8`)
   — the same trust refined-types places in its gate predicates; deferred.
-- **B3 (ii)** — the `overflow` obligation on the fact-env/Z3 path; vocabulary 7/7.
+- **B3 (ii) AS BUILT (2026-06)** — the `overflow` obligation on the fact-env/Z3
+  path (`proof_overflow_test`/`_bad`); vocabulary now 7/7, Low-level B−→A−. The
+  two-sided `bounds`-style query against the width range; width params seed their
+  range so a guarded op proves. As-built refinements in §3.2's "B3(ii) AS BUILT"
+  note: no interval floor (operands are always names → the proof is relational),
+  guard-the-operands-not-the-sum, and width lost on intermediate results.
 
 Erasure is free throughout (eval never sees types); the only runtime-visible
 artifacts are the gates, which are ordinary refined constructors.

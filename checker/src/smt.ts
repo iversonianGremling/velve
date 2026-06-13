@@ -30,8 +30,8 @@
 import type { Expr } from "./ast.js";
 import type { Span } from "./span.js";
 import type { Diagnostic } from "./resolve.js";
-import type { Obligation, Fact, BoundsObligation, ArithObligation, CmpOp } from "./facts.js";
-import { residueFloorDiags, boundsFloorDiags, arithFloorDiags, mkFact, numE, varE } from "./facts.js";
+import type { Obligation, Fact, BoundsObligation, ArithObligation, OverflowObligation, CmpOp } from "./facts.js";
+import { residueFloorDiags, boundsFloorDiags, arithFloorDiags, overflowFloorDiags, widthRange, mkFact, numE, varE } from "./facts.js";
 import type { MeasureJob } from "./terminates.js";
 import { measureFailDiag } from "./terminates.js";
 
@@ -40,8 +40,8 @@ import { measureFailDiag } from "./terminates.js";
 const NEG_CONSTRAINT: Record<">=" | ">" | "<=" | "<", CmpOp> =
   { ">=": "<", ">": "<=", "<=": ">", "<": ">=" };
 
-export async function discharge(residue: Obligation[], jobs: MeasureJob[], bounds: BoundsObligation[], arith: ArithObligation[]): Promise<Diagnostic[]> {
-  if (residue.length === 0 && jobs.length === 0 && bounds.length === 0 && arith.length === 0) return [];
+export async function discharge(residue: Obligation[], jobs: MeasureJob[], bounds: BoundsObligation[], arith: ArithObligation[], overflow: OverflowObligation[]): Promise<Diagnostic[]> {
+  if (residue.length === 0 && jobs.length === 0 && bounds.length === 0 && arith.length === 0 && overflow.length === 0) return [];
   let z3: typeof import("z3-solver");
   try {
     z3 = await import("z3-solver");
@@ -52,6 +52,7 @@ export async function discharge(residue: Obligation[], jobs: MeasureJob[], bound
       ...jobs.map(j => measureFailDiag(j.fnName, j.span, hint)),
       ...boundsFloorDiags(bounds).map(d => ({ ...d, message: d.message + hint })),
       ...arithFloorDiags(arith).map(d => ({ ...d, message: d.message + hint })),
+      ...overflowFloorDiags(overflow).map(d => ({ ...d, message: d.message + hint })),
     ];
   }
   const { Context, em } = await z3.init();
@@ -119,6 +120,26 @@ export async function discharge(residue: Obligation[], jobs: MeasureJob[], bound
         : "Z3 returned unknown — conservatively rejected";
       diags.push({ kind: "error", span: ob.span,
         message: `proof obligation 'arith': cannot prove ${ob.fn}'s argument ${ob.need.op} ${ob.need.k} — ${detail} (the module declares proofs: [arith])` });
+    }
+
+    // `overflow`: the same two-sided query as `bounds`, against the width's
+    // range instead of a list length. result < min OR result > max both UNSAT
+    // ⟹ the sum is proved in range; the seeds (`0 ≤ a ≤ 255` etc., facts.ts)
+    // give the solver the operand ranges it needs to conclude.
+    for (const ob of overflow) {
+      const { min, max } = widthRange(ob.width);
+      const low = await checkUnsat(Z3, [...ob.facts, mkFact(ob.result, "<", numE(min, ob.span))]);
+      const high = low.verdict === "unsat"
+        ? await checkUnsat(Z3, [...ob.facts, mkFact(ob.result, ">", numE(max, ob.span))])
+        : null;
+      if (high?.verdict === "unsat") continue;  // both sides proved
+      const r = high ?? low;
+      const side = high ? `may exceed ${max}` : `may fall below ${min}`;
+      const detail = r.verdict === "sat"
+        ? `the result ${side} — Z3 found a model consistent with every fact on this path (${r.example})`
+        : `the result ${side} — Z3 returned unknown, conservatively rejected`;
+      diags.push({ kind: "error", span: ob.span,
+        message: `proof obligation 'overflow': cannot prove the ${ob.width.bits}-bit ${ob.width.signed ? "signed" : "unsigned"} result in range — ${detail} (the module declares proofs: [overflow])` });
     }
   } finally {
     em.PThread.terminateAllThreads();

@@ -881,10 +881,13 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       callee is not the builtin and stays opaque, like `length`). Scope-local;
       v1 scope: function bodies. Cross-obligation graduation: `proof_scope_bad`'s
       not-checkable-yet pin moved `arith` → `overflow` (counts hold at 5 errors).
-      **Vocabulary 6/7 checkable — only `overflow` remains; its sized-types
-      substrate (§5) SHIPPED in B3(i) 2026-06** (`sized_test`/`sized_bad`), so
-      B3(ii) wires the last word onto the existing fact-env/Z3 path. Zero grammar changes, zero eval.ts changes. NO re-grade:
-      type-core holds A+; this deepens the gradient within kind.
+      **Vocabulary now 7/7 — `overflow` SHIPPED in B3(ii) 2026-06**
+      (`proof_overflow_test`/`_bad`): the last word wired onto the existing fact-env/Z3
+      path — every `+`/`-`/`*` on width-carrying operands proves its result in the
+      width range via the same two-sided query as `bounds`, width params seeding their
+      range; the `proof_scope_bad`/`proof_fnscope_bad` not-checkable pins flipped to
+      real overflows (counts hold at 5). Zero grammar changes, zero eval.ts changes. NO re-grade:
+      type-core holds A+; this deepens the gradient within kind (Low-level re-grades B−→A−).
 - [x] **Floored measures + the binary-search showcase (endgame A3)**:
       ✅ DONE (2026-06, SPEC §12.6, `proof_binsearch_test`/`_bad` — 0 errors + runs
       `5/0/9/-1/-1`, and exactly 2 errors; baselines unchanged except the two new
@@ -1082,10 +1085,12 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       conversions are explicit-casts-only, literals default dimensionless and coerce
       via annotation (range-folded at check time). Pins B2 (units) and B3 (sized
       types + the 7th `overflow` obligation) as implementation, not redesign.
-      **B2(i)+B2(ii)+B3(i) SHIPPED 2026-06** — units + the `Duration` fold +
-      `Math.*` interplay (`uom*`), and the `U8…I32` sized-type range-refinement
-      family + the IR width tag (`sized_test`/`sized_bad`, SPEC §3.13). Last
-      remaining: B3(ii), the `overflow` obligation.
+      **B2(i)+B2(ii)+B3(i)+B3(ii) SHIPPED 2026-06 — Phase B complete** — units + the `Duration` fold +
+      `Math.*` interplay (`uom*`), the `U8…I32` sized-type range-refinement
+      family + the IR width tag (`sized_test`/`sized_bad`, SPEC §3.13), and the
+      7th `overflow` obligation (`proof_overflow_test`/`_bad`, SPEC §12.7) closing
+      the proof vocabulary at 7/7. Low-level re-grades B−→A−. Only optional B2(iii)
+      (general unit constructor, after Phase C imports) remains.
 - [ ] *(optional)* `is Ok(a)` payload binding / flow-narrowing after `if x is Ok` —
       the terse "is this Ok and give me the value" sugar, replacing the dropped
       `user? a | b`.

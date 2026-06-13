@@ -10,15 +10,19 @@ type Priority
   | Medium
   | Low
 
--- 1 + 2: vocabulary errors. 'fast' is not an obligation; 'overflow' is in the
--- closed vocabulary but not checkable yet — declaring it would promise an
--- unenforced guarantee. (This pin was 'bounds', then 'arith', as each slice
--- made it checkable — the not-yet set is down to overflow alone.)
+-- 1 + 2: an unknown-vocabulary error and a real overflow. 'fast' is not an
+-- obligation (the vocabulary is closed). 'overflow' WAS the last not-yet-
+-- checkable word (this pin was 'bounds', then 'arith', then 'overflow', as each
+-- slice made it checkable); B3(ii) closed it, so the not-yet set is now EMPTY
+-- and the module's `proofs: [overflow]` is enforced — `a + b` on two U8s can
+-- exceed 255 with no guard, so it faults the obligation.
 module wishes
   proofs: [fast, overflow]
 
-  def fine(): Number
-    1
+  type U8 = Number where 0 <= value && value <= 255
+
+  def fine(a: U8, b: U8): U8
+    a + b
 
 -- 3: a partial def inside a `proofs: [total]` module — recursion, no decrease.
 -- 4: a total-module def calling an unmarked outside fn — totality flows down.
@@ -43,4 +47,4 @@ def helper(n: Number): Number
   n + 1
 
 def main(): Number
-  fine()
+  fine(1, 1)

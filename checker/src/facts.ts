@@ -55,11 +55,11 @@
 // SCOPE-LOCAL: the fault is syntactic to the proved scope, so there is no
 // downward call gate. A callee outside the module may still divide unsafely;
 // what `nonzero` proves is that THIS module's divisors can't be zero.
-import type { Module, Decl, Expr, Stmt, Pat, Branch, FnClause } from "./ast.js";
+import type { Module, Decl, Expr, Stmt, Pat, Branch, FnClause, TypeRef } from "./ast.js";
 import type { Span } from "./span.js";
 import type { Diagnostic, ResolutionMap } from "./resolve.js";
 import type { Type } from "./types.js";
-import { WITNESS_DEMANDS, WITNESS_RETURNS, boundsWitnessOf, type WitnessDemand } from "./infer.js";
+import { WITNESS_DEMANDS, WITNESS_RETURNS, boundsWitnessOf, widthOf, type WitnessDemand } from "./infer.js";
 
 export type CmpOp = "==" | "!=" | "<" | "<=" | ">" | ">=";
 
@@ -405,6 +405,134 @@ function impliesConstraint(op: CmpOp, k: number, need: ArithConstraint): boolean
 function arithError(span: Span, fn: string, need: ArithConstraint, detail: string): Diagnostic {
   return { kind: "error", span,
     message: `proof obligation 'arith': cannot prove ${fn}'s argument ${need.op} ${need.k} — ${detail} (declared via proofs: [arith])` };
+}
+
+// ── `proofs: [overflow]` — the fixed-width-arithmetic obligation ─────────────
+//
+// The seventh and final vocabulary word, same engine as bounds/arith: in a
+// proved scope every `+`, `-`, `*` whose operands carry an IR width tag (B3(i),
+// the sized-integer family U8…I32) must have its RESULT proved to stay in that
+// width's range. JS Numbers never wrap, so without a proof an out-of-range sum
+// silently becomes a value the sized type's invariant forbids — the same "no
+// error to handle" shape as arith's silent NaN. The faulting op (`addU8`) and
+// the gate (`u8`) of B3(i) cover it at RUNTIME by routing through `.parse`;
+// `overflow` is what discharges it at COMPILE time, so the gate's Result can be
+// dropped when the sum is statically in range.
+//
+//   width range:  unsigned [0, 2^bits − 1],  signed [−2^(bits−1), 2^(bits−1) − 1]
+//
+// Operands sharing a width is guaranteed upstream — unify's §4 width-boundary
+// rule already rejects `U8 + U16` — so the result width is just either operand's
+// (the BinOp itself types as bare Number: refinements are transparent, §3.1, so
+// the width survives only on the operands, read from the `types` map). Each op
+// runs the two-sided query `bounds` already runs: prove result ≥ min AND
+// result ≤ max. The clause SEEDS every width-carrying param with its range fact
+// (`0 ≤ a ≤ 255` for `a: U8`) — the ASSUME side of the same assume/guarantee
+// the gate guarantees — so a guarded sum proves (upper from the guard, lower
+// from a, b ≥ 0). The width tag rides only ASCRIBED PARAMS, so a width op's
+// operand is always a name: the result never folds to a constant and the proof
+// is inherently relational, which is why the floor forwards every translatable
+// result (`+ - *` over names/lits) straight to the solver's two-sided query
+// rather than running an interval floor of its own — the seeds + path guard are
+// what discharge it. (As-built note: the B1 plan's "interval floor for the
+// literal case" is vacuous here for exactly that reason.) Division and unary
+// minus are excluded — both overflow only at the lone signed INT_MIN corner
+// (`min / -1`, `-min`), deferred as a documented gap. So is the chained case:
+// `(a + b) + c` only checks the inner op, since the outer `+`'s left operand is
+// a bare-Number BinOp result (width is lost on results) — Phase D's native
+// lowering is where width propagates through, and is where this tightens.
+export interface OverflowObligation { facts: Fact[]; result: Expr; width: { bits: number; signed: boolean }; span: Span }
+export interface OverflowResult { diagnostics: Diagnostic[]; residue: OverflowObligation[] }
+
+export function widthRange(w: { bits: number; signed: boolean }): { min: number; max: number } {
+  return w.signed
+    ? { min: -(2 ** (w.bits - 1)), max: 2 ** (w.bits - 1) - 1 }
+    : { min: 0, max: 2 ** w.bits - 1 };
+}
+
+export function checkOverflow(mod: Module, types: Map<Expr, Type>, resolutions: ResolutionMap): OverflowResult {
+  const out: OverflowResult = { diagnostics: [], residue: [] };
+  walkOverflowDecls(mod.decls, false, types, resolutions, out);
+  return out;
+}
+
+export function overflowFloorDiags(residue: OverflowObligation[]): Diagnostic[] {
+  return residue.map(o => {
+    const r = widthRange(o.width);
+    return overflowError(o.span, o.width,
+      `no fact proves the result within [${r.min}, ${r.max}] on this path — guard it (\`if r >= ${r.min} && r <= ${r.max}\`) or route it through the gate`);
+  });
+}
+
+function walkOverflowDecls(decls: Decl[], inOverflow: boolean, types: Map<Expr, Type>, resolutions: ResolutionMap, out: OverflowResult): void {
+  for (const d of decls) {
+    if (d.tag === "DModule") {
+      walkOverflowDecls(d.decls, inOverflow || d.proofs.includes("overflow"), types, resolutions, out);
+      continue;
+    }
+    if (d.tag === "DFn" && (inOverflow || d.proofs?.includes("overflow")))
+      for (const [i, c] of d.clauses.entries())
+        walkFacts(c.body, [...clauseEnv(d.clauses, i), ...widthSeeds(c)], (e, env) => {
+          const w = overflowOp(e, types);
+          if (w) proveOverflow(e, w, env, out);
+        }, resolutions);
+  }
+}
+
+// Seed each width-carrying param with its range — the ASSUME side of the gate's
+// guarantee (a `u8` value IS in [0, 255]). Lets a guarded sum prove its lower
+// side without re-deriving it. Mirrors `witnessSeeds` for bounds; the width is
+// read from the ascription's canonical name (`widthOf`), the same trust the tag
+// itself places in the name (numeric-dimension-design §3.1).
+function widthSeeds(c: FnClause): Fact[] {
+  const seeds: Fact[] = [];
+  for (const param of c.params) {
+    const pat = param.pat;
+    if (pat.tag !== "PVar" && pat.tag !== "PTyped") continue;
+    const name = refName(param.ascription);
+    const w = name ? widthOf(name) : undefined;
+    if (!w) continue;
+    const r = widthRange(w);
+    seeds.push(mkFact(varE(pat.name, param.span), ">=", numE(r.min, param.span)));
+    seeds.push(mkFact(varE(pat.name, param.span), "<=", numE(r.max, param.span)));
+  }
+  return seeds;
+}
+
+function refName(tr: TypeRef | null): string | null {
+  return tr && (tr.tag === "TRNamed" || tr.tag === "TRAtom") ? tr.name : null;
+}
+
+// A `+`, `-`, `*` whose operands carry an IR width tag. The width is either
+// operand's — they share one (unify's §4 rule), and a literal/Number operand
+// carries none, so an `a + 1` on a `U8` still reads the width off `a`. The
+// result type is bare Number (refinements transparent), so the tag is read from
+// the OPERANDS' types, not the BinOp's.
+function overflowOp(e: Expr, types: Map<Expr, Type>): { bits: number; signed: boolean } | null {
+  if (e.tag === "BinOp" && (e.op === "+" || e.op === "-" || e.op === "*"))
+    return widthOfType(types.get(e.left)) ?? widthOfType(types.get(e.right));
+  return null;
+}
+
+function widthOfType(t: Type | undefined): { bits: number; signed: boolean } | null {
+  return t?.tag === "Refinement" && t.width ? t.width : null;
+}
+
+function proveOverflow(result: Expr, w: { bits: number; signed: boolean }, env: Env, out: OverflowResult): void {
+  // The width tag only ever rides ASCRIBED PARAMS, so a width op's operand is
+  // always a name — the result never folds to a closed constant, and the proof
+  // is inherently relational (`a + b` in range GIVEN `a <= 255 - b`). The floor
+  // can't settle that without the path guard, so it forwards every translatable
+  // result to the solver's two-sided query; only an untranslatable result (an
+  // opaque call as an operand) is a conservative error here.
+  if (translatable(result)) out.residue.push({ facts: env, result, width: w, span: result.span });
+  else out.diagnostics.push(overflowError(result.span, w,
+    "the result is not a provable term — bind its operands to names and guard the sum"));
+}
+
+function overflowError(span: Span, w: { bits: number; signed: boolean }, detail: string): Diagnostic {
+  return { kind: "error", span,
+    message: `proof obligation 'overflow': cannot prove the ${w.bits}-bit ${w.signed ? "signed" : "unsigned"} result in range — ${detail} (declared via proofs: [overflow])` };
 }
 
 // The reusable fact-env walk: visits EVERY expression with the fact env in

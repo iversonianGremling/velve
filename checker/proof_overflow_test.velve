@@ -1,0 +1,55 @@
+-- `proofs: [overflow]` — the fixed-width-arithmetic obligation (SPEC §12.7),
+-- the SEVENTH and final checkable proof, which CLOSES the vocabulary (7/7).
+-- In a proved scope every +,-,* whose operands carry an IR width tag (B3(i)'s
+-- U8…I32 sized family) must have its RESULT proved to stay in that width's
+-- range. JS Numbers never wrap, so an unproved sum silently breaks the sized
+-- type's invariant — the same "no error to handle" shape as arith's NaN, and
+-- the same engine: the flow-sensitive fact env, then the Z3 two-sided query
+-- (result < min OR result > max, both UNSAT ⟹ in range), exactly as `bounds`.
+-- Each width-carrying param ASSUMES its range (a U8 param seeds 0 <= a <= 255),
+-- the assume side of the gate's guarantee, so a guarded op proves.
+--
+-- NOTE the fixed-width discipline this enforces: you must guard the OPERANDS,
+-- never form the sum first. `a + b` on a u8 machine wraps BEFORE any `<= 255`
+-- compare could run, so `if a + b <= 255 then a + b` is unsafe (and rejected —
+-- see proof_overflow_bad); the safe idiom is `if a <= 255 - b then a + b`.
+-- Expected: clean; runs.
+@edition "2026.6"
+
+module sizedmath
+  proofs: [overflow]
+
+  type U8  = Number where 0 <= value && value <= 255
+  type I16 = Number where 0 - 32768 <= value && value <= 32767
+
+  -- Add, guarded on the OPERANDS (the fixed-width-safe idiom). The guard's own
+  -- `255 - b` is itself a width op and proves (b: U8 ⟹ 255 - b ∈ [0, 255]); the
+  -- then-arm's `a + b` then proves from the guard fact `a <= 255 - b` plus the
+  -- a, b >= 0 seeds (upper: a + b <= 255; lower: a + b >= 0).
+  def addU8(a: U8, b: U8): U8
+    if a <= 255 - b then a + b else 255
+
+  -- Subtract, guarded so it can't dip below 0 (the lower side of the range):
+  -- `a - b` proves from `b <= a` (lower) and a <= 255, b >= 0 (upper).
+  def subU8(a: U8, b: U8): U8
+    if b <= a then a - b else 0
+
+  -- Increment: `a + 1` proves under `a <= 254` (upper) and the a >= 0 seed.
+  def inc(a: U8): U8
+    if a <= 254 then a + 1 else 255
+
+  -- Signed multiply: `a * 2` proves under the two-sided guard; the guard's only
+  -- arithmetic, `0 - 16384`, is a literal expression carrying no width, so it is
+  -- not itself an obligation — it just bounds `a`.
+  def doubleI16(a: I16): I16
+    if a <= 16383 && a >= 0 - 16384 then a * 2 else 0
+
+def main(): Effect [io] ()
+  println(addU8(100, 50))      -- 150
+  println(addU8(200, 100))     -- guard fails -> 255
+  println(subU8(100, 30))      -- 70
+  println(subU8(30, 100))      -- guard fails -> 0
+  println(inc(10))             -- 11
+  println(inc(255))            -- 255
+  println(doubleI16(1000))     -- 2000
+  println(doubleI16(20000))    -- guard fails -> 0

@@ -9,7 +9,7 @@ import { checkExhaustiveness } from "./exhaust.js";
 import { checkBorrows } from "./borrow.js";
 import { checkTotality } from "./total.js";
 import { checkHandled } from "./handled.js";
-import { checkNonZero, checkBounds, checkArith } from "./facts.js";
+import { checkNonZero, checkBounds, checkArith, checkOverflow } from "./facts.js";
 import { buildMeasureJobs } from "./terminates.js";
 import { discharge } from "./smt.js";
 import { Evaluator } from "./eval.js";
@@ -48,10 +48,11 @@ if (cmd === "check") {
   const { diagnostics: nonZeroDiags, residue } = checkNonZero(mod, resolutions);
   const { diagnostics: boundsDiags, residue: boundsResidue } = checkBounds(mod, types, resolutions);
   const { diagnostics: arithDiags, residue: arithResidue } = checkArith(mod, resolutions);
+  const { diagnostics: overflowDiags, residue: overflowResidue } = checkOverflow(mod, types, resolutions);
   const { diagnostics: measureDiags, jobs } = buildMeasureJobs(candidates, resolutions);
-  const smtDiags = await discharge(residue, jobs, boundsResidue, arithResidue);
+  const smtDiags = await discharge(residue, jobs, boundsResidue, arithResidue, overflowResidue);
 
-  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags, ...boundsDiags, ...arithDiags, ...measureDiags, ...smtDiags];
+  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags, ...boundsDiags, ...arithDiags, ...overflowDiags, ...measureDiags, ...smtDiags];
   console.log(`${types.size} expressions typed, ${resolutions.size} names resolved`);
   if (allDiags.length === 0) {
     console.log("no errors");
