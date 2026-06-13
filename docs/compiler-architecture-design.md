@@ -273,14 +273,185 @@ You do **not** need the incremental cache today; the fixtures are fine. You need
 > 6. *Per backend, when added:* a codegen module IR→target + a declared capability
 >    set (§7). Frontend untouched.
 
-> **DECIDE:** whether Velve Core is a fresh IR or an annotated/normalized form of
-> the existing lowered AST. Recommend a **distinct normalized IR** (elements already
-> lowered to `Call`, patterns compiled, refinements erased to runtime checks) — a
-> smaller, stabler contract is easier for five backends to target than the full AST.
+> **DECIDED (D0, 2026-06 — §11).** Velve Core is a **fresh distinct IR**, not an
+> annotated AST: ~13 nodes, ANF, elements lowered to `Call`, patterns compiled. One
+> correction to the earlier sketch — refinements are **not** "erased to runtime
+> checks"; they are proof obligations *already discharged*, so they erase to
+> **nothing** (§11.5 erasure law). A smaller, stabler contract is easier for five
+> backends to target than the full AST.
 
-> **DECIDE:** hashing granularity — per top-level symbol (recommended; matches the
-> dependency graph and the firewall) vs. per-expression (finer, but the bookkeeping
-> rarely pays off below the function level).
+> **DECIDED (D0, 2026-06).** Hashing granularity is **per top-level symbol** — it
+> matches the dependency graph and the signature firewall (§5); per-expression
+> bookkeeping rarely pays off below the function level.
+
+---
+
+## 11. Velve Core IR — the node grammar and the erasure contract (D0)
+
+**Status: DECIDED (D0, 2026-06).** §§2–10 fixed the *architecture* — where the IR
+sits, the cache split, the analyzer registry. This section fixes the *IR itself*:
+its node grammar, the exact erasure frontier, how the width tag rides, and what
+reaches runtime. It is the contract D1 builds the first emitter against, and it
+honors endgame-plan Decisions **2** (sized-types-as-range-refinements with a
+target-split) and **3** (JS now, IR stays neutral).
+
+### 11.1 Fresh distinct IR, not annotated AST (resolves the §10 DECIDE)
+
+Velve Core is a **separate, smaller normalized IR**, not the lowered AST with extra
+fields. The AST `Expr` carries 40+ forms (`ast.ts`) — `Propagate`, `Try`, `Retry`,
+`For`-comprehensions, the `Element` DSL, `TypeTest`, four saga/race/join statement
+sorts. Most are *surface sugar* that desugars to a handful of computational
+primitives. Targeting five backends against the full AST means re-implementing that
+desugaring per backend — the exact bloat §2 forbids. Velve Core collapses the
+surface to **~13 nodes**; a backend author reads one small grammar.
+
+### 11.2 ANF, effects as explicit nodes — generators are an emitter choice, not an IR primitive (resolves OQ#4)
+
+Velve Core is in **A-Normal Form**: every non-trivial subexpression is named by a
+`Let`, and every operand is an **atom** (a variable or a literal). Evaluation order
+is explicit in the `Let` spine.
+
+ANF over the alternatives:
+- **vs CPS** — CPS bakes a control representation into the IR that a native/LLVM
+  backend (which wants SSA + basic blocks) would have to *undo*. ANF is direct-style,
+  reads like the source, and is the standard input to both a tree-walking JS emitter
+  and SSA construction. (GHC Core, Kotlin IR, MIR are all closer to normalized
+  direct-style than to CPS.)
+- **vs generators-as-a-primitive** — a generator node would make D2
+  (sagas/streams/`go`) trivial *on JS* and **violate Decision 3**: it hard-codes a JS
+  control construct into the neutral middle. Forbidden at the IR level.
+
+So effects do **not** get a control-flow node in the IR. Every effectful operation —
+a saga `goto`/`yield`, `go`, `send`, a store message, a stream `push`/`next`,
+`await`, a transaction boundary — lowers to a single explicit
+**`Perform { cap, op, args }`** node carrying its **capability name**. How a run of
+`Perform`s is *scheduled* is the backend's call: the JS emitter realizes them as
+**generators** (cheap, idiomatic — the JS-ism lives here and only here), the
+native/WASM backend as an explicit **state machine**, BEAM as **processes**. The
+neutrality lives in the IR; the platform realization lives in the emitter — precisely
+the Kotlin-IR / Gleam split (§3).
+
+> One consequence worth stating: because `Perform` carries `cap`, §7's
+> target-portability check ("does target T provide every capability this symbol's
+> closure needs?") reads the **IR**, not the AST — the capability honesty §7 demands
+> is structurally enforced.
+
+### 11.3 The node grammar
+
+Two sorts. **Atoms** are trivial — pure, no naming needed:
+
+```
+IRAtom = Lit (Str | Num | Bool | Unit | Atom)   -- Duration folds to Num(ms); width/unit erased, a Num is just a Num
+       | Var name
+```
+
+**Computations** — everything with a value to name. In ANF each is the RHS of a
+`Let`, or sits in tail position:
+
+```
+IRExpr = Atom   IRAtom                              -- tail / trivial return
+       | Let    name IRComp IRExpr                  -- the ANF spine
+       | If     IRAtom IRExpr IRExpr                -- sugar over a 2-arm Match; emitters may special-case
+       | Match  IRAtom [IRArm]                      -- pattern-COMPILED decision tree (11.4)
+
+IRComp = Call    IRAtom [IRAtom]                    -- saturated; currying/defaults/named-args resolved at lowering
+       | PrimOp  op [IRAtom] {width?}               -- BinOp/UnOp + the pure builtin surface; width tag rides here
+       | Ctor    name [IRAtom]                      -- ADT value → VCtor
+       | Tuple [IRAtom] | List [IRAtom] | Record [(name,IRAtom)]
+       | Field   IRAtom name | Index IRAtom IRAtom  -- projections
+       | Lambda  [param] IRExpr {captures:[name]}   -- closure with EXPLICIT free-var capture set
+       | Perform cap op [IRAtom]                    -- the sole effect node (11.2)
+```
+
+`IRArm = { test: ctor-tag | lit | tuple-arity | wildcard, binds: [(name, projection)], body: IRExpr }`.
+
+Thirteen nodes. The explicit `captures` list on `Lambda` is for the native/WASM
+backends (closure conversion needs it); JS gets capture for free but the IR states it
+so the contract stays target-neutral.
+
+### 11.4 What AST→IR lowering desugars (the normalization list)
+
+Everything not in 11.3 is *gone* by the time D1's emitter runs:
+
+| AST surface | Lowers to |
+|---|---|
+| `Propagate` (`e?`), `PropWith` (`e?: alt`), `Try`, `Retry` | `Match` on `Result` + early-return in ANF |
+| `If`, `TypeTest` (`is`, `is Ok(a)`) | `If` / `Match` (the C2 binder becomes an arm `bind`) |
+| `For` comprehension, `Range`, `Loop`, `Break`/`Continue` | fold/loop prims + `Match` filters |
+| `BinOp`, `UnOp` | `PrimOp` |
+| `List`/`Tuple`/`Record` (+ spread), dict/set literals | heap-constructor nodes |
+| `Element` DSL, `Handler`, props | `Call`s to render primitives (re-aim `render.ts` at IR; §2) |
+| `Go`, `Await`, `Send`, `Machine`, saga steps, `Transaction` | `Perform` |
+| `AddrOf`/`Deref`/`Drop` (low-level tier) | IR pointer ops — emitted only on memory-capable backends; JS lowers `VPtr` as eval does (closure read/write) |
+
+Two honest carve-outs: **convergence** (`VDeferred`, styles §6) stays a *runtime*
+pass — the IR keeps a deferred prop expr as a `Lambda` thunk the runtime `converge()`
+resolves in topological order, exactly as eval does today (C3's sound home). And
+**`@js{}` / `import js`** opaque foreign code passes through as an emitter-target
+literal — neutral only in the trivial sense that non-JS backends reject it via the §7
+capability gate.
+
+### 11.5 The erasure contract — Decisions 2 & 3, made precise
+
+Every type-level judgment the **solver** reasons about is discharged at the AST→IR
+frontier and **does not exist below it**. The IR is the *proven* program — every
+obligation already met — so it carries only what *computes*:
+
+| Type-level thing (`types.ts`) | Discharged at | In the IR? | At JS runtime? |
+|---|---|---|---|
+| **Units** (`United.dims`) | infer (dimensional algebra) | **erased** — a `Meters` is a bare `Num` | no |
+| **Refinement predicates** (`Refinement.pred`, `where value …`) | facts/Z3; `constEval` fold | **erased** — *proof obligations*, already discharged; no runtime check emitted | no |
+| **Error rows** (`ErrRow`) | infer + `handled` pin | **erased** — only `Ok`/`Error`/user ctors survive, as `Ctor` | no |
+| **Effect / capability rows** (`Fn.effects`) | `handled` / capability check | **as `Perform.cap` tags only** — the row *discipline* is discharged; the op's capability name rides for §7 | the op runs; the row is not a value |
+| **Taint** (`Tainted`), **`Async`/`Stream`** wrappers | infer | **erased** wrapper; the *operations* become `Perform` | runtime future/stream values exist; the type wrappers don't |
+| **Totality** (`@total`) | totality engine | **erased** (a proof) — but it *licenses* §8 compile-time folding | no |
+| **Width tag** (`Refinement.width = {bits,signed}`) | B3 check (no-coerce-across-width; `overflow` proof) | **SURVIVES** — rides `PrimOp` arith nodes + numeric IR vars as inert metadata | **no on JS** (Number); **yes to native/WASM** (selects machine width) |
+
+> **The erasure law.** *Everything the solver reasons about — units, refinement
+> predicates, error rows, effect rows, taint, totality — is discharged at the frontier
+> and absent below it. The single survivor is the **width tag**, which is not a proof
+> but a **representation choice deferred to the backend** — so it alone rides the IR as
+> inert metadata: consumed by native/WASM, ignored by JS.*
+
+This is not an aspiration — **`eval.ts` already proves it sound.** The runtime
+`Value` union (`value.ts`) has *no* member for a unit, a refinement, a width, or a
+row: eval never sees a type. eval is the existing witness that the erasure frontier is
+real; Velve Core simply *formalizes for the compiled path the erasure the interpreted
+path already does for free*. That is also why the differential harness (11.7) is
+trustworthy: compiled output is checked against a reference (eval) that itself lives
+below the erasure frontier.
+
+The width tag's lone survival is the concrete face of Decision 2's "one surface, two
+representations": the JS emitter maps every numeric to a double and **drops** `width`;
+a future native emitter reads the *same* IR and lowers `PrimOp +{u8}` to an 8-bit
+machine add. Same IR, target-chosen representation — the proof that Velve Core is
+genuinely neutral rather than JS-shaped.
+
+### 11.6 What survives to runtime — the Value-set anchor
+
+The compiled JS target must produce values `display`-equivalent to eval's
+(`value.ts`), so the IR's surviving constructs map onto the existing `Value` union:
+
+| IR node | JS runtime | eval `Value` |
+|---|---|---|
+| `Lit` Num/Str/Bool/Unit/Atom | number / string / boolean / unit / tagged atom | VNum/VStr/VBool/VUnit/VAtom |
+| `Ctor` | tagged object | VCtor |
+| `Tuple`/`List`/`Record` | array / array / map-or-object | VTuple/VList/VRecord |
+| `Lambda` | JS closure | VFn |
+| `PrimOp` | inline op / builtin call | (immediate) |
+| `Perform` | scheduler / runtime call (D2) | VFuture/VSaga…/VStream |
+| render `Call`s | DOM build (D3), convergence preserved | VElement/VDeferred |
+| width / unit / refinement / row | — *nothing* — | — *(no Value member)* — |
+
+### 11.7 D1's contract, restated
+
+D1 builds: (a) the AST→Velve-Core lowering for the **compute core** — Fns, ADTs,
+pattern-compiled `Match`, lists/records/closures, the pure builtin surface
+(endgame §5 D1 scope), no `Perform` yet; (b) a Velve-Core→JS emitter for that core;
+(c) the **differential harness** — the baseline capture generalized to three columns
+*(check / run-eval / run-compiled)*, with `eval.ts` the never-deleted reference
+semantics. The IR specified here is frozen for that work; `Perform` and the effect
+realization land in D2.
 
 ---
 

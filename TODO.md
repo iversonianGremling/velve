@@ -798,6 +798,30 @@ dimension machinery generalize?
   runtime pass, already shipped and tested. **With C1 complete, C2 done, and C3 cut,
   Phase C is closed** — next real work is Phase D (compiled backend).
 
+- [x] 🟢 **Phase D0 — IR design — DONE 2026-06** (doc slice, like B1;
+  `compiler-architecture-design.md` §11; endgame-plan §5). Revised the architecture
+  note into the actual *contract* D1 builds against, honoring Decisions 2–3.
+  **Fresh distinct Velve Core IR**, ~13 nodes, **ANF** (resolves the §10
+  fresh-vs-annotated DECIDE). **OQ#4 answered: generators are a JS-*emitter* choice,
+  not an IR primitive** — every effect lowers to one explicit `Perform { cap, op }`
+  node (JS realizes it as a generator, native as a state machine, BEAM as a process);
+  a generator IR node would bake a JS-ism into the neutral middle, violating
+  Decision 3. CPS rejected (native/LLVM would undo it). The **erasure law** (§11.5):
+  units / refinement predicates / error rows / effect rows / taint / totality all
+  discharge at the AST→IR frontier and are absent below it; the **width tag is the
+  lone survivor** — a representation choice deferred to the backend (dropped on JS,
+  read by native/WASM), the concrete face of Decision 2's "one surface, two
+  representations". Soundness is *witnessed, not asserted*: the runtime `Value` union
+  (`value.ts`) already has no unit/refinement/width/row member, so eval is the
+  standing proof the frontier is real — §11 only formalizes for the compiled path the
+  erasure eval does for free. §11.4 tabulates 40+ AST forms → the 13; §11.6 anchors
+  every surviving node to its `Value` counterpart (compiled output stays
+  differential-testable). Hashing granularity DECIDED per-symbol. No code / no
+  fixtures / SPEC untouched (the IR is compiler-internal, not language surface) / no
+  graded row moves (planning, not a shipped capability). **Phase D is now open**;
+  D1 = IR + compute-core JS emitter + the three-column (check/eval/compiled)
+  differential harness.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

@@ -437,9 +437,28 @@ except the backend.
 ## 5. Phase D — the compiled backend (a phase, not slices; ~20–30 slice-equivalents)
 
 100% gate for Games and Animation, the perf ceiling under UI. Design note
-exists (`compiler-architecture-design.md`) — **D0 revises it** against
-Decisions 2–3 (target-neutral IR; erasure point for units/refinements/rows;
-width tags; what survives to runtime).
+exists (`compiler-architecture-design.md`).
+
+- **D0. IR design — DONE 2026-06** (doc; `compiler-architecture-design.md` §11).
+  Revised the note against Decisions 2–3: a **fresh distinct Velve Core IR** of
+  ~13 nodes in **ANF** (resolving the fresh-vs-annotated DECIDE), with effects as
+  a single explicit `Perform { cap, op }` node and **generators demoted to a JS
+  *emitter* choice, not an IR primitive** (resolving OQ#4 — a generator node would
+  bake a JS-ism into the neutral middle, violating Decision 3). The **erasure law**
+  is stated and proved: units, refinement predicates, error rows, effect rows,
+  taint, totality all discharge at the AST→IR frontier and are absent below it —
+  the **width tag is the single survivor** (a representation choice deferred to the
+  backend: dropped on JS, read by native/WASM), the concrete face of Decision 2's
+  "one surface, two representations". Soundness is not asserted but *witnessed* —
+  the runtime `Value` union (`value.ts`) already has no member for a unit /
+  refinement / width / row, so eval is the existing proof that the frontier is real;
+  §11 just formalizes for the compiled path the erasure eval does for free. §11.4
+  tabulates the desugaring (40+ AST forms → the 13), §11.6 anchors every surviving
+  node to its `Value` counterpart (so compiled output is differential-testable),
+  §11.7 freezes the contract D1 builds against. Hashing granularity DECIDED
+  per-symbol. No code, no fixtures (a doc slice, like B1); SPEC untouched (the IR is
+  compiler-internal, not language surface); no graded row moves (planning, not a
+  shipped capability).
 
 - **D1. IR + compute-core JS emitter** *(5–8)*. Fns, ADTs, match
   compilation, lists/records/closures, the pure builtin surface. The
@@ -541,10 +560,11 @@ the backend and breadth are then build phases, not open questions.
    generics already exist?
 3. **Per-block `@proof[...]{}`** (A4): keep or cut? The module scope has
    covered every fixture; per-def brackets may be enough forever.
-4. **IR shape** (D0): ANF vs CPS-for-sagas vs generators-as-primitive —
-   compiler-architecture-design.md leans where? Generators make D2 cheap on
-   JS but bake in a JS-ism the neutral-IR decision forbids at the IR level
-   (fine at the emitter level).
+4. **IR shape** (D0): ANF vs CPS-for-sagas vs generators-as-primitive.
+   **ANSWERED 2026-06 (D0, compiler-architecture-design §11.2): ANF**, effects as
+   one explicit `Perform` node, **generators are a JS-emitter realization of
+   `Perform`, not an IR primitive** — exactly the "fine at the emitter level, not
+   the IR level" reading. CPS rejected (a native/LLVM backend would have to undo it).
 5. **Differential-testing harness** (D1): three-column baseline (check /
    eval / compiled) vs golden-output files per fixture.
 6. **Import syntax** (C1): SPEC §14's sketch vs module-path-as-string;
