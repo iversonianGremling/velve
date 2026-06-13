@@ -619,6 +619,19 @@ conversion bridge. Axis (2) is now complete bar a general unit-constructor surfa
 today). Remaining for the re-grade: B3 (sized types + `overflow`) lands axis (1). Grade stays B−
 until that closes.
 
+**B3(i) SHIPPED 2026-06** (`sized_test`/`sized_bad`, SPEC §3.13): axis (1) — sized types — now
+exists. The `U8…I32` family ships as a stdlib range-refinement library over `Number` (the
+refined-types pattern exactly: the gate `u8(n): Result U8 String` is the only way in, faulting ops
+return through the gate, the always-succeeds widening cast is still written), so it's a pure library
+add bar the one new mechanism: the **IR width tag** (`{ bits, signed }`, name-derived on the
+`Refinement` type) — inert at runtime (a `U8` *is* a `Number` on JS), the down payment on Phase D's
+native lowering, and the thing `overflow` (B3(ii)) will read. Its check-time teeth are the
+no-coercion-across-widths rule (two different widths don't unify without an explicit cast). Baseline
+diff: only the two new rows. Type names are `upper_id`, so the family is `U8`/gate `u8` (the
+`Natural`/`natural` split; the idealized lowercase `u8` *type* isn't grammatical, noted as built).
+Remaining for the B−→A− re-grade: B3(ii) — the 7th `overflow` obligation on the fact-env/Z3 path,
+the last word of the vocabulary, whose substrate this slice just built.
+
 ---
 
 ## 6. Accessibility-as-proof — the styling analog

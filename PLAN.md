@@ -881,8 +881,9 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       callee is not the builtin and stays opaque, like `length`). Scope-local;
       v1 scope: function bodies. Cross-obligation graduation: `proof_scope_bad`'s
       not-checkable-yet pin moved `arith` → `overflow` (counts hold at 5 errors).
-      **Vocabulary 6/7 checkable — only `overflow` (sized-types substrate, §5)
-      remains.** Zero grammar changes, zero eval.ts changes. NO re-grade:
+      **Vocabulary 6/7 checkable — only `overflow` remains; its sized-types
+      substrate (§5) SHIPPED in B3(i) 2026-06** (`sized_test`/`sized_bad`), so
+      B3(ii) wires the last word onto the existing fact-env/Z3 path. Zero grammar changes, zero eval.ts changes. NO re-grade:
       type-core holds A+; this deepens the gradient within kind.
 - [x] **Floored measures + the binary-search showcase (endgame A3)**:
       ✅ DONE (2026-06, SPEC §12.6, `proof_binsearch_test`/`_bad` — 0 errors + runs
@@ -1081,6 +1082,10 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       conversions are explicit-casts-only, literals default dimensionless and coerce
       via annotation (range-folded at check time). Pins B2 (units) and B3 (sized
       types + the 7th `overflow` obligation) as implementation, not redesign.
+      **B2(i)+B2(ii)+B3(i) SHIPPED 2026-06** — units + the `Duration` fold +
+      `Math.*` interplay (`uom*`), and the `U8…I32` sized-type range-refinement
+      family + the IR width tag (`sized_test`/`sized_bad`, SPEC §3.13). Last
+      remaining: B3(ii), the `overflow` obligation.
 - [ ] *(optional)* `is Ok(a)` payload binding / flow-narrowing after `if x is Ok` —
       the terse "is this Ok and give me the value" sugar, replacing the dropped
       `user? a | b`.

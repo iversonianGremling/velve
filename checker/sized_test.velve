@@ -1,0 +1,76 @@
+-- The Tier-1 sized-integer library (numeric-dimension-design §3.1, slice B3(i)):
+-- U8…I32 as range refinements over Number, mirroring the refined-types library
+-- pattern EXACTLY — the gate is the only way in from a raw Number, faulting ops
+-- return through the gate, the always-succeeds widening cast is still written.
+-- Unlike the opaque-ADT refined types, a sized type is a `where`-refinement and
+-- so is transparent to Number: a `U8` reads as a Number with no projection.
+-- (Type names are upper_id in the grammar, so the family ships as `U8` with the
+-- lowercase gate `u8` — the same Natural/natural split refined-types uses.)
+-- What sized types add over a plain refinement is the IR WIDTH TAG (U8 → 8-bit
+-- unsigned): inert at runtime here (a U8 IS a Number on JS), but it makes two
+-- DIFFERENT widths non-interchangeable without an explicit cast (see sized_bad).
+-- Expected: clean; runs.
+@edition "2026.6"
+
+module sized
+  type U8  = Number where 0 <= value && value <= 255
+  type I8  = Number where 0 - 128 <= value && value <= 127
+  type U16 = Number where 0 <= value && value <= 65535
+  type I16 = Number where 0 - 32768 <= value && value <= 32767
+  type U32 = Number where 0 <= value && value <= 4294967295
+  type I32 = Number where 0 - 2147483648 <= value && value <= 2147483647
+
+  -- Gates: the only way in from a raw Number (may fail → Result).
+  def u8(n: Number): Result U8 String
+    if 0 <= n && n <= 255 then Ok(n) else Error("out of u8 range")
+
+  def u16(n: Number): Result U16 String
+    if 0 <= n && n <= 65535 then Ok(n) else Error("out of u16 range")
+
+  def i32(n: Number): Result I32 String
+    if 0 - 2147483648 <= n && n <= 2147483647 then Ok(n) else Error("out of i32 range")
+
+  -- Faulting op: U8 + U8 can leave the range, so it returns through the gate.
+  -- (Without the `overflow` obligation — B3(ii) — addition is not closed; the
+  -- gate re-checks, exactly like refined-types' faulting `natSub`.)
+  def addU8(a: U8, b: U8): Result U8 String
+    u8(a + b)
+
+  -- Widening: U8 ⊆ U16, so the cast always succeeds — but is still WRITTEN
+  -- (no silent coercion across a width boundary, §4). The U8 flows into the
+  -- gate's Number param transparently.
+  def widen(x: U8): Result U16 String
+    u16(x)
+
+-- Outside the module: type names are public, values flow through the gates.
+def show(r: Result U8 String): String
+  match r
+    | Ok(n)    -> "u8 {n}"
+    | Error(e) -> "no: {e}"
+
+def main(): Effect [io] ()
+  println(show(u8(200)))
+  println(show(u8(300)))
+  match u8(100)
+    | Ok(a) ->
+      match u8(50)
+        | Ok(b) ->
+          println(show(addU8(a, b)))    -- u8 150
+          println(show(addU8(a, a)))    -- u8 200
+          match widen(a)
+            | Ok(w)    -> println("widened {w}")
+            | Error(_) -> println("?")
+        | Error(_) -> println("?")
+    | Error(_) -> println("?")
+  match u8(200)
+    | Ok(big) ->
+      match addU8(big, big)             -- 400 > 255 → faults through the gate
+        | Ok(_)    -> println("?")
+        | Error(e) -> println("add blocked: {e}")
+    | Error(_) -> println("?")
+  match i32(2147483647)
+    | Ok(_)    -> println("i32 max ok")
+    | Error(_) -> println("?")
+  match i32(2147483648)
+    | Ok(_)    -> println("?")
+    | Error(e) -> println("i32 blocked: {e}")

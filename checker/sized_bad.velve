@@ -1,0 +1,26 @@
+-- Every construct below is rejected; check must report EXACTLY 3 errors.
+--   (1) 300 passed to a U8 param  → compile-time bounds fold (300 > 255)
+--   (2) -5  passed to a U8 param  → compile-time bounds fold (-5 < 0)
+--   (3) a U16 passed to a U8 param → WIDTH MISMATCH: the IR width tag makes two
+--       different widths non-interchangeable without an explicit cast, even
+--       though both are transparent to Number (numeric-dimension-design §4).
+@edition "2026.6"
+
+module bad_sized
+  type U8  = Number where 0 <= value && value <= 255
+  type U16 = Number where 0 <= value && value <= 65535
+
+  def takesU8(x: U8): Number
+    x
+
+  def callBadHigh(): Number
+    takesU8(300)            -- (1) 300 > 255
+
+  def callBadLow(): Number
+    takesU8(0 - 5)          -- (2) -5 < 0
+
+  def crossWidth(w: U16): Number
+    takesU8(w)              -- (3) width mismatch — U16 vs U8
+
+def main(): Number
+  0

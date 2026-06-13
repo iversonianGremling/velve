@@ -488,6 +488,21 @@ export function boundsWitnessOf(ref: TypeRef | null): { refName: string; listPar
   return listParam === null ? null : { refName: ref.name, listParam };
 }
 
+// The canonical sized-integer names carry an IR width tag (B3, numeric-dimension
+// -design §3.1): `U8` → 8-bit unsigned, `I32` → 32-bit signed. Name-derived, so
+// the stdlib family declares them as ordinary `Number where 0 <= value && …`
+// refinements (gates / closed ops / faulting ops, exactly the refined-types
+// pattern) and the tag rides along for free. The tag is what Phase D's emitter
+// lowers to a machine width and what the `overflow` obligation (B3(ii)) reads;
+// it trusts the canonical name — predicate/width consistency is the library
+// author's discipline, the same trust refined-types places in its gate predicates.
+// Type names are `upper_id` in the grammar, so the family ships as `U8`…`I32`
+// (the gate fns are the lowercase `u8`…`i32`, exactly the Natural/natural split).
+function widthOf(name: string): { bits: number; signed: boolean } | undefined {
+  const m = /^([UI])(8|16|32)$/.exec(name);
+  return m ? { bits: Number(m[2]), signed: m[1] === "I" } : undefined;
+}
+
 function resolveRef(ref: TypeRef, tp: Map<string, Type>, sagas?: Map<string, Type>): Type {
   switch (ref.tag) {
     case "TRNamed": {
@@ -507,9 +522,12 @@ function resolveRef(ref: TypeRef, tp: Map<string, Type>, sagas?: Map<string, Typ
         // Carry dependent value-arguments (`InBounds(length xs)`) positionally,
         // aligned with the refinement's params, so they can be folded at call sites.
         const depArgs = ref.args.map(a => (a.tag === "TRExpr" ? a.expr : null));
-        return depArgs.some(Boolean)
-          ? { tag: "Refinement", base, pred: ref.name, args: depArgs }
-          : { tag: "Refinement", base, pred: ref.name };
+        const width = widthOf(ref.name);
+        return {
+          tag: "Refinement", base, pred: ref.name,
+          ...(depArgs.some(Boolean) ? { args: depArgs } : {}),
+          ...(width ? { width } : {}),
+        };
       }
       const unit = UNITS.get(ref.name);
       if (unit) {
@@ -1391,6 +1409,19 @@ function unify(a: Type, b: Type, ctx: Ctx, span: Span, hint?: string): void {
     if (tailContribution(row, other)) return;  // S4b: a body skolem is a tail, not an opaque error
     const entries = rowContribution(other);
     if (entries) addRowEntries(row, entries);
+    return;
+  }
+
+  // Sized types (B3): a refinement carrying an IR width tag is NOT silently
+  // interchangeable with a DIFFERENT width — crossing a width boundary needs an
+  // explicit gate/cast (`u16(x)`, numeric-dimension-design §4). Fires only when
+  // BOTH sides carry a width, so bare `Number` ↔ sized stays transparent (a `u8`
+  // IS a `Number`, and the gate guards the Number → u8 direction at construction)
+  // and same-width unifies normally. No corpus file declares sized types, so this
+  // branch never fires there.
+  if (ta.tag === "Refinement" && tb.tag === "Refinement" && ta.width && tb.width
+      && (ta.width.bits !== tb.width.bits || ta.width.signed !== tb.width.signed)) {
+    err(ctx, span, `${hint ? hint + ": " : ""}width mismatch — ${typeToString(ta)} vs ${typeToString(tb)} (crossing a width boundary needs an explicit cast)`);
     return;
   }
 

@@ -710,8 +710,26 @@ distinct `Named` type — a `100ms` literal *is* a `United` value with dimension
 pin, once an error), `400ms / 100ms : Number`, `1 / 30s : s^-1` (frequency). The
 `Duration` stdlib module — `Duration.fromMs` / `fromSeconds` / `toMs` — is the
 explicit `Number`↔`Duration` conversion bridge (runtime identity; the type
-checker enforces the boundary). Sized types (`u8`/`i32`) are the
-dimensionless-but-bounded sibling, B3.
+checker enforces the boundary).
+
+**Sized types** (B3(i) SHIPPED 2026-06, `sized_test`/`sized_bad`) are the
+dimensionless-but-bounded sibling. The integer family ships as a stdlib
+range-refinement library over `Number` — `U8 I8 U16 I16 U32 I32` as
+`type U8 = Number where 0 <= value && value <= 255`, with the lowercase gate
+`u8(n): Result U8 String` as the only way in (and faulting ops returning back
+through the gate, the always-succeeds widening cast still written) — *exactly*
+the refined-types library pattern, and so transparent to `Number` (a `U8` reads
+as a `Number`, no projection; the type-name uppercase / gate lowercase split is
+the same `Natural`/`natural` shape, because type names are `upper_id`). What a
+sized type adds over a plain refinement is the **IR width tag** (`U8` →
+`{ bits: 8, signed: false }`, name-derived): inert at runtime (a `U8` *is* a
+`Number` on JS), the down payment on Phase D's native lowering (real machine
+`u8` vs an f64) and what the `overflow` obligation (B3(ii)) will read. Its
+check-time teeth: two refinements carrying **different** width tags do not
+silently unify — crossing a width boundary needs an explicit cast
+(`u16(x)`), even though both are transparent to `Number` (numeric-dimension
+-design §4). The bounds family rides the existing compile-time literal fold, so
+`takesU8(300)` is a check error. Still queued: the `overflow` obligation (B3(ii)).
 
 ---
 
@@ -2909,7 +2927,9 @@ Checkable today:
   binding shadows first and carries a resolution entry, so a resolved callee is
   not the builtin and stays opaque, exactly like `length`). Scope-local like
   `nonzero`/`bounds`; v1 scope: function bodies. **Vocabulary 6/7 checkable** —
-  only `overflow` (which waits on the sized-types substrate) remains.
+  only `overflow` remains, and its substrate now exists: B3(i) (2026-06) shipped
+  the sized-type family + the IR width tag (`sized_test`/`sized_bad`, §3.13), so
+  `overflow` (B3(ii)) is the last word to wire onto the fact-env/Z3 path.
 
 Obligations come in two enforcement shapes, and the difference is principled:
 **`total` is a call-graph obligation** (its fault — non-termination — can hide

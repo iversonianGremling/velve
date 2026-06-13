@@ -243,7 +243,25 @@ types**, not eight scattered numeric sketches.
   stdlib range-refinement family (`u8 i8 u16 i16 u32 i32`) with gates
   (`u8(n): Result u8 String`) and closed ops — mirrors the
   refined-types library pattern exactly (gates / closed ops / faulting ops
-  through the gate), plus the IR width tag spec'd in B1. (ii) The seventh
+  through the gate), plus the IR width tag spec'd in B1.
+    - **B3(i) SHIPPED 2026-06** (`sized_test`/`sized_bad`). The family ships as
+      a stdlib `where`-refinement library over `Number` (`type U8 = Number where
+      0 <= value && value <= 255`, …) with the lowercase gate `u8(n): Result U8
+      String` — exactly the refined-types pattern (gate is the only way in,
+      faulting ops back through the gate, the always-succeeds widening cast still
+      written), and so transparent to `Number`. Type names are `upper_id`, so the
+      family is `U8`…`I32` / gates `u8`…`i32` (the same `Natural`/`natural` split;
+      the idealized lowercase `u8` *type* from B1 §3.1 isn't grammatical, noted as
+      built). The **IR width tag** is a name-derived `{ bits, signed }` on the
+      `Refinement` type — inert at runtime, the Phase-D down payment and what
+      `overflow` reads; its check-time teeth are the §4 no-coercion-across-widths
+      rule (two *different* widths don't unify without an explicit cast, even
+      though both are transparent to `Number`). The bounds family rides the
+      existing compile-time literal fold (`takesU8(300)` is a check error). Pure
+      add bar the width tag + the width-boundary unify branch (baseline diff: only
+      the two new rows; the branch fires only when both sides carry a width, which
+      no corpus file does). Still deferred to B3(ii): the `overflow` obligation.
+  (ii) The seventh
   vocabulary word: under `proofs: [overflow]`, every arithmetic op whose
   operands carry a width must prove the result in range — same fact-env +
   Z3 pipeline as `bounds` (interval floor for literal/guarded cases, solver

@@ -271,8 +271,16 @@ the width tags this note specs are the down payment on it.
   require dimensionless), conversions, the `ms*ms → Duration²` showcase pin.
 - **B2 (iii, optional)** — a small `std/units` library (SI base + common derived)
   if wanted; sequenced after Phase C imports land so it can be `import`ed.
-- **B3 (i)** — the `u8 … i32` range-refinement family + gates + closed ops + the
-  IR width tag.
+- **B3 (i) AS BUILT (2026-06)** — the `U8 … I32` range-refinement family + gates
+  + faulting ops + the IR width tag (`sized_test`/`sized_bad`). Built per §3.1,
+  with two as-built notes: (a) the idealized lowercase `u8` *type* name isn't
+  grammatical — type names are `upper_id` — so the family ships as `U8`…`I32`
+  with lowercase gates `u8`…`i32` (the `Natural`/`natural` split). (b) The IR
+  width tag (`{ bits, signed }`, name-derived on the `Refinement` type) is given
+  observable check-time teeth *now* via the §4 rule: two refinements carrying
+  different widths don't silently unify. Predicate/width consistency trusts the
+  canonical name (a `U8` declared `where value <= 99` would still tag `bits: 8`)
+  — the same trust refined-types places in its gate predicates; deferred.
 - **B3 (ii)** — the `overflow` obligation on the fact-env/Z3 path; vocabulary 7/7.
 
 Erasure is free throughout (eval never sees types); the only runtime-visible
