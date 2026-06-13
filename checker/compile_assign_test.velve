@@ -1,0 +1,39 @@
+@edition "2026.6"
+
+-- D1(xix): INDEX ASSIGNMENT compiles (`xs[i] = v` — an in-place list-element write).
+-- eval mutates the list in place (`elems[i] = v`) and yields Unit. The JS value model already
+-- backs a list with a real `.es` array, so `xs.es[i] = v` is the same in-place mutation —
+-- byte-identical to eval, asserted by the differential harness. Covers: a literal-index write,
+-- a computed-index write, a read-modify-write at a parameter index, and an ALIASING case —
+-- `let mut ys = xs` binds the SAME list (no copy), so the two writes in `swapEnds` see the
+-- shared array (`[30, 20, 30]`, not a true swap). eval and compiled alias identically (JS
+-- `let ys = xs` shares the object), which is exactly the reference semantics under test. (Index
+-- is the only grammar-reachable lvalue write besides a pointer `p.* = v`; there is no
+-- record-field-assign form in the surface.)
+
+def setFirst(xs: List(Number), v: Number): List(Number)
+  let mut ys = xs
+  ys[0] = v
+  ys
+
+def swapEnds(xs: List(Number)): List(Number)
+  let mut ys = xs
+  ys[0] = xs[2]
+  ys[2] = xs[0]
+  ys
+
+def setComputed(xs: List(Number)): List(Number)
+  let mut ys = xs
+  ys[1 + 1] = 42
+  ys
+
+def bumpAt(xs: List(Number), i: Number): List(Number)
+  let mut ys = xs
+  ys[i] = ys[i] + 100
+  ys
+
+def main(): Effect [io] ()
+  println(setFirst([1, 2, 3], 9))
+  println(swapEnds([10, 20, 30]))
+  println(setComputed([7, 8, 9]))
+  println(bumpAt([5, 6, 7], 1))

@@ -141,6 +141,10 @@ function body(e: IRExpr, indent: string): string {
       // Reassign an existing `mut` binding (eval's env.set). Yields Unit — the body that
       // follows carries the block's value (RET_UNIT when the reassignment was last).
       return `${indent}${e.name} = ${comp(e.comp)};\n${body(e.body, indent)}`;
+    case "IndexSet":
+      // In-place list-element write `xs[i] = v` (eval's `elems[i] = v`). The list is backed
+      // by a real `.es` array, so the mutation is identical. Yields Unit via the continuation.
+      return `${indent}${atom(e.obj)}.es[${atom(e.index)}] = ${atom(e.value)};\n${body(e.body, indent)}`;
     case "If":
       return `${indent}if (${atom(e.cond)}) {\n${body(e.then, indent + "  ")}\n${indent}} else {\n${body(e.else_, indent + "  ")}\n${indent}}`;
     case "Fail":

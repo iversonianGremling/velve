@@ -712,7 +712,20 @@ carries the distinct *type* `Range(Number)` upstream though its runtime value is
 the range-returning defs ascribe it; a type distinction, not a compiler one.) The frontier twin rolled
 to a **FIELD/INDEX ASSIGNMENT** (`xs[1] = 99` — the spine lowers only a bare-name reassignment; an
 lvalue `SAssign` is a distinct statement node it refuses).
-**Remaining for D1(xix)+**: field/index assignment (in-place element/field write); `while`/`loop`;
+
+**D1(xix) shipped (2026-06) — index assignment (`xs[i] = v`, an in-place list-element write).**
+eval mutates the list IN PLACE (`elems[i] = v`) and yields Unit; the JS value model already backs
+a list with a real `.es` array, so a new `IndexSet` statement emits `xs.es[i] = v` — the same
+mutation, byte-identical. The RHS `value` is hoisted before the target's obj/index (eval's order;
+the atoms left are pure). Index is the only grammar-reachable lvalue write besides a pointer
+`p.* = v` (refused); **the surface has no record-field-assign form** (`p.x = v` is a syntax error —
+eval's `Field` branch is defensive/unreachable), so the slice is list-index only. No bounds check
+(an OOB index is eval-error in both columns, as the D1(vi) READ path leaves it). Harness: **41 match
+/ 0 mismatch / 0 js-crash / 108 unsupported** (254 files) — +1 match (fixture
+`compile_assign_test.velve`, byte-identical across literal / computed / read-modify-write / aliasing
+cases — `let mut ys = xs` shares the list, both writes see it, matching eval), no corpus flip. The
+frontier twin rolled to the **`loop` construct** (`loop … break` — the spine has no loop lowering).
+**Remaining for D1(xx)+**: the `loop` construct (`while`-style iteration with `break`/`continue`);
 then `Perform` in D2.
 
 ---

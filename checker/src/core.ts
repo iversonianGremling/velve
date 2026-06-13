@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xviii) ranges): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
+// SCOPE (through D1(xix) index-assign): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -40,8 +40,11 @@
 // (D1(xvi)); and `for` COMPREHENSIONS — `for (x in xs, …guards) -> body` lowered to nested
 // `for…of` over each source's `.es` with an `if` per guard, accumulating a list (D1(xvii));
 // and integer RANGES — `1..n` (exclusive) / `1..=n` (inclusive) lowered to a `$range` fill
-// producing the same `$list` a literal `[…]` builds (D1(xviii)). Field/index assignment
-// (`SAssign` to an lvalue), `while`/`loop`, and `Perform` (effects) are next (D1(xix)+, D2).
+// producing the same `$list` a literal `[…]` builds (D1(xviii)); and INDEX ASSIGNMENT —
+// `xs[i] = v`, an in-place list-element write (`SAssign`), mutating the backing `.es` array
+// exactly as eval mutates `elems` (D1(xix); the surface has no record-field-assign form, and
+// a pointer `p.* = v` refuses). The `loop` construct (`while`-style imperative iteration with
+// `break`/`continue`) and `Perform` (effects) are next (D1(xx)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
 
@@ -103,6 +106,7 @@ export type IRExpr =
   | { k: "Ret"; atom: IRAtom }                          // tail / trivial return
   | { k: "Let"; name: string; comp: IRComp; body: IRExpr; mut?: boolean } // `mut` ⇒ a reassignable JS `let`
   | { k: "Assign"; name: string; comp: IRComp; body: IRExpr } // reassign an existing `mut` binding (yields Unit)
+  | { k: "IndexSet"; obj: IRAtom; index: IRAtom; value: IRAtom; body: IRExpr } // `xs[i] = v` — in-place list-element write (yields Unit)
   | { k: "If"; cond: IRAtom; then: IRExpr; else_: IRExpr }
   | { k: "Fail"; msg: string };                         // non-exhaustive fall-through
 
@@ -361,6 +365,25 @@ class Lowering {
         // `mut` declaration lowers to a JS `let` so a later reassignment is legal.
         const cont = last ? RET_UNIT : this.block(rest, next);
         return wrap(c.binds, { k: "Let", name, comp: c.comp, mut: head.mutable, body: cont });
+      }
+      case "SAssign": {
+        // A write through an lvalue (D1(xix)): `xs[i] = v`, an in-place list-element write.
+        // eval mutates the list IN PLACE (`elems[i] = v`) and yields Unit — and the JS value
+        // model already backs a list with a real `.es` array, so `xs.es[i] = v` is the same
+        // in-place mutation, byte-identical. eval evaluates the RHS `value` FIRST, then the
+        // target's obj/index, so the binds hoist in that order (the atoms they leave are pure,
+        // so the emitted statement referencing them carries no further evaluation). Index is
+        // the ONLY grammar-reachable lvalue write besides `p.* = v` (a pointer `deref_assign`,
+        // refused — pointers aren't lowered); the surface has no record-field-assign form. No
+        // bounds check is emitted: an OOB index makes eval throw (an `eval-error` in both columns
+        // the harness never compares), exactly as the D1(vi) element-READ path leaves it.
+        const t = head.target;
+        if (t.tag !== "Index") throw new CompileUnsupported(`assignment target ${t.tag}`);
+        const v = this.norm(head.value, scope);
+        const o = this.norm(t.obj, scope);
+        const i = this.norm(t.index, scope);
+        const cont = last ? RET_UNIT : this.block(rest, scope);   // a write adds no binding
+        return wrap([...v.binds, ...o.binds, ...i.binds], { k: "IndexSet", obj: o.atom, index: i.atom, value: v.atom, body: cont });
       }
       case "SExpr": {
         if (last) return this.tail(head.expr, scope);

@@ -893,6 +893,27 @@ exists (`compiler-architecture-design.md`).
     0 mismatch, 0 js-crash**, 108 unsupported (253 files) — +1 match (the fixture), unsupported
     unchanged. SPEC untouched; no graded row moves (still partial). Next: **D1(xix)** = field/index
     assignment (in-place element/field write) — still pre-effect.
+  - **D1(xix) — index assignment compiles (the frontier twin flips again) — DONE 2026-06.**
+    The index-assignment guardrail D1(xviii) left (`xs[1] = 99`) was holding. A write through a
+    list-index lvalue now lowers: eval mutates the list IN PLACE (`elems[i] = v`) and yields Unit, and
+    the JS value model already backs a list with a real `.es` array, so a new `IndexSet` statement emits
+    `xs.es[i] = v` — the same in-place mutation, byte-identical. eval evaluates the RHS `value` first
+    then the target's obj/index, so the binds hoist in that order (the atoms they leave are pure). Index
+    is the only grammar-reachable lvalue write besides a pointer `p.* = v` (a `deref_assign`, refused —
+    pointers aren't lowered); **the surface has no record-field-assign form** (`p.x = v` is a syntax
+    error — `eval`'s `Field` branch in `evalAssign` is defensive/unreachable), so the slice is
+    list-index only, no speculative `FieldSet`. No bounds check is emitted: an OOB index makes eval throw
+    (an `eval-error` in both columns the harness never compares), exactly as the D1(vi) element-READ path
+    leaves it. Green fixture `compile_assign_test.velve` (literal-index write; computed-index write;
+    read-modify-write at a parameter index; and an **aliasing** case — `let mut ys = xs` binds the SAME
+    list, so `swapEnds`'s two writes see the shared array, `[30,20,30]` not a true swap, and eval/compiled
+    alias identically) compiles **byte-identically** to eval (`[9,2,3]` / `[30,20,30]` / `[7,8,42]` /
+    `[5,106,7]`). The frontier twin rolled to the **`loop` construct** (`loop … break` — an unbounded
+    imperative loop; the spine has no loop lowering, `Loop` is refused) — the next unrepresented form —
+    still exit 2. **No pre-existing corpus file flipped.** Harness: **41 match, 0 mismatch, 0 js-crash**,
+    108 unsupported (254 files) — +1 match (the fixture), unsupported unchanged. SPEC untouched; no graded
+    row moves (still partial). Next: **D1(xx)** = the `loop` construct (`while`-style iteration with
+    `break`/`continue`) — the last pure-compute frontier before the D2 effects wall.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,
