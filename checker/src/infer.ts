@@ -363,12 +363,28 @@ const ALIAS_RESOLVING = new Set<string>();   // cycle guard
 //     signature: every proved caller discharged the demand. An unproved
 //     caller can still fault the callee — the same standing as any call out
 //     of an unproved scope, and the runtime read still faults loudly.
-// v1 honest bounds: params only (no return-position witnesses, no Ok-payload
-// transport — the gate spelling needs binder seeding, a named follow-on), and
-// the demand attaches to direct full-arity calls (a witness-param fn passed
-// as a value or partially applied escapes it).
+// The witness also travels in RETURN position through the Result gate
+// `gate(xs, i): Result(Index(length(xs)), e)` — a checked constructor for the
+// witness. Two more bridges, both still under `proofs: [bounds]`:
+//   • GUARANTEE (callee): inside such a fn, every `Ok(payload)` is itself a
+//     witness DEMAND on `payload` (recorded below, enforced by the same
+//     facts.ts machinery) — the success path must PROVE its index in range
+//     from the body's guard, so the gate cannot lie.
+//   • SEED (caller): a call to such a gate is recorded in WITNESS_RETURNS with
+//     the caller's list substituted in; facts.ts seeds the witness facts onto
+//     the `Ok`-binder of a `match gate(xs, i) | Ok(j) -> …`, so the licensed
+//     read needs no guard.
+// v1 honest bounds: the demand attaches to direct full-arity calls (a
+// witness-param fn passed as a value or partially applied escapes it); the
+// return witness rides the Result GATE only — a bare `Index(length(xs))`
+// return would need a tail-position guarantee check, a named follow-on.
 export interface WitnessDemand { list: string | null; ref: string }
 export let WITNESS_DEMANDS = new Map<Expr, WitnessDemand>();
+// Caller-side seed table: a gate call → the witness it returns, with the
+// caller's actual list name substituted for the callee's param. `null` list
+// means the list argument wasn't a bare name (no facts can attach).
+export interface WitnessReturn { list: string | null; ref: string }
+export let WITNESS_RETURNS = new Map<Expr, WitnessReturn>();
 
 // `length(p)` over a bare name — the only bound spelling v1 accepts.
 function lenOverVar(e: Expr): string | null {
@@ -409,6 +425,16 @@ function witnessUseOf(pt: Type & { tag: "Refinement" }): { ref: string; listPara
   if (!dep) return null;
   const listParam = lenOverVar(dep);
   return listParam === null ? null : { ref: pt.pred, listParam };
+}
+
+// Return-gate view: the success payload of `Result(Index(length(p)), e)` is a
+// witness for `p`. Only the Result form is wired (the gate proves its own
+// payload); a bare `Index(length(p))` return is deliberately not a witness
+// here — it would need a tail-position guarantee, the named follow-on.
+function resultWitnessRet(t: Type): { ref: string; listParam: string } | null {
+  if (t.tag !== "Named" || t.name !== "Result" || t.args.length < 1) return null;
+  const ok = t.args[0];
+  return ok && ok.tag === "Refinement" ? witnessUseOf(ok) : null;
 }
 
 // Seed-side view (facts.ts entry): from a param's ASCRIPTION, the witness
@@ -1516,6 +1542,7 @@ export function infer(mod: Module, resolutions: ResolutionMap): InferResult {
   FN_SIGS = new Map();
   TOTAL_FNS = new Map();
   WITNESS_DEMANDS = new Map();
+  WITNESS_RETURNS = new Map();
   ALIAS_RESOLVING.clear();
   ADT_CTORS = new Map();
   ROW_DEPS = [];
@@ -2339,6 +2366,16 @@ class Inferrer {
         const ret   = freshVar();
         const fnName = expr.fn.tag === "Var" ? `call to '${expr.fn.name}'` : "function call";
 
+        // Return-gate GUARANTEE: inside a fn returning `Result(Index(length(p)), e)`,
+        // an `Ok(payload)` success must itself prove `payload` in range for `p` —
+        // recorded as a witness demand on the payload (facts.ts enforces it under
+        // `proofs: [bounds]`), so the gate cannot hand back an out-of-range index.
+        if (expr.fn.tag === "Var" && expr.fn.name === "Ok"
+            && argExprs.length === 1 && this.ctx.returnType) {
+          const w = resultWitnessRet(this.ctx.subst.apply(this.ctx.returnType));
+          if (w) WITNESS_DEMANDS.set(argExprs[0]!, { list: w.listParam, ref: w.ref });
+        }
+
         // Capture required effects before unification (unification doesn't touch effects).
         const resolvedFnT = this.ctx.subst.apply(fnT);
 
@@ -2560,6 +2597,20 @@ class Inferrer {
            resolvedFnT.params.some(p => { const rp = this.ctx.subst.apply(p); return rp.tag === "Fn" && rp.effectTail !== undefined; }));
         if (!tailAware)
           checkLatentArgEffects(expr.fn.tag === "Var" ? expr.fn.name : "fn");
+
+        // Return-gate SEED (caller side): a full-arity call to a gate returning
+        // `Result(Index(length(p)), e)` records the witness with the caller's
+        // actual list substituted for the callee param `p`; facts.ts seeds it
+        // onto the `Ok`-binder of a `match`.
+        if (resolvedFnT.tag === "Fn") {
+          const w = resultWitnessRet(this.ctx.subst.apply(resolvedFnT.ret));
+          if (w) {
+            const paramNames = expr.fn.tag === "Var" ? (FN_PARAMS.get(expr.fn.name) ?? []) : [];
+            const j = paramNames.indexOf(w.listParam);
+            const listE = j >= 0 ? argExprs[j] : undefined;
+            WITNESS_RETURNS.set(expr, { list: listE?.tag === "Var" ? listE.name : null, ref: w.ref });
+          }
+        }
 
         return this.ctx.subst.apply(ret);
       }

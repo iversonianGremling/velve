@@ -810,8 +810,9 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       discharged the demand, and an unproved caller keeps today's skip (the
       gradient) with the loud runtime fault as the floor. v1 honest bounds
       (documented in SPEC): params only — return-position witnesses and the
-      `Result`-gate spelling (`checkBounds(i, xs)`) need binder seeding,
-      the named follow-on; fn-as-value / partial application escape the
+      `Result`-gate spelling (`checkBounds(i, xs)`) need binder seeding
+      (SHIPPED the next slice — see the return-gate box below);
+      fn-as-value / partial application escape the
       demand; the demanded list must be a bare name. `_bad` pins the
       relational tie on BOTH bridges (demand-side cross-list, seed-side
       wrong-read), the missing lower guard, and the nameless list. Zero
@@ -821,6 +822,25 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       hard proofs than F★, Idris-native dependent ergonomics,
       `arith`/`overflow`. The binary-search showcase stays queued behind
       its own measure-facts slice.
+- [x] **The return-gate witness spelling — `Result Index(length(xs)) e`
+      (endgame A1)**: ✅ DONE (2026-06, SPEC §2.7 + §12.7,
+      `index_gate_test`/`_bad` — 0 errors + runs `30/-1/40/40`, and exactly
+      4 errors; baselines unchanged except the two new rows). The named
+      follow-on from the Tier-1.5 witness: the witness now travels in RETURN
+      position through the Result gate, a checked constructor for it. Two more
+      bridges, no new type/vocabulary. GUARANTEE (infer.ts: an `Ok(payload)`
+      inside a fn whose `ctx.returnType` resolves to `Result Index(length(p)) e`
+      records a `WITNESS_DEMANDS` entry on the payload — facts.ts then proves it
+      from the body's path facts, so the gate cannot hand back an out-of-range
+      index; `Ok(length(xs) - 1)` under `length(xs) > 0` proves). SEED (infer.ts
+      records the gate call in `WITNESS_RETURNS` with the caller's actual list
+      substituted for the callee param; facts.ts `walkBranch` seeds
+      `0 ≤ j < length(xs)` onto the `Ok(j)` match-binder, so `xs[j]` reads with
+      no guard). `_bad` pins both bridges: GUARANTEE (no guard, half-guard, and
+      the relational cross-list gate) and SEED (the relational wrong-read). v1
+      honest bounds: the gate rides the Result form (the `match` `Ok`-binder); a
+      bare `Index(length(xs))` return needs a tail-position guarantee check, the
+      one remaining follow-on. Zero grammar changes, zero eval.ts changes.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

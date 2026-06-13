@@ -1,0 +1,37 @@
+-- The return-gate witness, violated four ways (north-star §3.3, SPEC §12.7).
+-- The gate cannot lie (GUARANTEE) and its Ok is tied to THAT list (SEED) —
+-- pinned on both bridges. Expected: exactly 4 errors.
+@edition "2026.6"
+
+type Index n = Number where 0 <= value && value < n
+
+module slots
+  proofs: [bounds]
+
+  def checkBounds(xs: List(Number), i: Number): Result Index(length(xs)) String
+    if i >= 0 && i < length(xs) then Ok(i) else Error("oob")
+
+  -- 1: GUARANTEE, no guard — `Ok(i)` for any i. The gate would lie; Z3 answers
+  --    with a negative i.
+  def lying(xs: List(Number), i: Number): Result Index(length(xs)) String
+    Ok(i)
+
+  -- 2: GUARANTEE, half a guard — the upper side holds, the lower is open
+  --    (i may be negative). The payload demand is two-sided.
+  def halfGate(xs: List(Number), i: Number): Result Index(length(xs)) String
+    if i < length(xs) then Ok(i) else Error("oob")
+
+  -- 3: GUARANTEE, the relational pin — the payload is tied to xs, but the guard
+  --    is about ys. A fact about length(ys) buys nothing about length(xs).
+  def crossedGate(xs: List(Number), ys: List(Number), i: Number): Result Index(length(xs)) String
+    if i >= 0 && i < length(ys) then Ok(i) else Error("oob")
+
+  -- 4: SEED, the relational pin — the witness licenses xs, the branch reads ys.
+  --    The seeded facts are about the RIGHT list only.
+  def wrongRead(xs: List(Number), ys: List(Number), i: Number): Number
+    match checkBounds(xs, i)
+      | Ok(j) -> ys[j]
+      | Error(_) -> -1
+
+def main(): Number
+  0

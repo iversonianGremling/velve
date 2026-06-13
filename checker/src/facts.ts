@@ -59,7 +59,7 @@ import type { Module, Decl, Expr, Stmt, Pat, Branch, FnClause } from "./ast.js";
 import type { Span } from "./span.js";
 import type { Diagnostic, ResolutionMap } from "./resolve.js";
 import type { Type } from "./types.js";
-import { WITNESS_DEMANDS, boundsWitnessOf, type WitnessDemand } from "./infer.js";
+import { WITNESS_DEMANDS, WITNESS_RETURNS, boundsWitnessOf, type WitnessDemand } from "./infer.js";
 
 export type CmpOp = "==" | "!=" | "<" | "<=" | ">" | ">=";
 
@@ -511,6 +511,18 @@ function walkBranch(subject: Expr, b: Branch, negatives: Fact[], env: Env): void
     if (subjName !== null) for (const f of negatives) inner = addFact(inner, f);
   } else {
     inner = killPat(inner, pat);  // ctor/tuple/record binders carry no facts
+    // Return-gate SEED: `match gate(xs, i) | Ok(j) -> …` — the gate's signature
+    // `Result(Index(length(xs)), e)` proved `0 <= j < length(xs)` on its Ok
+    // path (the callee guarantee), so the binder carries those facts and the
+    // licensed read `xs[j]` needs no guard in the caller.
+    const ret = WITNESS_RETURNS.get(subject);
+    if (ret && ret.list !== null && pat.tag === "PCtor" && pat.name === "Ok"
+        && pat.inner && (pat.inner.tag === "PVar" || pat.inner.tag === "PTyped")) {
+      const lenE: Expr = { tag: "Call", fn: varE("length", pat.span),
+                           args: [varE(ret.list, pat.span)], named: [], span: pat.span };
+      inner = addFact(inner, mkFact(varE(pat.inner.name, pat.span), ">=", numE(0, pat.span)));
+      inner = addFact(inner, mkFact(varE(pat.inner.name, pat.span), "<", lenE));
+    }
   }
   if (b.guard) {
     walkExpr(b.guard, inner);

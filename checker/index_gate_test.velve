@@ -1,0 +1,52 @@
+-- Phase A1: the RETURN-GATE witness (north-star §3.3, SPEC §12.7). The Tier-1.5
+-- relational witness `Index(length(xs))` now also travels in RETURN position
+-- through the Result gate `Result Index(length(xs)) e` — a checked CONSTRUCTOR
+-- for the witness, the dual of the param-position demand (`index_witness_test`).
+-- Two more fact-env bridges, both under `proofs: [bounds]`:
+--   • GUARANTEE (callee): inside the gate, `Ok(payload)` is itself proved in
+--     range — the success constructor lives on the path where the guard holds,
+--     so the gate CANNOT hand back an out-of-range index (it cannot lie);
+--   • SEED (caller): `match gate(xs, i) | Ok(j) -> …` ties `j` to THAT list —
+--     the Ok-binder carries the witness facts, so the licensed read `xs[j]`
+--     needs no guard in the caller.
+-- Expected: clean; runs.
+@edition "2026.6"
+
+type Index n = Number where 0 <= value && value < n
+
+module slots
+  proofs: [bounds]
+
+  -- THE GATE: `Ok(i)` lives on the guarded path, so the callee proves its own
+  -- payload — the demand the gate's return signature makes on every success.
+  def checkBounds(xs: List(Number), i: Number): Result Index(length(xs)) String
+    if i >= 0 && i < length(xs) then Ok(i) else Error("out of bounds")
+
+  -- THE SEED: match the gate, read with no guard — `j` is in range for xs.
+  def lookup(xs: List(Number), i: Number): Number
+    match checkBounds(xs, i)
+      | Ok(j) -> xs[j]
+      | Error(_) -> -1
+
+  -- Check once, use many: one Ok licenses every read under it.
+  def doubleAt(xs: List(Number), i: Number): Number
+    match checkBounds(xs, i)
+      | Ok(j) -> xs[j] + xs[j]
+      | Error(_) -> -1
+
+  -- The payload need not be echoed: `length(xs) - 1` is in range on the guarded
+  -- path (Int-sorted length turns `> 0` into `>= 1`), and Z3 proves it — the
+  -- gate is a real constructor, not a pass-through of its argument.
+  def lastIndex(xs: List(Number)): Result Index(length(xs)) String
+    if length(xs) > 0 then Ok(length(xs) - 1) else Error("empty")
+  def last(xs: List(Number)): Number
+    match lastIndex(xs)
+      | Ok(j) -> xs[j]
+      | Error(_) -> -1
+
+def main(): Effect [io] ()
+  let xs = [10, 20, 30, 40]
+  println(lookup(xs, 2))    -- 30
+  println(lookup(xs, 9))    -- out of range: -1
+  println(doubleAt(xs, 1))  -- 20 + 20 = 40
+  println(last(xs))         -- 40

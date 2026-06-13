@@ -295,12 +295,30 @@ the `InBounds` ADT (§7.1) deliberately does not fake:
   the skip — the gradient — and the runtime read still faults loudly.)
 
 The demanded list argument must be a bare name (bind it first — length facts
-attach to immutable names), mirroring the direct-read rule. v1 honest bounds:
-**params only** — return-position witnesses and `Result`-payload transport
-(`checkBounds(i, xs): Result(Index(length(xs)), :oob)`, the gate spelling)
-need binder seeding, a named follow-on — and the demand attaches to direct
-full-arity calls (a witness-param fn passed as a value or partially applied
-escapes it, the same standing as an unproved caller).
+attach to immutable names), mirroring the direct-read rule. The demand attaches
+to direct full-arity calls (a witness-param fn passed as a value or partially
+applied escapes it, the same standing as an unproved caller).
+
+**The return-gate spelling** *(SHIPPED 2026-06, `index_gate_test`/`_bad`)*. The
+witness also travels in **return** position through the Result gate
+`def checkBounds(xs, i): Result Index(length(xs)) e` — a *checked constructor*
+for the witness, the dual of the demand. Two further bridges:
+
+- **Guarantee** (callee side): inside the gate, every `Ok(payload)` success is
+  itself a demand on `payload` — proved `0 ≤ payload < length(xs)` from the
+  body's path facts, so the success path lives where the guard holds and the
+  gate *cannot lie*. `Ok(i)` with no guard, or a one-sided guard, or a guard
+  about a different list, each fails with the model that breaks it. The payload
+  need not be the argument echoed back: `Ok(length(xs) - 1)` under
+  `length(xs) > 0` proves (Int-sorted `length`).
+- **Seed** (caller side): `match checkBounds(xs, i) | Ok(j) -> …` seeds
+  `0 ≤ j < length(xs)` onto the `Ok`-binder, so the licensed read `xs[j]` needs
+  no guard. The tie is relational on this bridge too — gating on `xs` and
+  reading `ys` in the branch is refuted.
+
+v1 honest bounds: the gate rides the **Result** form (the `Ok`-binder of a
+`match`); a bare `Index(length(xs))` return would need a tail-position
+guarantee check, the remaining follow-on.
 
 ### 2.8 Tainted types
 
@@ -2723,7 +2741,11 @@ Checkable today:
   conversely *assumes* its witness params' facts (assume/guarantee at the
   signature), so its read needs no guard. This moves the obligation across
   the call boundary without widening the vocabulary: the witness transports
-  the in-range fact, the fault class stays `bounds`.
+  the in-range fact, the fault class stays `bounds`. **In return position**
+  *(`index_gate_test`/`_bad`)* the same obligation rides the Result gate
+  `Result Index(length(xs)) e`: the callee proves each `Ok(payload)` in range
+  (the gate cannot lie) and the caller seeds the witness onto the `Ok`-binder
+  of a `match`, so `xs[j]` reads with no guard — the demand/assume pair, dualized.
 
 Obligations come in two enforcement shapes, and the difference is principled:
 **`total` is a call-graph obligation** (its fault — non-termination — can hide

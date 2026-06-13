@@ -68,7 +68,14 @@ handled`; 5 of 7 checkable) are live. The Tier-1.5 relational witness
 (`Index(length(xs))` dependent-refinement params: callers prove from path
 facts, callees assume their signatures) just shipped. What's left in-arc:
 
-- **A1. Witness gate spelling — binder seeding** *(1–2 slices)*. Make
+- **A1. Witness gate spelling — binder seeding** *(1–2 slices)*. **The
+  `Ok`-payload half SHIPPED 2026-06** (`index_gate_test`/`_bad`): the Result
+  gate `Result Index(length(xs)) e` carries the witness in return position —
+  the callee proves each `Ok(payload)` in range (the gate can't lie), the
+  caller seeds the `Ok`-binder of a `match`. The split landed exactly where
+  this item predicted: the `let`-direct half (a bare `Index(length(xs))`
+  return seeding `let j = …`) remains — it needs a tail-position guarantee
+  check, the one open follow-on. Original framing: Make
   `checkBounds(i, xs): Result(Index(length(xs)), :oob)` real: a dependent
   refinement in **return position** instantiates its `length(xs)` argument
   with the caller's actual binding, and the facts seed onto the binder —
