@@ -31,6 +31,9 @@ const BUILTIN_IMPL: Record<string, string> = {
   abs:      "Math.abs", floor: "Math.floor", ceil: "Math.ceil",
   round:    "Math.round", sqrt: "Math.sqrt", int: "Math.trunc",
   max:      "(a, b) => Math.max(a, b)", min: "(a, b) => Math.min(a, b)",
+  // `length` mirrors eval: a list's element count, or a string's char count.
+  length:   "(v) => (v && v.$t === 'L') ? v.es.length : v.length",
+  isEmpty:  "(v) => v.es.length === 0",
 };
 
 function lit(l: IRLit): string {
@@ -69,6 +72,8 @@ function comp(c: IRComp): string {
       return `$record({ ${body.join(", ")} })`;
     }
     case "Field": return `${atom(c.obj)}.fs[${JSON.stringify(c.field)}]`;
+    case "List":  return `$list(${c.elems.map(atom).join(", ")})`;
+    case "Index": return `${atom(c.obj)}.es[${atom(c.index)}]`;
   }
 }
 
@@ -107,7 +112,9 @@ export function emitModule(mod: IRModule, callMain = true): string {
     'const $ctor = (name, payload) => ({ $t: "C", name, payload });',
     '// A record: fields in a plain object, whose key-insertion order is the display order.',
     'const $record = (fs) => ({ $t: "R", fs });',
-    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : (v && v.$t === "C") ? (v.payload !== null ? v.name + "(" + $show(v.payload) + ")" : v.name) : (v && v.$t === "R") ? "{ " + Object.entries(v.fs).map(([k, val]) => k + ": " + $show(val)).join(", ") + " }" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
+    '// A list: elements in a JS array tagged for $show — displays `[a, b, …]`.',
+    'const $list = (...es) => ({ $t: "L", es });',
+    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : (v && v.$t === "C") ? (v.payload !== null ? v.name + "(" + $show(v.payload) + ")" : v.name) : (v && v.$t === "R") ? "{ " + Object.entries(v.fs).map(([k, val]) => k + ": " + $show(val)).join(", ") + " }" : (v && v.$t === "L") ? "[" + v.es.map($show).join(", ") + "]" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
     ...Object.entries(BUILTIN_IMPL)
       .filter(([name]) => !userNames.has(name))
       .map(([name, impl]) => `const ${name} = ${impl};`),

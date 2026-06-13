@@ -524,7 +524,24 @@ flip landed as forecast: the frontier twin was rolled to build a **list** (the n
 unrepresented heap value) and still refuses. Unlike D1(iv), no pre-existing corpus file
 flipped — the only new green is the fixture (the `&&` in an early draft of its guard was the
 short-circuit frontier, not records; split into a nested `if`).
-**Remaining for D1(vi)+**: lists + `PList`, closures with explicit capture; destructuring
+
+**D1(vi) shipped (2026-06) — lists (the frontier twin flips again).** Lists are built —
+`[a, b, …]`, including the empty `[]` — element-read (`xs[i]`), and measured
+(`length`/`isEmpty`). The runtime extends the `$t` scheme: `$list(...es) → {$t:"L", es}`,
+an array tagged so `$show` reproduces value.ts VList display — `[a, b, …]`, empty as `[]`,
+elements shown by the same `$show` so a list of heap values nests. Two IR comps — `List`
+(build; each element an atom) and `Index` (read element `i` — `.es[i]`); `length`/`isEmpty`
+join the pure-builtin whitelist (`length` mirrors eval: list element count or string char
+count). eval bounds-checks `xs[i]` at runtime — OOB is an eval-error in BOTH columns, never
+a miscompile; in-bounds reads are byte-identical. Velve has no list PATTERN (`PList` does not
+exist in the grammar), so destructuring is by index/builtin — the earlier `PList` forecast
+was a mis-recollection, corrected here. Harness: **22 match / 0 mismatch / 0 js-crash / 114
+unsupported** (241 files). The frontier twin was rolled to bind a **closure** (`fn x -> …`)
+and call it (the next unrepresented value) and still refuses. Honest baseline movement: one
+pre-existing file flipped — `dependent_test.velve`, a dependently-typed program
+(`InBounds(length(xs))`) whose refinement machinery erases upstream, leaving exactly the
+list spine the compiler now lowers (+2 match = fixture + flip, −1 unsupported).
+**Remaining for D1(vii)+**: closures-as-values (lambda lowering + capture); destructuring
 `let`/params and non-tail match value; then `Perform` in D2.
 
 ---

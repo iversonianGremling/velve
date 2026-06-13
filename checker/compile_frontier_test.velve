@@ -1,8 +1,9 @@
 @edition "2026.6"
 
--- D1(v) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it builds a LIST (`[1, 2, 3]`) and sums it — a heap value the
--- compute spine has no representation for yet. The differential harness must report
+-- D1(vi) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it binds a CLOSURE (`fn x -> x + 1`) and applies it — a value the
+-- compute spine has no representation for yet (a lambda lowers to nothing, and a call
+-- through a locally-bound name is not a `def`). The differential harness must report
 -- it `unsupported` — a CLEAN refusal at the compiler frontier — never a miscompile,
 -- never a JS crash.
 --
@@ -10,13 +11,12 @@
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
 -- yet lower, loudly", asserted by the harness rather than by an error count. D1(ii)
 -- moved the frontier PAST scalar `match`; D1(iii) PAST tuples; D1(iv) PAST ADT
--- constructors; D1(v) PAST records — built, field-read, and `PRecord`-destructured
--- (see compile_record_test). The frontier now sits at the remaining heap values —
--- LISTS and closures-as-values. This file builds a list, so it still refuses; when
--- lists lower (a later D1 slice), it flips from `unsupported` to a print with no edit.
-
-def count(xs: List(Number)): Number
-  length(xs)
+-- constructors; D1(v) PAST records; D1(vi) PAST lists — built, element-read (`xs[i]`),
+-- and measured (`length`/`isEmpty`) (see compile_list_test). The frontier now sits at
+-- CLOSURES-AS-VALUES — a `fn x -> …` bound and called. This file binds one, so it
+-- still refuses; when closures lower (a later D1 slice), it flips from `unsupported`
+-- to a print with no edit.
 
 def main(): Effect [io] ()
-  println(count([1, 2, 3]))
+  let inc = fn x -> x + 1
+  println(inc(5))

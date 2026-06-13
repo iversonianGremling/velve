@@ -9,18 +9,20 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(v) records): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
+// SCOPE (through D1(vi) lists): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
 // destructured via `PTuple` (D1(iii)); ADT CONSTRUCTORS — built (applied `Ok(x)` or
-// nullary `None`) and destructured in `match` arms via `PCtor` (D1(iv)); and RECORDS
+// nullary `None`) and destructured in `match` arms via `PCtor` (D1(iv)); RECORDS
 // — built (`#{ x: a }`, incl. `...spread`), field-read (`p.x`), and destructured via
-// `PRecord` (D1(v)). The supported ctor names are the module's own `type … = | …`
-// variants plus the core data ctors eval defines globally (Ok/Error/Some/None).
-// Everything else is refused LOUDLY via CompileUnsupported — the frontier is
-// explicit, never a silent miscompile. Lists, closures-as-values, destructuring
-// `let`/params, `Perform` (effects), and non-tail `if` joins are next (D1(vi)+, D2).
+// `PRecord` (D1(v)); and LISTS — built (`[a, b, …]`), element-read (`xs[i]`), and
+// measured (`length`/`isEmpty`) (D1(vi)). The supported ctor names are the module's
+// own `type … = | …` variants plus the core data ctors eval defines globally
+// (Ok/Error/Some/None). Everything else is refused LOUDLY via CompileUnsupported —
+// the frontier is explicit, never a silent miscompile. Closures-as-values,
+// destructuring `let`/params, `Perform` (effects), and non-tail `if` joins are next
+// (D1(vii)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch } from "./ast.js";
 
@@ -52,8 +54,10 @@ export type IRComp =
   | { k: "CtorName"; ctor: IRAtom }                    // read a variant's tag (a string) — for the match test
   | { k: "CtorPayload"; ctor: IRAtom }                 // read a variant's payload — to bind/recurse
   | { k: "Record"; spread: IRAtom | null; fields: { name: string; value: IRAtom }[] } // build a record (spread base, then explicit fields — display order)
-  | { k: "Field"; obj: IRAtom; field: string };        // read a named field
-// List / Index / Lambda / Perform — D1(vi)+, D2.
+  | { k: "Field"; obj: IRAtom; field: string }         // read a named field
+  | { k: "List"; elems: IRAtom[] }                     // build a sequence (display `[a, b, …]`)
+  | { k: "Index"; obj: IRAtom; index: IRAtom };        // read element `index` of a list
+// Lambda / Perform — D1(vii)+, D2.
 
 // Expressions — the ANF spine. `Match` does NOT survive into the IR: D1(ii) lowers
 // it to the `If`/`Let` decision-spine already here (classic match compilation), so
@@ -86,6 +90,7 @@ export class CompileUnsupported extends Error {
 export const BUILTINS = new Set([
   "print", "println", "toString",
   "abs", "floor", "ceil", "round", "sqrt", "int", "max", "min",
+  "length", "isEmpty",
 ]);
 
 // ── Lowering ────────────────────────────────────────────────────────────────────
@@ -348,6 +353,24 @@ class Lowering {
         // and modules — out of the pure core; those obj exprs trip the frontier first.)
         const o = this.norm(e.obj, scope);
         return { binds: o.binds, comp: { k: "Field", obj: o.atom, field: e.field } };
+      }
+      case "List": {
+        // The sequence heap value (D1(vi)). eval builds a VList of evaluated elements,
+        // displayed `[a, b, …]`; the runtime `$list` wrapper carries a tag so `$show`
+        // reproduces value.ts's VList. Homogeneous by the checker; arity is dynamic.
+        const parts = e.elems.map(x => this.norm(x, scope));
+        return { binds: parts.flatMap(p => p.binds), comp: { k: "List", elems: parts.map(p => p.atom) } };
+      }
+      case "Index": {
+        // A list element read (`xs[i]`). eval bounds-checks at runtime (a RuntimeError
+        // on OOB — an eval-error in BOTH columns, never a silent miscompile); on the
+        // in-bounds reads valid programs make, plain `.es[i]` is byte-identical. (eval's
+        // Index also slices `xs[lo:hi]` and indexes pointers — a Range index or a
+        // pointer subject trips the frontier first, so only scalar element reads reach
+        // here.)
+        const o = this.norm(e.obj, scope);
+        const i = this.norm(e.index, scope);
+        return { binds: [...o.binds, ...i.binds], comp: { k: "Index", obj: o.atom, index: i.atom } };
       }
       case "Call": {
         if (e.fn.tag !== "Var") throw new CompileUnsupported("call of a computed function");

@@ -937,6 +937,33 @@ dimension machinery generalize?
   partial). **Next: D1(vi)** — lists (build + index/length + `PList`), then closures, then
   destructuring `let`/params — still pre-effect.
 
+- [x] 🟢 **Phase D1(vi) — lists compile (the frontier twin flips again) — DONE 2026-06**
+  (`core.ts` `List`/`Index` IR comps + `length`/`isEmpty` on the builtin whitelist;
+  `emitjs.ts` `$list` runtime + `$show` `$t:"L"` dispatch + `length`/`isEmpty` impls;
+  `compile_list_test.velve`). The value D1(v)'s guardrail was holding. Lists are now BUILT —
+  `[a, b, …]`, including the empty `[]` — ELEMENT-READ (`xs[i]`), and MEASURED
+  (`length`/`isEmpty`). Extends the `$t` scheme: `$list(...es) → {$t:"L", es}`, an array tagged
+  so `$show` reproduces value.ts VList display — `[a, b, …]`, empty as `[]`, each element shown
+  by the same `$show` so a list OF heap values nests (e.g. `[(1, 2), (3, 4)]`). Two IR comps:
+  `List` (build; each element an atom) and `Index` (read element `i` — `.es[i]`). eval
+  bounds-checks `xs[i]` at runtime (OOB is an eval-error in BOTH columns, never a miscompile);
+  valid programs read in-bounds, so the column is byte-identical. Velve has **no list PATTERN**
+  (`PList` does not exist in the grammar), so destructuring is by index/builtin — the `PList`
+  forecast was a mis-recollection, corrected here. Green fixture `compile_list_test.velve`
+  (build, empty list, element-read at literal/computed index, `length`, `isEmpty` on full and
+  empty, a list of tuples, an inline list literal indexed) compiles **byte-identically** to
+  eval (9 lines). The frontier twin `compile_frontier_test.velve` was rolled to bind a
+  **closure** (`fn x -> x + 1`) and call it — the next unrepresented value — and still refuses
+  (exit 2). Unlike D1(v), an **honest baseline movement**: one pre-existing corpus file flipped,
+  `dependent_test.velve` — a dependently-typed program (`InBounds(length(xs))`, `NonEmpty(a)`)
+  whose refinement/dependent machinery erases upstream (the erasure law), leaving exactly the
+  list build + index + length spine the compiler now lowers; it compiles byte-identically
+  (`a=10 b=30 c=1 d=5`). Harness: **22 match / 0 mismatch / 0 js-crash / 114 unsupported** across
+  241 files (+2 match = fixture + flip, −1 unsupported = the flip left; the frontier stayed
+  unsupported, list→closure). SPEC untouched; no graded row moves (still partial). **Next:
+  D1(vii)** — closures-as-values (lambda lowering + capture), then destructuring `let`/params —
+  still pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

@@ -1,0 +1,43 @@
+@edition "2026.6"
+
+-- D1(vi) green fixture: LISTS compile — built (`[a, b, …]`, incl. the empty `[]`),
+-- element-read (`xs[i]`), and measured (`length`/`isEmpty`). This is the value the old
+-- compile_frontier_test guardrail promised would flip. Compiled JS must print
+-- byte-identically to eval: the runtime `$list` wrapper carries a `$t:"L"` tag so
+-- `$show` reproduces value.ts's VList display — `[a, b, …]`, the empty list as `[]`,
+-- elements shown by the same `$show` (so a list OF heap values nests correctly).
+-- `xs[i]` reads element `i`; eval bounds-checks at runtime, but every read here is
+-- in-bounds, so the column is byte-identical. `length` is the element count (or a
+-- string's char count, mirroring eval); `isEmpty` is `length == 0`.
+
+def nums(): List(Number)
+  [10, 20, 30]
+
+-- element read at a literal and a computed index
+def at(xs: List(Number), i: Number): Number
+  xs[i]
+
+def size(xs: List(Number)): Number
+  length(xs)
+
+def blank(xs: List(Number)): Bool
+  isEmpty(xs)
+
+-- the empty list literal, displayed `[]`
+def none(): List(Number)
+  []
+
+-- a list OF a heap value (tuples) — nested display `[(1, 2), (3, 4)]`
+def pairs(): List((Number, Number))
+  [(1, 2), (3, 4)]
+
+def main(): Effect [io] ()
+  println(nums())
+  println(at(nums(), 0))
+  println(at(nums(), 2))
+  println(size(nums()))
+  println(blank(nums()))
+  println(blank(none()))
+  println(none())
+  println(pairs())
+  println(at([5, 6, 7], 1))

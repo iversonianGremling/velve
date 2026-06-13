@@ -587,6 +587,35 @@ exists (`compiler-architecture-design.md`).
     0 js-crash**, 115 unsupported (240 files). SPEC untouched; no graded row moves (still
     partial). Next: **D1(vi)** = lists (build + index/length + `PList`), then
     closures-as-values, then destructuring `let`/params — still pre-effect.
+  - **D1(vi) — lists compile (the frontier twin flips again) — DONE 2026-06.** The
+    value D1(v)'s guardrail was holding. Lists are now BUILT — `[a, b, …]`, including
+    the empty `[]` — ELEMENT-READ (`xs[i]`), and MEASURED (`length`/`isEmpty`). One
+    runtime convention extends the `$t` scheme: `$list(...es) → {$t:"L", es}`, an array
+    tagged so `$show` reproduces value.ts VList display exactly — `[a, b, …]`, empty as
+    `[]`, each element shown by the same `$show` so a list OF heap values nests (e.g.
+    `[(1, 2), (3, 4)]`). Two IR computations: `List` (build — each element an atom) and
+    `Index` (read element `i` — `.es[i]`). `length`/`isEmpty` join the pure-builtin
+    whitelist: `length` mirrors eval (a list's element count or a string's char count),
+    `isEmpty` is `length == 0`. eval bounds-checks `xs[i]` at runtime (OOB is an
+    eval-error in BOTH columns, never a miscompile); valid programs read in-bounds, so
+    the column is byte-identical. (Velve has no list PATTERN — `PList` does not exist in
+    the grammar — so destructuring is by index/builtin, not by arm; that part of the
+    forecast was a mis-recollection, corrected here.) Green fixture
+    `compile_list_test.velve` (build, empty list, element-read at literal/computed index,
+    `length`, `isEmpty` on full and empty, a list of tuples, a list literal indexed
+    inline) compiles **byte-identically** to eval across 9 lines. The frontier twin
+    `compile_frontier_test.velve` was rolled to bind a **closure** (`fn x -> x + 1`) and
+    call it — the next unrepresented value — and still refuses cleanly (exit 2). Unlike
+    D1(v), an honest baseline movement: **one** pre-existing corpus file flipped,
+    `dependent_test.velve` — a dependently-typed program (`InBounds(length(xs))`,
+    `NonEmpty(a)`) whose refinement/dependent machinery erases upstream (the erasure
+    law), leaving exactly the list build + index + length spine the compiler now lowers;
+    it now compiles byte-identically (`a=10 b=30 c=1 d=5`). Harness: **22 match, 0
+    mismatch, 0 js-crash**, 114 unsupported (241 files) — +2 match (fixture + the flip),
+    −1 unsupported (the flip left; the frontier stayed unsupported, rolling list→closure).
+    SPEC untouched; no graded row moves (still partial). Next: **D1(vii)** =
+    closures-as-values (lambda lowering + capture), then destructuring `let`/params —
+    still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,
