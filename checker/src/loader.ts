@@ -25,6 +25,8 @@ import { fileURLToPath } from "node:url";
 import { Lowerer } from "./lower.js";
 import { collectParseErrors } from "./parseErrors.js";
 import type { Module, Decl } from "./ast.js";
+
+type DModule = Extract<Decl, { tag: "DModule" }>;
 import type { Diagnostic } from "./resolve.js";
 
 // The stdlib source tree ships next to the compiler. From `dist/loader.js` this
@@ -77,6 +79,19 @@ export function loadProgram(entryFile: string): LoadResult {
   // Imported-first accumulation; the entry file's own decls are appended last.
   const merged: Decl[] = [];
 
+  // Selective-visibility bookkeeping (C1(iv)). Per resolved dependency file:
+  //  - exportedNames: the union of names asked for by BRACED imports of that file
+  //    (`import { a, b } from "./F"`). Only these members stay reachable outside
+  //    their module; everything else the loader seals.
+  //  - namespaceImported: files brought in via the BARE form (`import F from
+  //    "./F"`) at least once. A namespace alias wants the whole module, so such a
+  //    file is never sealed — full visibility wins, conservatively.
+  //  - importedModules: every `module …` decl spliced in from a dependency,
+  //    paired with the file it came from, so the post-load pass can mark it.
+  const exportedNames = new Map<string, Set<string>>();
+  const namespaceImported = new Set<string>();
+  const importedModules: { dep: string; mod: DModule }[] = [];
+
   // Parse + lower one file, recurse into its local imports (post-order so a
   // dependency's decls land before the file that needs them), and return the
   // file's own decls. Returns the lowered Module so the entry keeps its edition.
@@ -122,6 +137,17 @@ export function loadProgram(entryFile: string): LoadResult {
       }
       // This import is satisfied by merged decls, not its own binding path.
       decl.local = true;
+      // Record what this importer asks of `dep` BEFORE the dedup `continue`, so a
+      // diamond's second importer still contributes its names (and its namespace
+      // form still vetoes sealing) even though the merge itself happens once. A
+      // braced import lists members; the bare form is a whole-module alias.
+      if (decl.named) {
+        const names = exportedNames.get(dep) ?? new Set<string>();
+        for (const { name } of decl.names) names.add(name);
+        exportedNames.set(dep, names);
+      } else {
+        namespaceImported.add(dep);
+      }
       if (loaded.has(dep)) continue;     // diamond: already merged once
       if (onStack.has(dep)) {            // back-edge: a cycle in the import graph
         diagnostics.push({ kind: "error", span: decl.span,
@@ -130,6 +156,8 @@ export function loadProgram(entryFile: string): LoadResult {
       }
       const depMod = load(dep);
       loaded.add(dep);
+      for (const d of depMod.decls)
+        if (d.tag === "DModule") importedModules.push({ dep, mod: d });
       merged.push(...depMod.decls);
     }
     onStack.delete(file);
@@ -144,5 +172,16 @@ export function loadProgram(entryFile: string): LoadResult {
   // Entry decls come last: a top-level expression in the entry may reference
   // anything an imported module exported.
   merged.push(...entry.decls);
+
+  // Selective visibility (C1(iv)): a module reachable ONLY through braced imports
+  // exposes just the asked-for names; resolve seals the rest `privateTo` it. A
+  // file touched by any namespace (bare) import keeps full visibility. Entry-file
+  // modules are never in `importedModules`, so they are unaffected.
+  for (const { dep, mod } of importedModules) {
+    if (namespaceImported.has(dep)) continue;
+    const exported = exportedNames.get(dep);
+    if (exported) mod.sealedExcept = [...exported];
+  }
+
   return { mod: { source: entryFile, decls: merged, edition: entry.edition }, diagnostics };
 }

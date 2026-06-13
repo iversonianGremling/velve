@@ -1,0 +1,11 @@
+-- Phase C1(iv) — selective import visibility, the green half.
+-- We brace-in exactly `{ square, quadruple }` from the merged module `box` and
+-- use exactly those. `quadruple` works despite calling the UNEXPORTED
+-- `secretDouble` internally — sealing is a USE check at the importer, not a ban
+-- on the module's own cross-references. Expected: clean; runs 9 then 20.
+-- (`import_selective_bad` is the mirror: it omits `quadruple` and reaches for it.)
+import { square, quadruple } from "./selective_lib"
+
+def main(): Effect [io] ()
+  println("{square(3)}")
+  println("{quadruple(5)}")

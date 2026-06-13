@@ -144,6 +144,25 @@ class Resolver {
           this.moduleStack.push(decl.name);
           this.collectDecls(decl.decls, scope);
           this.moduleStack.pop();
+          // Selective import visibility (C1(iv)): when the loader marked this
+          // module with the names a braced import asked for, seal every other
+          // function/value member `privateTo` it. The flatten above already
+          // defined them in `scope`; we re-tag those bindings so a reference from
+          // outside the module fails the same USE-check that guards `@private`
+          // ctors — while internal cross-references (moduleStack includes the
+          // module) and the public type NAMES stay reachable. We seal `fn`/`var`
+          // members only: type names follow the existing public convention, and
+          // their ctors stay governed by `@private`.
+          if (decl.sealedExcept !== undefined) {
+            const exported = new Set(decl.sealedExcept);
+            for (const member of decl.decls) {
+              let name: string | null = null;
+              if (member.tag === "DFn" || member.tag === "DLet") name = member.name;
+              if (name === null || exported.has(name)) continue;
+              const b = scope.lookup(name);
+              if (b && b.privateTo === undefined) b.privateTo = decl.name;
+            }
+          }
           break;
       }
     }
@@ -290,7 +309,9 @@ class Resolver {
         if (b) {
           this.resolutions.set(expr, b);
           if (b.privateTo !== undefined && !this.moduleStack.includes(b.privateTo))
-            this.error(expr.span, `constructor '${expr.name}' is private to module '${b.privateTo}' — build the value through the module's functions instead`);
+            this.error(expr.span, b.kind === "ctor"
+              ? `constructor '${expr.name}' is private to module '${b.privateTo}' — build the value through the module's functions instead`
+              : `'${expr.name}' is a member of module '${b.privateTo}' that was not imported — add it to the \`import { … } from "…"\` list, or it stays private to the module`);
         } else if (!isBuiltin(expr.name)) {
           this.error(expr.span, `unresolved name: ${expr.name}`);
         }

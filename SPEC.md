@@ -2060,10 +2060,24 @@ exists — the ambient stdlib namespaces with no source (`std/json`, `std/set`,
 the capitalized `Math`/`String`/… of §5.5) fall through untouched, and a typo'd
 `std/X` with neither a source file nor an ambient binding is the same "cannot
 resolve import" error as any other unknown name (`import_std_bad`).
-Bare-name (`"String"`) imports stay ambient (§5.5), unaffected. *Not yet:*
-selective visibility — a file-local import currently makes the imported module's
-public members resolvable program-wide rather than only the names it lists (a
-later tightening).
+Bare-name (`"String"`) imports stay ambient (§5.5), unaffected.
+
+**Selective visibility — implemented** *(2026-06, Phase C1(iv),
+`import_selective_test`/`import_selective_bad`/`import_selective_std_bad`)*. A
+braced import (`import { a, b } from "./M"`) brings in **exactly** `a` and `b`:
+the loader records the names asked for and seals every *other* function/value
+member of the merged module `privateTo` it, so a reference from outside the
+module to a member no import named is the same use-error that guards a `@private`
+constructor — *"'x' is a member of module 'M' that was not imported"*. A module
+member stays reachable from **inside** its own module regardless (internal
+cross-references resolve with the module on the stack), and a type **name** stays
+public (so `refined_types_test` may write `Result Natural String` without
+importing `Natural` — sealing is for fn/value members; type names and their
+constructors keep the public / `@private` rules). Two escape hatches preserve the
+old behavior where intended: a **bare** import (`import M from "./M"`, a
+whole-module alias) seals nothing, and a file reached by *any* bare import is left
+fully visible. The exported surface is the **union** across all braced importers
+of a file — true per-file scoping awaits qualified module access (a later slice).
 
 **An unresolved import is an error** *(2026-06, `import_unresolved_bad`/`import_foreign_test`)*.
 A path that names neither a known stdlib module, nor a file-relative module

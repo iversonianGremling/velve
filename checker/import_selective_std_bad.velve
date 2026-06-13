@@ -1,0 +1,12 @@
+-- Phase C1(iv) — selective visibility extends to the shipped stdlib (std/refined
+-- lives on disk since C1(iii)). We brace-in only `{ natural, natValue }` and then
+-- reach for `natAdd`, a refined gate we never imported. Importing a subset must
+-- mean exactly that subset — so `natAdd` stays sealed `privateTo refined`.
+-- Expected: 1 error. (`refined_types_test` is the green counterpart: it imports
+-- every gate it uses, including `natAdd`, and runs clean.)
+import { natural, natValue } from "std/refined"
+
+def main(): Effect [io] ()
+  match natural(4)
+    | Ok(a)    -> println("{natValue(natAdd(a, a))}")
+    | Error(e) -> println("no: {e}")

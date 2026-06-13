@@ -341,9 +341,25 @@ Phase D's neutral IR being the down payment). The proof vocabulary closes.
     Resolution is **additive**: a `std/X` is intercepted only if its source exists,
     so ambient `std/json`/`std/set`/`Math` fall through untouched and a typo'd
     `std/X` still errors "cannot resolve" (`import_std_bad`) — not swallowed.
-    *Remaining in C1:* selective visibility (only the listed names visible, vs the
-    current flatten-on-merge), then `std/units`; LSP follows. Phase-C exit met:
-    a green fixture imports `std/refined` (not includes it), baselines hold.
+    Phase-C exit met: a green fixture imports `std/refined` (not includes it),
+    baselines hold.
+  - **(iv) selective visibility — DONE 2026-06**
+    (`import_selective_test`/`import_selective_bad`/`import_selective_std_bad`;
+    local `selective_lib`). A braced `import { a, b } from "./M"` now brings in
+    **exactly** `a` and `b`: the loader records the asked-for names per dependency
+    file and the resolver seals every *other* fn/value member of the merged module
+    `privateTo` it — reusing the very `privateTo`/`moduleStack` use-check that seals
+    `@private` ctors (the only new wording is the fn/value branch of the message).
+    Internal cross-references survive (the module is on the stack when its own
+    bodies resolve — `quadruple` keeps calling the unexported `secretDouble`), and
+    type **names** stay public (so `refined_types_test` writes `Result Natural
+    String` un-imported). Escape hatches: a bare (namespace) import seals nothing,
+    and any file touched by a bare import is left fully visible. Honest limit: the
+    exported surface is the **union** across a file's braced importers — true
+    per-file scoping waits on qualified module access. Baseline 225→229, 0 CRASH,
+    the whole pre-existing corpus byte-identical (the migrated consumers stay
+    clean — they imported every member they use).
+    *Remaining in C1:* `std/units` (the deferred B2(iii) general constructor); LSP.
 - **C2. `is Ok(a)` payload binding / flow narrowing** *(1 slice)*. The
   optional PLAN box: `if x is Ok(a)` binds the payload in the then-branch
   (and feeds the fact env — cheap synergy with A1's binder seeding;

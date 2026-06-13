@@ -670,9 +670,30 @@ dimension machinery generalize?
   every previously-clean fixture still clean (the two migrated consumers unchanged
   at 0 err; the std libs 0 err standalone; `import_std_bad` 1 err). **Phase-C exit
   criterion met:** a green fixture imports `std/refined` (not includes it),
-  baselines hold. Remaining in C1: selective-visibility enforcement (only the
-  listed names visible, vs the current flatten-on-merge), then `std/units`; LSP
-  follows.
+  baselines hold.
+  **C1(iv) selective import visibility — DONE 2026-06**
+  (`import_selective_test`/`import_selective_bad`/`import_selective_std_bad`; local
+  `selective_lib`). A braced `import { a, b } from "./M"` now means **exactly** `a`
+  and `b` are reachable from outside module `M`. The loader records the asked-for
+  names per dependency file (union across all of that file's braced importers,
+  collected BEFORE the diamond-dedup `continue` so every importer counts) and marks
+  the merged `module` with `sealedExcept`; the resolver, after flattening the
+  module's members, re-tags every non-listed fn/value binding `privateTo` the
+  module — reusing the exact `privateTo`/`moduleStack` use-check that already seals
+  `@private` constructors. The only new code on the check path is a kind branch in
+  the message (`'x' is a member of module 'M' that was not imported`). What stays
+  reachable: a module's own internal cross-references (it is on `moduleStack` when
+  its bodies resolve — `quadruple` keeps calling the unexported `secretDouble`),
+  and type NAMES (sealing is fn/value only; type names + their ctors keep the
+  public / `@private` rules, so `refined_types_test` uses `Natural` un-imported).
+  Escape hatches preserve old behavior: a bare (namespace) import seals nothing,
+  and any file reached by a bare import is left fully visible. **Honest limit:** the
+  exported surface is the union across a file's braced importers, not truly
+  per-file — two files importing disjoint subsets would still see each other's
+  picks; true per-file scoping waits on qualified module access. Baseline: 225→229
+  files, 0 CRASH; diff over the pre-existing corpus is EMPTY (the migrated consumers
+  stay clean — each imports every member it uses). New fixtures: green 0 err + runs
+  `9`/`20`; both bad fixtures 1 err. Remaining in C1: `std/units`; then LSP.
 
 ---
 

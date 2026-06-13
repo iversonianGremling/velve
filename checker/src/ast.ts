@@ -295,6 +295,15 @@ export type Decl =
        // declared = enforced (an obligation we can't check yet is a lower error,
        // never a silent skip).
        proofs: string[];
+       // Selective import visibility (Phase C1(iv)). Set by the loader when this
+       // module was merged in via a BRACED import (`import { a, b } from "./M"`):
+       // the list is exactly the names some importer asked for. Resolve then seals
+       // every OTHER function/value member of the module `privateTo` it — so a
+       // module member no import brought into scope cannot be referenced from
+       // outside the module, while internal cross-references (and the public type
+       // NAMES) stay reachable. Absent ⇒ no import sealing (entry-file modules and
+       // namespace-imported modules keep full flatten-on-merge visibility).
+       sealedExcept?: string[];
        decls: Decl[] }                                                       & Node)
 
 // The per-stream backpressure policy (SPEC §10.1), written at the declaration

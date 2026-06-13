@@ -1,0 +1,25 @@
+-- A small library module for the Phase C1(iv) selective-visibility pair. It
+-- exposes `square` and `quadruple`; `secretDouble` is an internal helper that no
+-- consumer imports. The point is the contrast:
+--   * an importer that braces-in `{ square, quadruple }` may use exactly those,
+--     and `quadruple` keeps working even though it CALLS the unexported
+--     `secretDouble` internally (a reference from inside the module is fine);
+--   * `import_selective_bad` braces-in only `{ square }` and then reaches for
+--     `quadruple` — a member it never imported — which the loader sealed
+--     `privateTo` the module, so the reference is a hard error.
+-- Selective visibility seals function/value members only: a type NAME stays
+-- public (see `refined_types_test`, which uses `Natural` without importing it).
+module box
+
+  -- Not exported by any importer → sealed `privateTo box`. Still callable from
+  -- inside the module, as `quadruple` does below.
+  def secretDouble(n: Number): Number
+    n + n
+
+  def square(n: Number): Number
+    n * n
+
+  -- Reaches the sealed `secretDouble` — proving internal cross-references survive
+  -- the seal (the module is on `moduleStack` when its own bodies resolve).
+  def quadruple(n: Number): Number
+    secretDouble(secretDouble(n))

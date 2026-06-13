@@ -1,0 +1,11 @@
+-- Phase C1(iv) — selective import visibility, the bad half (local module).
+-- We brace-in only `{ square }` from `box`, then call `quadruple` — a member the
+-- module defines but THIS program never imported. The loader sealed every
+-- non-imported member `privateTo box`, so the reference fails the same USE-check
+-- that guards `@private` constructors. Expected: 1 error — `quadruple` is a
+-- module member that was not imported.
+import { square } from "./selective_lib"
+
+def main(): Effect [io] ()
+  println("{square(3)}")
+  println("{quadruple(5)}")
