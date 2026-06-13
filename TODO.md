@@ -783,6 +783,21 @@ dimension machinery generalize?
   north-star row (flow narrowing is a control-flow ergonomic; the fact env it feeds
   is already A+ Type core) → no re-grade.
 
+- [x] ✂️ **Phase C3 — convergence-cycle pre-flag — CUT 2026-06** (decision, not a
+  slice; the refusal discipline of §4 applied to a planned feature). A static
+  pre-flag would duplicate a check that already exists and is **strictly better
+  placed**: the runtime `converge()` (eval.ts) resolves prop references in
+  topological order over the concrete *(element instance, prop)* graph and rejects
+  any cycle naming the offending edge — `converge_bad` pins it (*"convergence cycle:
+  'width' on Box and Box reference each other"*). That precision needs the real
+  tree; a static analysis lacks it, so it would be approximate in both directions
+  (false-positive on a legal `next.P`/`prev.P` chain whose cycle the actual sibling
+  count breaks; false-negative on tree-dependent cycles). `converge_bad` is itself
+  such a tree-dependent cross-element cycle — so the recommendation's "unless a real
+  fixture motivates it" test comes back empty. The sound home for this fault is the
+  runtime pass, already shipped and tested. **With C1 complete, C2 done, and C3 cut,
+  Phase C is closed** — next real work is Phase D (compiled backend).
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

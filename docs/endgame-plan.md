@@ -411,12 +411,26 @@ Phase D's neutral IR being the down payment). The proof vocabulary closes.
   `postfix`+dynamic-precedence binder alternative and declared conflicts; the
   no-binder `is` test parses identically (pre-existing corpus byte-identical
   through the regen). NOT a graded row → no re-grade.
-- **C3. Convergence-cycle pre-flag** — PLAN's own annotation says lowest
-  ROI. **Recommendation: cut it** unless a real fixture motivates it;
-  carrying it forever as an unchecked box is worse than deciding.
+- **C3. Convergence-cycle pre-flag — CUT 2026-06** (decision, not a slice).
+  A static pre-flag would *duplicate a check that already exists and is
+  strictly better placed.* The runtime `converge()` (eval.ts) resolves prop
+  references in topological order over the concrete **(element instance, prop)**
+  graph and rejects any cycle with the offending edge named —
+  `converge_bad` pins it: *"convergence cycle: 'width' on Box and Box reference
+  each other."* That precision is only possible with the real tree. A static
+  analysis lacks it, so it would be **approximate in both directions**:
+  false-positives on legal cross-element references (a `next.P`/`prev.P` chain
+  whose cycle the actual sibling count breaks), false-negatives on
+  tree-dependent cycles. And `converge_bad` is exactly such a tree-dependent
+  cross-element cycle — the motivating-fixture test the recommendation set comes
+  back empty. So the unchecked box is closed by *deciding*: the sound home for
+  this fault is the runtime pass, and it is already there and tested.
 
-**Exit:** libraries are real artifacts; the designed board (north-star §9's
-"live design choices") is fully closed except the backend.
+**Exit — MET 2026-06.** Libraries are real artifacts (refined / SortedList /
+units all imported, not included); the editor is loader-aware; flow narrowing
+binds payloads. With C1 complete, C2 done, and C3 cut, **Phase C is closed.**
+The designed board (north-star §9's "live design choices") is fully closed
+except the backend.
 
 ---
 
