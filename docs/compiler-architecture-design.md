@@ -466,8 +466,19 @@ law (§11.5) is thereby *witnessed empirically*: among the matches are unit-carr
 (`uom_test`, `std/units`), refinement-carrying (`refinement_compile_test`,
 `std/refined`), and totality-carrying (`proof_terminates_test`) programs — each
 compiles to JS that drops the judgment entirely and prints byte-identically to eval.
-**Remaining for D1(ii)+**: `Match` pattern compilation, ADT `Ctor`s, lists/records
-/tuples, closures with explicit capture (the heap-value core), then `Perform` in D2.
+**D1(ii) shipped (2026-06) — scalar `match`.** `Match` does not survive into the IR:
+it lowers *here* to the `If`/`Let` decision-spine (the subject named once, branches
+folded back-to-front into nested `If`s ending in a new `Fail` fall-through), so the
+backend never grows a pattern node. This slice covers the **scalar** patterns —
+`PWild`/`PVar`/`PTyped` (irrefutable, optional bind) and `PLit` (`==`, mirroring eval's
+strict equality) — plus guards. The `Fail` node is a hard `throw` the `exhaust` pass
+proves unreachable on valid programs, so it is witnessed but never differentially
+exercised. The frontier moved past scalar `match` to **heap-value destructuring**
+(constructor/tuple/record patterns), now the loud-refusal edge. Harness: **16 match /
+0 mismatch / 0 js-crash / 116 unsupported**. Honest deviation from D1(i)'s forecast:
+scalar `match` shipped on its own (pure control flow), and the heap-value core slid to
+**D1(iii)**. **Remaining for D1(iii)+**: ADT `Ctor`s, constructor/tuple/record
+patterns, lists/records/tuples, closures with explicit capture, then `Perform` in D2.
 
 ---
 

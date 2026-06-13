@@ -487,8 +487,28 @@ exists (`compiler-architecture-design.md`).
     judgments compiles to JS that drops every one and computes identically. SPEC
     untouched (a compiled path observationally identical to eval is not a surface
     change); no graded row moves yet (the backend is partial — `Match`, heap values,
-    and `Perform` remain). Next: **D1(ii)** = `Match` pattern compilation + ADT
-    `Ctor`s + lists/records/tuples + closures (the heap-value core), still pre-effect.
+    and `Perform` remain).
+  - **D1(ii) — scalar `match` compiles — DONE 2026-06.** `Match` does **not** survive
+    into the IR: it is lowered *here* to the `If`/`Let` decision-spine (classic match
+    compilation), so the backend never grows a pattern-matching node. The subject is
+    named once; branches compile back-to-front into nested `If`s terminating in a new
+    `Fail` node (the non-exhaustive fall-through — a hard `throw`, unreachable on
+    check-passing programs by the `exhaust` pass, so the harness never exercises it).
+    Scope of this slice: the **scalar** patterns — `PWild`/`PVar`/`PTyped` (irrefutable,
+    maybe bind) and `PLit` (an `==` test mirroring eval's strict `v === lit.value`) —
+    plus guards (`| n if g`). One subtlety paid down: `match n | n -> …` rebinds the
+    subject to its own name, and the naïve `const n = n` is a JS TDZ crash; the identity
+    rebind is detected and skipped (eval gets this free via env children). **Honest
+    slice split**: D1(i)'s doc folded all of `Match` + heap values into one "D1(ii)";
+    as built, scalar `match` shipped alone (control flow, no new value kinds) and the
+    heap-value core slid to **D1(iii)**. Green fixture `compile_match_test.velve`
+    (literal/binder/guard arms over Number/Bool/String) compiles **byte-identically**
+    to eval; the frontier twin `compile_frontier_test.velve` was repointed from scalar
+    `match` (now compiling) to **constructor destructuring** (`Ok(v)`/`Error(e)`) — the
+    new edge — and is refused cleanly (`unsupported`, exit 2). Harness: **16 match, 0
+    mismatch, 0 js-crash**, 116 unsupported. SPEC untouched; no graded row moves (still
+    partial). Next: **D1(iii)** = ADT `Ctor`s + constructor/tuple/record patterns +
+    lists/records/tuples + closures (the heap-value core), still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

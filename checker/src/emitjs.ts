@@ -70,6 +70,11 @@ function body(e: IRExpr, indent: string): string {
       return `${indent}const ${e.name} = ${comp(e.comp)};\n${body(e.body, indent)}`;
     case "If":
       return `${indent}if (${atom(e.cond)}) {\n${body(e.then, indent + "  ")}\n${indent}} else {\n${body(e.else_, indent + "  ")}\n${indent}}`;
+    case "Fail":
+      // The non-exhaustive fall-through. Unreachable on check-passing programs (the
+      // `exhaust` pass guarantees coverage); emitted as a hard throw so a future
+      // gap surfaces loudly rather than returning `undefined`.
+      return `${indent}throw new Error(${JSON.stringify(e.msg)});`;
   }
 }
 

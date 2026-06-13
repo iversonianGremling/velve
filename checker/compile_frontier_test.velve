@@ -1,21 +1,24 @@
 @edition "2026.6"
 
--- D1(i) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it uses `match`, which is outside the D1(i) compute core. The
--- differential harness must report it `unsupported` — a CLEAN refusal at the
--- compiler frontier — never a miscompile, never a JS crash. This is the backend-
--- slice analogue of a `_bad` twin: a backend slice adds no checker rejection rule,
--- so the guarantee under test is "the compiler refuses what it cannot yet lower,
--- loudly", asserted by the harness rather than by an error count. `match` lowering
--- arrives in D1(ii); when it does, this file flips from `unsupported` to a MATCH
--- with no edit.
+-- D1(ii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it destructures a CONSTRUCTOR in its `match` arms (`Ok(v)` /
+-- `Error(e)`), which binds the payload of a heap value the compute spine has no
+-- representation for yet. The differential harness must report it `unsupported` — a
+-- CLEAN refusal at the compiler frontier — never a miscompile, never a JS crash.
+--
+-- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no
+-- checker rejection rule, so the guarantee under test is "the compiler refuses what
+-- it cannot yet lower, loudly", asserted by the harness rather than by an error
+-- count. D1(ii) moved the frontier PAST scalar `match` (literal/binder/guard arms now
+-- compile — see compile_match_test); the frontier now sits at heap-value
+-- destructuring. Constructor/tuple/record patterns lower in D1(iii); when they do,
+-- this file flips from `unsupported` to a MATCH with no edit.
 
-def classify(n: Number): String
-  match n
-    | 0 -> "zero"
-    | 1 -> "one"
-    | _ -> "many"
+def unwrap(r: Result Number String): Number
+  match r
+    | Ok(v) -> v
+    | Error(e) -> 0
 
 def main(): Effect [io] ()
-  println(classify(0))
-  println(classify(7))
+  println(unwrap(Ok(42)))
+  println(unwrap(Error("nope")))

@@ -17,7 +17,7 @@
 // records/tuples/closures-as-values, `Perform` (effects), and non-tail `if` join
 // points are the next slices (D1(ii)+, D2).
 
-import type { Module, Expr, Stmt, Lit, Pat } from "./ast.js";
+import type { Module, Expr, Stmt, Lit, Pat, Branch } from "./ast.js";
 
 // ── The node grammar (§11.3) ────────────────────────────────────────────────────
 
@@ -43,11 +43,17 @@ export type IRComp =
   | { k: "PrimOp"; op: string; args: IRAtom[]; width?: Width };
 // Ctor / Tuple / List / Record / Field / Index / Lambda / Perform — D1(ii)+, D2.
 
-// Expressions — the ANF spine. (Match — D1(ii).)
+// Expressions — the ANF spine. `Match` does NOT survive into the IR: D1(ii) lowers
+// it to the `If`/`Let` decision-spine already here (classic match compilation), so
+// the backend never grows a pattern-matching node. `Fail` is the one addition — the
+// fall-through when no branch matches, mirroring eval's non-exhaustive RuntimeError.
+// The checker's `exhaust` pass means valid programs never reach it; it is a witnessed
+// safety net, not a path the differential harness ever exercises.
 export type IRExpr =
   | { k: "Ret"; atom: IRAtom }                          // tail / trivial return
   | { k: "Let"; name: string; comp: IRComp; body: IRExpr }
-  | { k: "If"; cond: IRAtom; then: IRExpr; else_: IRExpr };
+  | { k: "If"; cond: IRAtom; then: IRExpr; else_: IRExpr }
+  | { k: "Fail"; msg: string };                         // non-exhaustive fall-through
 
 export interface IRFn { name: string; params: string[]; body: IRExpr }
 export interface IRModule { fns: IRFn[]; hasMain: boolean }
@@ -93,11 +99,71 @@ class Lowering {
         const els = e.else_ ? this.tail(e.else_, new Set(scope)) : RET_UNIT;
         return wrap(c.binds, { k: "If", cond: c.atom, then, else_: els });
       }
-      case "Match": throw new CompileUnsupported("match (D1(ii))");
+      case "Match": return this.matchE(e.subject, e.branches, scope);
       default: {
         const c = this.norm(e, scope);
         return wrap(c.binds, { k: "Ret", atom: c.atom });
       }
+    }
+  }
+
+  // `match` lowering (D1(ii)). The subject is named once; branches compile to a
+  // nested `If` decision-spine built back-to-front, terminating in `Fail`. Only
+  // SCALAR patterns are in this slice — PWild/PVar/PTyped (irrefutable, maybe bind)
+  // and PLit (an `==` test). Constructor/tuple/record/atom patterns destructure
+  // heap values that the compute spine has no values for yet, so they trip the
+  // frontier (D1(iii)). Match is supported in TAIL position only; as a mid-block
+  // value it still routes through normComp's default → CompileUnsupported.
+  private matchE(subjectExpr: Expr, branches: Branch[], scope: Set<string>): IRExpr {
+    const s = this.norm(subjectExpr, scope);
+    let chain: IRExpr = { k: "Fail", msg: "non-exhaustive match" };
+    for (let i = branches.length - 1; i >= 0; i--) {
+      chain = this.branch(branches[i]!, s.atom, scope, chain);
+    }
+    return wrap(s.binds, chain);
+  }
+
+  // One branch: if its pattern matches the subject atom (and any guard holds), run
+  // the body in the extended scope; otherwise fall through to `next`.
+  private branch(br: Branch, subj: IRAtom, scope: Set<string>, next: IRExpr): IRExpr {
+    const p = this.pattern(br.pat, subj, scope);
+    let then = this.tail(br.body, p.scope);
+    if (br.guard) {
+      const g = this.norm(br.guard, p.scope);
+      then = wrap(g.binds, { k: "If", cond: g.atom, then, else_: next });
+    }
+    then = wrap(p.binds, then);                    // pattern bindings (PVar/PTyped)
+    if (!p.test) return then;                      // irrefutable pattern
+    return wrap(p.test.binds, { k: "If", cond: p.test.atom, then, else_: next });
+  }
+
+  // Compile a scalar pattern against the subject atom. `test === null` means the
+  // pattern is irrefutable; `binds` are the names it introduces; `scope` is the
+  // body scope (extended for PVar/PTyped). Mirrors eval.ts matchInto for the
+  // scalar cases — PLit compares with `==` (eval's strict `v === lit.value`).
+  private pattern(p: Pat, subj: IRAtom, scope: Set<string>):
+    { test: { binds: Bind[]; atom: IRAtom } | null; binds: Bind[]; scope: Set<string> } {
+    switch (p.tag) {
+      case "PWild":
+        return { test: null, binds: [], scope };
+      case "PVar": case "PTyped": {
+        // `match n | n -> …` binds the subject to its own name: emitting `const n = n`
+        // is a TDZ crash in JS. The rebind is identity — the name is already in scope
+        // holding that value — so skip it. (eval gets this free via env child.)
+        if (subj.k === "Var" && subj.name === p.name) return { test: null, binds: [], scope };
+        const ns = new Set(scope); ns.add(p.name);
+        return { test: null, binds: [{ name: p.name, comp: { k: "Atom", atom: subj } }], scope: ns };
+      }
+      case "PLit": {
+        const litAtom: IRAtom = { k: "Lit", lit: lowerLit(p.lit) };
+        const t = this.fresh();
+        return {
+          test: { binds: [{ name: t, comp: { k: "PrimOp", op: "==", args: [subj, litAtom] } }], atom: { k: "Var", name: t } },
+          binds: [], scope,
+        };
+      }
+      default:
+        throw new CompileUnsupported(`match pattern ${p.tag} (heap-value destructuring — D1(iii))`);
     }
   }
 

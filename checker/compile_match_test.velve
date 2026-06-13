@@ -1,0 +1,49 @@
+@edition "2026.6"
+
+-- D1(ii): scalar `match` compiles. The second program to clear all three columns of
+-- the differential harness — check / run (eval) / runc (compiled) — now exercising
+-- pattern matching. `match` does not survive into the IR: it is lowered HERE to the
+-- `If`/`Let` decision-spine (classic match compilation), so the backend never grows a
+-- pattern node. This covers the SCALAR patterns — literal arms (`PLit`), variable and
+-- wildcard binders (`PVar`/`PTyped`/`PWild`), guards (`| n if …`), and else-if-free
+-- exhaustive ladders. Constructor/tuple/record destructuring needs heap values the
+-- compute spine has none of yet (D1(iii)); those trip the frontier, loudly.
+
+-- Literal arms + a binding default. Lowers to nested `if (s === lit)`, the binder
+-- arm becoming the irrefutable `else`.
+def name(n: Number): String
+  match n
+    | 0 -> "zero"
+    | 1 -> "one"
+    | 2 -> "two"
+    | other -> "many"
+
+-- A guarded ladder. Each `| _ if g` is an `if (g)` nested in the prior arm's `else`.
+def sign(n: Number): String
+  match n
+    | 0 -> "zero"
+    | n if n > 0 -> "positive"
+    | _ -> "negative"
+
+-- Match on a Bool — both arms refutable, the spine ends in the (unreached) Fail.
+def flip(b: Bool): String
+  match b
+    | true -> "on"
+    | false -> "off"
+
+-- Match on a String literal, recursing through `name` and a tail `if` for good measure.
+def parity(n: Number): String
+  match n % 2
+    | 0 -> "even"
+    | _ -> "odd"
+
+def main(): Effect [io] ()
+  println(name(0))
+  println(name(2))
+  println(name(99))
+  println(sign(-4))
+  println(sign(7))
+  println(flip(true))
+  println(flip(false))
+  println(parity(10))
+  println(parity(13))

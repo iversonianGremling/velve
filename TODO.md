@@ -846,6 +846,28 @@ dimension machinery generalize?
   ADT `Ctor`s + lists/records/tuples + closures (the heap-value core), still
   pre-effect.
 
+- [x] 🟢 **Phase D1(ii) — scalar `match` compiles — DONE 2026-06** (`core.ts` Match
+  lowering + the `Fail` IR node + `emitjs.ts` throw; `compile_match_test.velve`;
+  frontier twin `compile_frontier_test.velve` repointed to constructor patterns).
+  `Match` does **not** survive into the IR: it lowers *here* to the `If`/`Let`
+  decision-spine (classic match compilation — subject named once, branches folded
+  back-to-front into nested `If`s ending in `Fail`), so the backend never grows a
+  pattern node. Scope: the **scalar** patterns — `PWild`/`PVar`/`PTyped` (irrefutable,
+  optional bind) and `PLit` (an `==` test mirroring eval's strict `v === lit.value`) —
+  plus guards (`| n if g`). `Fail` is a hard `throw` the `exhaust` pass proves
+  unreachable on valid programs (witnessed, never differentially exercised). Subtlety
+  paid down: `match n | n -> …` would emit `const n = n` (JS TDZ crash); the identity
+  rebind is detected and skipped. **Honest slice split**: D1(i)'s "Next" folded all of
+  `Match` + heap values into one slice; as built, scalar `match` shipped alone (pure
+  control flow, no new value kinds) and the heap-value core slid to **D1(iii)**. Green
+  fixture `compile_match_test.velve` compiles **byte-identically** to eval; the frontier
+  twin moved from scalar `match` (now compiling) to **constructor destructuring**
+  (`Ok(v)`/`Error(e)`), refused cleanly (`unsupported`, exit 2). Harness: **16 match /
+  0 mismatch / 0 js-crash / 116 unsupported** across 237 files. SPEC untouched; no
+  graded row moves (still partial). **Next: D1(iii)** — ADT `Ctor`s +
+  constructor/tuple/record patterns + lists/records/tuples + closures (the heap-value
+  core), still pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)
