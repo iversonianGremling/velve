@@ -964,6 +964,36 @@ dimension machinery generalize?
   D1(vii)** — closures-as-values (lambda lowering + capture), then destructuring `let`/params —
   still pre-effect.
 
+- [x] 🟢 **Phase D1(vii) — closures compile (the frontier twin flips again) — DONE 2026-06**
+  (`core.ts` `Lambda` IR comp + `normComp` `Lambda` case + one `Call`-guard clause for
+  local-scope closure calls; `emitjs.ts` `Lambda` → JS arrow + `$show` `typeof === "function"`
+  → `<fn:<lambda>>`; `compile_closure_test.velve`). The value D1(vi)'s guardrail was holding.
+  Closures are now FIRST-CLASS: a `fn x -> …` lowers to a JS arrow function that closes over its
+  enclosing `const`s by lexical scope, exactly as eval's single-clause VFn closes over its
+  captured `env` — no explicit capture list computed. A closure is BOUND by `let`, RETURNED from
+  a `def` (capturing that def's param — `def adder(n) -> fn x -> x + n`), PASSED as an argument,
+  written INLINE at a call site, CALLED through a local name, and DISPLAYED `<fn:<lambda>>`
+  (value.ts VFn display). One IR comp: `Lambda` (params + a body lowered in TAIL position with
+  the params in scope); **no `$t` tag** — the arrow is callable directly, and `$show` maps any
+  `typeof === "function"` to `<fn:<lambda>>` (the only functions reaching `$show` are lowered
+  lambdas — user `def`s are not first-class values on the pure spine yet). The `Call` guard
+  gained one clause: a name in local scope is a closure value, called with identical `fn(args)`
+  syntax — JS lexical scope shadows a same-named def/builtin as eval's binding lookup does. A
+  free name in a lambda body (a self-referential `let f = fn … -> f(…)`) is out of scope here
+  exactly as it is absent from eval's capture env, so it refuses identically. Green fixture
+  `compile_closure_test.velve` (let-bound lambda, returned closure with capture, closure-as-arg,
+  inline lambda, printed closure) compiles **byte-identically** to eval (`6 / 17 / 101 / 42 /
+  <fn:<lambda>>`). The frontier twin `compile_frontier_test.velve` was rolled to a **first-class
+  `def` reference** (`let f = double` — naming a def without calling it; eval has it as a VFn in
+  the env, the compiler refuses it as a free variable) — the next unrepresented value — and still
+  refuses (exit 2). Destructuring `let`/params from the prior forecast are **syntax errors** —
+  neither exists in the grammar (like `PList`) — so the frontier rolled to def references; the
+  mis-recollection is corrected here. Harness: **23 match / 0 mismatch / 0 js-crash / 114
+  unsupported** across 242 files (+1 match = fixture; unsupported unchanged — no corpus flip, the
+  frontier stayed unsupported, closure→def-reference). SPEC untouched; no graded row moves (still
+  partial). **Next: D1(viii)** — first-class `def` references (eta-expansion to a value) — still
+  pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

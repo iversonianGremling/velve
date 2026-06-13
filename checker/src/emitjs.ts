@@ -74,6 +74,11 @@ function comp(c: IRComp): string {
     case "Field": return `${atom(c.obj)}.fs[${JSON.stringify(c.field)}]`;
     case "List":  return `$list(${c.elems.map(atom).join(", ")})`;
     case "Index": return `${atom(c.obj)}.es[${atom(c.index)}]`;
+    // A closure: a JS arrow whose body is the same statement spine a `def` emits. It
+    // closes over enclosing consts lexically — eval's VFn-over-env, exactly. $show
+    // maps any function to `<fn:<lambda>>` (the only functions reaching $show are
+    // lowered lambdas; user `def`s are never first-class values on the pure spine).
+    case "Lambda": return `(${c.params.join(", ")}) => {\n${body(c.body, "    ")}\n  }`;
   }
 }
 
@@ -114,7 +119,7 @@ export function emitModule(mod: IRModule, callMain = true): string {
     'const $record = (fs) => ({ $t: "R", fs });',
     '// A list: elements in a JS array tagged for $show — displays `[a, b, …]`.',
     'const $list = (...es) => ({ $t: "L", es });',
-    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : (v && v.$t === "C") ? (v.payload !== null ? v.name + "(" + $show(v.payload) + ")" : v.name) : (v && v.$t === "R") ? "{ " + Object.entries(v.fs).map(([k, val]) => k + ": " + $show(val)).join(", ") + " }" : (v && v.$t === "L") ? "[" + v.es.map($show).join(", ") + "]" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
+    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : (v && v.$t === "C") ? (v.payload !== null ? v.name + "(" + $show(v.payload) + ")" : v.name) : (v && v.$t === "R") ? "{ " + Object.entries(v.fs).map(([k, val]) => k + ": " + $show(val)).join(", ") + " }" : (v && v.$t === "L") ? "[" + v.es.map($show).join(", ") + "]" : typeof v === "function" ? "<fn:<lambda>>" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
     ...Object.entries(BUILTIN_IMPL)
       .filter(([name]) => !userNames.has(name))
       .map(([name, impl]) => `const ${name} = ${impl};`),

@@ -1,22 +1,28 @@
 @edition "2026.6"
 
--- D1(vi) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it binds a CLOSURE (`fn x -> x + 1`) and applies it — a value the
--- compute spine has no representation for yet (a lambda lowers to nothing, and a call
--- through a locally-bound name is not a `def`). The differential harness must report
--- it `unsupported` — a CLEAN refusal at the compiler frontier — never a miscompile,
--- never a JS crash.
+-- D1(vii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it names a `def` (`double`) WITHOUT calling it, to bind it as a
+-- first-class function value. eval has this for free — a top-level `def` is a VFn in
+-- the environment, so `let f = double` captures it — but the compute spine emits each
+-- `def` as a JS `function` statement, not a value: a bare def name is an out-of-scope
+-- `Var`, which the lowerer refuses as a free variable. The differential harness must
+-- report it `unsupported` — a CLEAN refusal at the compiler frontier — never a
+-- miscompile, never a JS crash.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
 -- yet lower, loudly", asserted by the harness rather than by an error count. D1(ii)
 -- moved the frontier PAST scalar `match`; D1(iii) PAST tuples; D1(iv) PAST ADT
--- constructors; D1(v) PAST records; D1(vi) PAST lists — built, element-read (`xs[i]`),
--- and measured (`length`/`isEmpty`) (see compile_list_test). The frontier now sits at
--- CLOSURES-AS-VALUES — a `fn x -> …` bound and called. This file binds one, so it
--- still refuses; when closures lower (a later D1 slice), it flips from `unsupported`
+-- constructors; D1(v) PAST records; D1(vi) PAST lists; D1(vii) PAST closures-as-values
+-- — a `fn x -> …` bound, captured, passed, returned, and called through a local name
+-- (see compile_closure_test). The frontier now sits at FIRST-CLASS `def` REFERENCES —
+-- naming a `def` as a value rather than calling it. This file binds one, so it still
+-- refuses; when def references lower (a later D1 slice), it flips from `unsupported`
 -- to a print with no edit.
 
+def double(n: Number): Number
+  n * 2
+
 def main(): Effect [io] ()
-  let inc = fn x -> x + 1
-  println(inc(5))
+  let f = double
+  println(f(5))

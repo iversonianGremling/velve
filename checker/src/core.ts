@@ -9,20 +9,23 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(vi) lists): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
+// SCOPE (through D1(vii) closures): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
 // destructured via `PTuple` (D1(iii)); ADT CONSTRUCTORS — built (applied `Ok(x)` or
 // nullary `None`) and destructured in `match` arms via `PCtor` (D1(iv)); RECORDS
 // — built (`#{ x: a }`, incl. `...spread`), field-read (`p.x`), and destructured via
-// `PRecord` (D1(v)); and LISTS — built (`[a, b, …]`), element-read (`xs[i]`), and
-// measured (`length`/`isEmpty`) (D1(vi)). The supported ctor names are the module's
-// own `type … = | …` variants plus the core data ctors eval defines globally
+// `PRecord` (D1(v)); LISTS — built (`[a, b, …]`), element-read (`xs[i]`), and
+// measured (`length`/`isEmpty`) (D1(vi)); and CLOSURES-AS-VALUES — a `fn x -> …`
+// lowered to a JS arrow that captures by lexical scope, bound by `let`, passed as an
+// argument, returned from a `def`, called through a local name, and displayed
+// `<fn:<lambda>>` (D1(vii)). The supported ctor names are the module's own
+// `type … = | …` variants plus the core data ctors eval defines globally
 // (Ok/Error/Some/None). Everything else is refused LOUDLY via CompileUnsupported —
-// the frontier is explicit, never a silent miscompile. Closures-as-values,
+// the frontier is explicit, never a silent miscompile. First-class `def` references,
 // destructuring `let`/params, `Perform` (effects), and non-tail `if` joins are next
-// (D1(vii)+, D2).
+// (D1(viii)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch } from "./ast.js";
 
@@ -56,8 +59,9 @@ export type IRComp =
   | { k: "Record"; spread: IRAtom | null; fields: { name: string; value: IRAtom }[] } // build a record (spread base, then explicit fields — display order)
   | { k: "Field"; obj: IRAtom; field: string }         // read a named field
   | { k: "List"; elems: IRAtom[] }                     // build a sequence (display `[a, b, …]`)
-  | { k: "Index"; obj: IRAtom; index: IRAtom };        // read element `index` of a list
-// Lambda / Perform — D1(vii)+, D2.
+  | { k: "Index"; obj: IRAtom; index: IRAtom }         // read element `index` of a list
+  | { k: "Lambda"; params: string[]; body: IRExpr };   // an anonymous closure value — captures by lexical scope
+// Perform — D2.
 
 // Expressions — the ANF spine. `Match` does NOT survive into the IR: D1(ii) lowers
 // it to the `If`/`Let` decision-spine already here (classic match compilation), so
@@ -372,6 +376,22 @@ class Lowering {
         const i = this.norm(e.index, scope);
         return { binds: [...o.binds, ...i.binds], comp: { k: "Index", obj: o.atom, index: i.atom } };
       }
+      case "Lambda": {
+        // A closure value (D1(vii)). eval makes a single-clause VFn capturing the
+        // current `env`; the JS analogue is an arrow function, which closes over the
+        // enclosing `const`s by the same lexical-scope rule — so no explicit capture
+        // list is needed, the names just resolve outward. Params are simple binders
+        // (a destructuring param spells a `PTuple`/`PRecord` and trips `patName`'s
+        // frontier — that lands a later slice). The body lowers in TAIL position with
+        // the params added to scope: the lambda's value IS its body's value. A free
+        // name in the body (e.g. a not-yet-bound `let f = fn … -> f(…)` self-ref) is
+        // out of scope here exactly as it is absent from eval's capture env, so it
+        // refuses identically rather than miscompiling. Displays `<fn:<lambda>>`.
+        const params = e.params.map(p => patName(p.pat));
+        const inner = new Set(scope);
+        for (const pn of params) inner.add(pn);
+        return { binds: [], comp: { k: "Lambda", params, body: this.tail(e.body, inner) } };
+      }
       case "Call": {
         if (e.fn.tag !== "Var") throw new CompileUnsupported("call of a computed function");
         if (e.named.length) throw new CompileUnsupported("named arguments (D1 later)");
@@ -384,7 +404,12 @@ class Lowering {
           const a = this.norm(e.args[0]!, scope);
           return { binds: a.binds, comp: { k: "Ctor", name: fn, payload: a.atom } };
         }
-        if (!this.userFns.has(fn) && !BUILTINS.has(fn))
+        // A name in local scope holds a closure value (a `let`-bound lambda or a
+        // closure-typed param): call it indirectly. The emitted syntax is identical
+        // to a `def` call — `fn(args)` — because the JS `const` holds the arrow
+        // function, and lexical scope means a local name correctly shadows a same-named
+        // def or builtin (eval resolves the local binding first too).
+        if (!scope.has(fn) && !this.userFns.has(fn) && !BUILTINS.has(fn))
           throw new CompileUnsupported(`call to '${fn}' (not a def or supported builtin)`);
         const parts = e.args.map(a => this.norm(a, scope));
         return { binds: parts.flatMap(p => p.binds), comp: { k: "Call", fn, args: parts.map(p => p.atom) } };

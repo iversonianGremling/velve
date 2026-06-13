@@ -616,6 +616,37 @@ exists (`compiler-architecture-design.md`).
     SPEC untouched; no graded row moves (still partial). Next: **D1(vii)** =
     closures-as-values (lambda lowering + capture), then destructuring `let`/params —
     still pre-effect.
+  - **D1(vii) — closures compile (the frontier twin flips again) — DONE 2026-06.** The
+    value D1(vi)'s guardrail was holding. Closures are now FIRST-CLASS: a `fn x -> …`
+    lowers to a JS arrow function that closes over its enclosing `const`s by lexical
+    scope, exactly as eval's single-clause VFn closes over its captured `env` — so no
+    explicit capture list is computed, the names just resolve outward. A closure is
+    BOUND by `let`, RETURNED from a `def` (capturing that def's param — `def adder(n)
+    -> fn x -> x + n`), PASSED as an argument, written INLINE at a call site, CALLED
+    through a local name, and DISPLAYED `<fn:<lambda>>` (value.ts's VFn display). One IR
+    computation, `Lambda` (params + a body that lowers in TAIL position with the params
+    in scope); no runtime `$t` tag — the arrow is callable directly, and `$show` maps any
+    `typeof === "function"` to `<fn:<lambda>>` (the only functions reaching `$show` are
+    lowered lambdas; user `def`s are never first-class values on the pure spine yet). The
+    `Call` guard gained one clause: a name in local scope is a closure value, called with
+    the identical `fn(args)` syntax — JS lexical scope makes a local correctly shadow a
+    same-named def/builtin, as eval's binding lookup does. A free name in a lambda body
+    (a self-referential `let f = fn … -> f(…)`) is out of scope here exactly as it is
+    absent from eval's capture env, so it refuses identically rather than miscompiling.
+    Green fixture `compile_closure_test.velve` (let-bound lambda, returned closure with
+    capture, closure-as-argument, inline lambda, printed closure) compiles
+    **byte-identically** to eval across 5 lines (`6 / 17 / 101 / 42 / <fn:<lambda>>`). The
+    frontier twin `compile_frontier_test.velve` was rolled to a **first-class `def`
+    reference** (`let f = double` — naming a def without calling it; eval has it for free
+    as a VFn in the env, the compiler refuses it as a free variable) — the next
+    unrepresented value — and still refuses cleanly (exit 2). (Destructuring `let`/params
+    from the prior forecast are SYNTAX errors — neither exists in the grammar, like
+    `PList` before them — so the frontier rolled to def references instead; the
+    mis-recollection is corrected here.) Harness: **23 match, 0 mismatch, 0 js-crash**,
+    114 unsupported (242 files) — +1 match (the fixture), unsupported unchanged (no corpus
+    flip; the frontier stayed unsupported, rolling closure→def-reference). SPEC untouched;
+    no graded row moves (still partial). Next: **D1(viii)** = first-class `def` references
+    (eta-expansion of a named function to a value) — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

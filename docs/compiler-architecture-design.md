@@ -541,8 +541,27 @@ and call it (the next unrepresented value) and still refuses. Honest baseline mo
 pre-existing file flipped — `dependent_test.velve`, a dependently-typed program
 (`InBounds(length(xs))`) whose refinement machinery erases upstream, leaving exactly the
 list spine the compiler now lowers (+2 match = fixture + flip, −1 unsupported).
-**Remaining for D1(vii)+**: closures-as-values (lambda lowering + capture); destructuring
-`let`/params and non-tail match value; then `Perform` in D2.
+
+**D1(vii) shipped (2026-06) — closures (the frontier twin flips again).** A `fn x -> …`
+lowers to a JS arrow function that closes over its enclosing `const`s by lexical scope,
+exactly as eval's single-clause VFn closes over its captured `env` — no explicit capture
+list is computed. A closure is bound by `let`, returned from a `def` (capturing that def's
+param), passed as an argument, written inline, called through a local name, and displayed
+`<fn:<lambda>>` (value.ts VFn display). One IR comp — `Lambda` (params + a body lowered in
+tail position with the params in scope); no `$t` tag — the arrow is callable directly and
+`$show` maps any `typeof === "function"` to `<fn:<lambda>>` (the only functions reaching
+`$show` are lowered lambdas). The `Call` guard gained one clause: a name in local scope is
+a closure value, called with identical `fn(args)` syntax (JS lexical scope shadows a
+same-named def/builtin as eval's lookup does). A free name in a lambda body refuses
+identically to eval's missing-from-capture-env. Harness: **23 match / 0 mismatch / 0
+js-crash / 114 unsupported** (242 files) — +1 match (fixture `compile_closure_test.velve`,
+byte-identical across 5 lines), no corpus flip. The frontier twin was rolled to a
+**first-class `def` reference** (`let f = double` — naming a def without calling it; eval
+has it as a VFn in the env, the compiler refuses it as a free variable) and still refuses.
+Destructuring `let`/params from the prior forecast are SYNTAX errors — neither exists in
+the grammar (like `PList`) — corrected here.
+**Remaining for D1(viii)+**: first-class `def` references (eta-expansion to a value);
+non-tail match value; then `Perform` in D2.
 
 ---
 

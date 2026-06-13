@@ -1,0 +1,26 @@
+@edition "2026.6"
+
+-- D1(vii) green fixture — closures-as-values. A `fn x -> …` lowers to a JS arrow
+-- function that closes over its enclosing `const`s by lexical scope, exactly as
+-- eval's single-clause VFn closes over its captured `env`. This file exercises the
+-- four ways a closure is used on the pure spine: bound by `let`, RETURNED from a
+-- `def` (capturing that def's param), PASSED as an argument and called through the
+-- callee's param name, written INLINE at a call site, and PRINTED (`<fn:<lambda>>`,
+-- byte-identical to value.ts's VFn display). All output matches eval column-for-column.
+
+-- returns a closure capturing `n` — the real test of capture
+def adder(n: Number): (Number -> Number)
+  fn x -> (x + n)
+
+-- takes a closure-typed param and calls it through the local name `f`
+def apply2(f: (Number -> Number), v: Number): Number
+  f(v)
+
+def main(): Effect [io] ()
+  let inc = fn x -> x + 1
+  println(inc(5))                     -- 6   : let-bound lambda, called by name
+  let add10 = adder(10)
+  println(add10(7))                   -- 17  : returned closure captures n=10
+  println(apply2(inc, 100))           -- 101 : closure passed as an argument
+  println(apply2(fn y -> y * 2, 21))  -- 42  : inline lambda at the call site
+  println(inc)                        -- <fn:<lambda>> : a closure displays
