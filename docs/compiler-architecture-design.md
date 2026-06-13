@@ -671,8 +671,19 @@ true / false / go / unknown`), no corpus flip. A bare `let c = :red` has the sin
 `:red`, so a concrete `c == :green` is a type error — false-equality runs through an
 `Atom`-typed parameter. The frontier twin rolled to a **duration literal** (`5s` — eval folds
 to its ms count `5000`; `lowerLit` still refuses the fold).
-**Remaining for D1(xvi)+**: duration literals (fold to `Num(ms)`); field/index assignment;
-loops; then `Perform` in D2.
+
+**D1(xvi) shipped (2026-06) — duration literals (the thinnest cut of the erasure law).** A
+duration (`5s`, `250ms`, `3m`, `1h`) now lowers: the AST carries the computed `ms`, eval
+folds `Duration → VNum(ms)`, and the Duration *type* erases at the IR frontier (§11.5), so
+`5s` is simply the Number `5000`. A one-line `lowerLit` fold, no emitter/runtime change.
+Harness: **37 match / 0 mismatch / 0 js-crash / 109 unsupported** (251 files) — +1 match
+(fixture `compile_duration_test.velve`, byte-identical `5000 / 250 / 2500 / 180000 /
+3600000 / 30000 / 35000`), no corpus flip. The checker keeps the Number/Duration type line
+upstream, so the fixture exercises durations as literals and among themselves. The frontier
+twin rolled to a **`for` comprehension** (`for (x in xs) -> x * 2` — the spine has no
+comprehension lowering, the `For` AST node is refused).
+**Remaining for D1(xvii)+**: `for` comprehensions; field/index assignment; then `Perform`
+in D2.
 
 ---
 

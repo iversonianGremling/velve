@@ -1,0 +1,19 @@
+@edition "2026.6"
+
+-- D1(xvi) green fixture — duration literals. A duration is sugar for a millisecond count:
+-- the AST carries `ms`, and eval folds `Duration → VNum(ms)`, so the Duration *type* erases
+-- at the IR frontier (§11.5) and `5s` is simply the Number `5000`. Covers several units
+-- (`s`/`ms`/`m`/`h`) and duration-plus-duration arithmetic — all byte-identical to eval,
+-- the erasure law made visible: the unit judgment is gone, the number computes the same.
+-- (The checker keeps the Number/Duration type line upstream of this fold, so durations are
+-- exercised here as literals and among themselves, not crossing the Number boundary.)
+
+def main(): Effect [io] ()
+  println(5s)          -- 5000    : seconds fold to ms
+  println(250ms)       -- 250     : ms stay ms
+  println(2s + 500ms)  -- 2500    : duration arithmetic is number arithmetic
+  println(3m)          -- 180000  : minutes
+  println(1h)          -- 3600000 : hours
+  let timeout = 30s
+  println(timeout)     -- 30000
+  println(timeout + 5s)-- 35000   : a bound duration plus a literal

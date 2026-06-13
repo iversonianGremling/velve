@@ -832,6 +832,25 @@ exists (`compiler-architecture-design.md`).
     match, 0 mismatch, 0 js-crash**, 109 unsupported (250 files) — +1 match (the fixture),
     unsupported unchanged. SPEC untouched; no graded row moves (still partial). Next:
     **D1(xvi)** = duration literals (fold `5s` → `Num(5000)`) — still pre-effect.
+  - **D1(xvi) — duration literals compile (the frontier twin flips again) — DONE 2026-06.**
+    The value D1(xv)'s guardrail was holding. A duration literal (`5s`, `250ms`, `3m`, `1h`)
+    now lowers — and it is the **thinnest possible cut of the erasure law**: the AST already
+    carries the computed `ms`, eval folds `Duration → VNum(ms)`, and the Duration *type*
+    erases at the IR frontier (§11.5), so `5s` is simply the Number `5000`. A one-line
+    `lowerLit` fold (`Duration → {t:"Num", v: ms}`), no emitter or runtime change. Green
+    fixture `compile_duration_test.velve` (`s`/`ms`/`m`/`h` units, duration-plus-duration
+    arithmetic, a bound duration plus a literal) compiles **byte-identically** to eval (`5000
+    / 250 / 2500 / 180000 / 3600000 / 30000 / 35000`). (The checker keeps the Number/Duration
+    *type* line upstream of this fold — a duration is not passed where a bare `Number` is
+    wanted, and durations carry finer unit typing than the bare `Duration` name — so the
+    fixture exercises durations as literals and among themselves, a type rule not a compiler
+    one.) The frontier twin `compile_frontier_test.velve` rolled to a **`for` comprehension**
+    (`for (x in xs) -> x * 2` — eval builds a list per-element; the spine has no comprehension
+    lowering, the `For` AST node is refused) — the next unrepresented form — still exit 2. No
+    pre-existing corpus file flipped. Harness: **37 match, 0 mismatch, 0 js-crash**, 109
+    unsupported (251 files) — +1 match (the fixture), unsupported unchanged. SPEC untouched;
+    no graded row moves (still partial). Next: **D1(xvii)** = `for` comprehensions (map/filter
+    over a list) — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xv) atoms): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom);
+// SCOPE (through D1(xvi) durations): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -557,8 +557,10 @@ function lowerLit(l: Lit): IRLit {
     // VAtoms by name, so the emitter interns `$atom(n)` to a per-name singleton, making
     // JS `===` (what `==`/match `PLit` lower to) agree with eval's by-name equality.
     case "Atom":     return { t: "Atom", name: l.name };
-    // Durations fold to Num(ms) (§11.3) — a later slice; refuse rather than guess display.
-    case "Duration": throw new CompileUnsupported("duration literal");
+    // A duration `5s` IS its millisecond count as a plain Number (D1(xvi)): the AST already
+    // carries `ms`, and eval folds `Duration → VNum(ms)` — the Duration *type* erases at
+    // this frontier (§11.5), leaving the number. So `5s` compiles to `5000`, display-identical.
+    case "Duration": return { t: "Num", v: l.ms };
   }
 }
 

@@ -1161,6 +1161,23 @@ dimension machinery generalize?
   = fixture; unsupported unchanged). SPEC untouched; no graded row moves (still partial). **Next:
   D1(xvi)** — duration literals (fold `5s` → `Num(5000)`) — still pre-effect.
 
+- [x] 🟢 **Phase D1(xvi) — duration literals compile (the thinnest cut of the erasure law) — DONE
+  2026-06** (`core.ts` one-line `lowerLit` `Duration → {t:"Num", v: ms}` fold; `compile_duration_test.velve`).
+  The value D1(xv)'s guardrail was holding. A duration literal (`5s`/`250ms`/`3m`/`1h`) now lowers — the
+  AST already carries the computed `ms`, eval folds `Duration → VNum(ms)`, and the Duration *type* erases
+  at the IR frontier (§11.5), so `5s` is simply the Number `5000`. No emitter or runtime change. Green
+  `compile_duration_test` (`s`/`ms`/`m`/`h` units, duration-plus-duration arithmetic, a bound duration
+  plus a literal) byte-identical to eval (`5000 / 250 / 2500 / 180000 / 3600000 / 30000 / 35000`). (The
+  checker keeps the Number/Duration *type* line upstream of this fold — a duration is not passed where a
+  bare `Number` is wanted, and durations carry finer unit typing than the bare `Duration` name — so the
+  fixture exercises durations as literals and among themselves; a type rule, not a compiler one.) The
+  frontier twin `compile_frontier_test` ROLLED duration→**`for` comprehension** (`for (x in xs) -> x * 2`
+  — eval builds a list per-element; the spine has no comprehension lowering, the `For` AST node is
+  refused) — next unrepresented form — still exit 2. **No pre-existing corpus file flipped.** Harness:
+  **37 match / 0 mismatch / 0 js-crash / 109 unsupported** across 251 files (+1 match = fixture;
+  unsupported unchanged). SPEC untouched; no graded row moves (still partial). **Next: D1(xvii)** — `for`
+  comprehensions (map/filter over a list) — still pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)
