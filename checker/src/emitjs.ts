@@ -71,6 +71,10 @@ function comp(c: IRComp): string {
     case "Ctor":  return `$ctor(${JSON.stringify(c.name)}, ${c.payload ? atom(c.payload) : "null"})`;
     case "CtorName":    return `${atom(c.ctor)}.name`;
     case "CtorPayload": return `${atom(c.ctor)}.payload`;
+    // `e is Name` (D1(xxi)) — eval's `v.tag === "VCtor" && v.name === name`. The `!= null`
+    // guard (not `&&`) keeps a falsy primitive subject — `0`, `""`, `false` — returning a
+    // proper `false` rather than leaking the operand, so `$show` prints "false" not "0".
+    case "CtorTest":    return `(${atom(c.ctor)} != null && ${atom(c.ctor)}.$t === "C" && ${atom(c.ctor)}.name === ${JSON.stringify(c.name)})`;
     case "Record": {
       const fs = c.fields.map(f => `${JSON.stringify(f.name)}: ${atom(f.value)}`);
       const body = c.spread ? [`...${atom(c.spread)}.fs`, ...fs] : fs;

@@ -1,12 +1,12 @@
 @edition "2026.6"
 
--- D1(xx) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it uses a TYPE TEST (`r is Ok(v)` — a runtime tag check that also
--- binds the matched payload). eval evaluates the subject and returns a Bool from its
--- constructor tag (binding the payload in the `then` scope); the compute spine has no
--- type-test lowering — `normComp`/`norm` reach the `TypeTest` AST node and refuse it (the
--- `default` arm of `normComp`). The differential harness must report it `unsupported` — a
--- CLEAN refusal at the compiler frontier, never a miscompile.
+-- D1(xxi) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it uses the PROPAGATE operator (`half(n)?` — unwrap an `Ok` payload,
+-- or early-return the `Error` from the enclosing function). eval evaluates the subject and
+-- either yields the `Ok` payload or throws a ReturnSignal carrying the `Error`; the compute
+-- spine has no propagate lowering — `normComp`/`norm` reach the `Propagate` AST node and
+-- refuse it (the `default` arm of `normComp`). The differential harness must report it
+-- `unsupported` — a CLEAN refusal at the compiler frontier, never a miscompile.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
@@ -18,17 +18,21 @@
 -- non-tail `match` as a value; D1(xiii) PAST multi-clause `def`s; D1(xiv) PAST reassignment;
 -- D1(xv) PAST atom literals; D1(xvi) PAST duration literals; D1(xvii) PAST `for`
 -- comprehensions; D1(xviii) PAST integer ranges; D1(xix) PAST index assignment; D1(xx) PAST
--- the `loop` construct (`loop … break`/`continue`; see compile_loop_test). The frontier now
--- sits at TYPE TESTS (`e is Ctor(binder)`). This file uses one, so it still refuses; when
--- type tests lower (a later D1 slice, a tag compare + payload bind), it flips from
--- `unsupported` to a print with no edit.
+-- the `loop` construct; D1(xxi) PAST TYPE TESTS (`e is Ctor(b)`; see compile_typetest_test).
+-- The frontier now sits at the PROPAGATE operator (`e?`). This file uses one, so it still
+-- refuses; when propagate lowers (a later D1 slice, an unwrap-or-early-return on Result), it
+-- flips from `unsupported` to a print with no edit.
 
-def describe(r: Result(Number, String)): String
-  if r is Ok(v)
-    "got {v}"
+def half(n: Number): Result(Number, String)
+  if n % 2 == 0
+    Ok(n / 2)
   else
-    "err"
+    Error("odd")
+
+def quarter(n: Number): Result(Number, String)
+  let h = half(n)?
+  half(h)
 
 def main(): Effect [io] ()
-  println(describe(Ok(5)))
-  println(describe(Error("bad")))
+  println(quarter(8))
+  println(quarter(6))

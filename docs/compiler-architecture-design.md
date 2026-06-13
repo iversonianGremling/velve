@@ -743,7 +743,19 @@ the `$r` machinery stays correct for it and is simply never exercised. The front
 **TYPE TEST** (`r is Ok(v)` — a runtime tag check binding the payload; `TypeTest` hits `normComp`'s
 `default`). **The pure value / literal / control-flow / data / imperative-loop surface is now fully
 compiled.**
-**Remaining for D1(xxi)+**: type tests (`e is Ctor(b)`); then the D2 effects wall (`Perform`/`await`).
+
+**D1(xxi) shipped (2026-06) — type tests (`e is Ctor(b)`).** A runtime type test now lowers in both
+of eval's shapes. A **binder** test in an `if` condition (`if e is Ok(v) then T else E`) eval desugars
+to a one-armed ctor match binding the payload; the compiler does the same via a new `typeTestIf` that
+reuses the D1(iv) `PCtor` decision-spine (tag test + payload bind) — `T` runs in the bound scope, a tag
+mismatch falls to `E` (value position reifies the spine in a `Block`). A **binder-less** `e is Name` is
+a Bool: eval's `v.tag === "VCtor" && v.name === name` becomes a `CtorTest` comp →
+`(e != null && e.$t === "C" && e.name === "Name")`. The `!= null` guard (not `&&`) keeps a falsy
+primitive subject returning a proper `false` rather than leaking the operand. Harness: **43 match / 0
+mismatch / 0 js-crash / 108 unsupported** (256 files) — +1 match (fixture `compile_typetest_test.velve`,
+byte-identical across binder/bare/nullary/value-position/falsy-payload cases), no corpus flip. The
+frontier twin rolled to the **PROPAGATE operator** (`e?` — unwrap-or-early-return on Result).
+**Remaining for D1(xxii)+**: the propagate operator (`e?`); then the D2 effects wall (`Perform`/`await`).
 
 ---
 

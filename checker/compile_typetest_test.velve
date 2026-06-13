@@ -1,0 +1,49 @@
+@edition "2026.6"
+
+-- D1(xxi): TYPE TESTS compile (`e is Ctor(b)` — a runtime tag check, optionally binding the
+-- payload). eval has two paths: a binder test in an `if` condition desugars to a ctor-pattern
+-- match (binding the payload into the `then` scope), and a binder-less `e is Name` is a Bool
+-- (`v.tag === "VCtor" && v.name === name`). The compiler mirrors both — the binder form reuses
+-- the match decision-spine (tag test + payload bind), the bare form emits a `CtorTest` — so
+-- each is byte-identical to eval, asserted by the differential harness. Covers: a binder test
+-- on a custom ADT, a nullary-ctor bare test, a bare `is` used as a Bool, a binder test in
+-- value position, and the falsy-payload case (`Ok(0)` — the bind must carry the 0, and a bare
+-- test on a falsy-payload ctor must still return a proper `true`/`false`).
+
+type Shape
+  = Circle Number
+  | Square Number
+  | Point
+
+def area(s: Shape): Number
+  if s is Circle(r)
+    r * r * 3
+  else
+    if s is Square(side)
+      side * side
+    else
+      0
+
+def label(s: Shape): String
+  if s is Point
+    "point"
+  else
+    "round-ish"
+
+def isOk(r: Result(Number, String)): Bool
+  r is Ok
+
+def unwrapOr(r: Result(Number, String), d: Number): Number
+  let v = if r is Ok(x) then x else d
+  v
+
+def main(): Effect [io] ()
+  println(area(Circle(2)))
+  println(area(Square(3)))
+  println(area(Point))
+  println(label(Point))
+  println(label(Circle(1)))
+  println(isOk(Ok(0)))
+  println(isOk(Error("no")))
+  println(unwrapOr(Ok(0), 99))
+  println(unwrapOr(Error("x"), 99))

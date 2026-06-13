@@ -1267,6 +1267,26 @@ dimension machinery generalize?
   compiled.** **Next: D1(xxi)** — type tests (`e is Ctor(b)` — tag compare + payload bind), then the D2
   effects wall (`Perform`/`await`).
 
+- [x] 🟢 **Phase D1(xxi) — type tests compile (`e is Ctor(b)` — tag check + optional payload bind) — DONE
+  2026-06** (`core.ts` new `CtorTest` IRComp + `TypeTest` case in `normComp` + binder-test detection in
+  the `tail`/`normComp` `If` cases + new `typeTestIf` helper; `emitjs.ts` `CtorTest` emit;
+  `compile_typetest_test.velve`). The type-test guardrail D1(xx) left (`r is Ok(v)`) was holding. A runtime
+  type test now lowers in both eval shapes. (1) A **binder** test in an `if` condition (`if e is Ok(v) then
+  T else E`) eval desugars to a one-armed ctor match binding the payload; `typeTestIf` reuses the D1(iv)
+  `PCtor` decision-spine (tag test + payload bind) — `T` runs in the bound scope, a tag mismatch falls to
+  `E` (value position reifies the spine in a `Block`). (2) A **binder-less** `e is Name` is a Bool; eval's
+  `v.tag === "VCtor" && v.name === name` becomes a `CtorTest` → `(e != null && e.$t === "C" && e.name ===
+  "Name")`. The `!= null` guard (not `&&`) is deliberate: a falsy primitive subject (`0`/`""`/`false`) must
+  still return a proper `false`, not leak the operand and misprint. Green `compile_typetest_test` (binder
+  test on a custom ADT; nullary-ctor test; bare `is` as a Bool; value-position binder test; and the
+  **falsy-payload** case — `Ok(0)` binds the 0, `isOk(Ok(0))` still returns `true`) byte-identical to eval
+  (`12` / `9` / `0` / `point` / `round-ish` / `true` / `false` / `0` / `99`). The frontier twin
+  `compile_frontier_test` ROLLED type-test→**PROPAGATE operator** (`half(n)?` — unwrap-or-early-return on
+  Result; `Propagate` hits `normComp`'s `default`) — next unrepresented form — still exit 2. **No
+  pre-existing corpus file flipped.** Harness: **43 match / 0 mismatch / 0 js-crash / 108 unsupported**
+  across 256 files (+1 match = fixture; unsupported unchanged). SPEC untouched; no graded row moves (still
+  partial). **Next: D1(xxii)** — the propagate operator (`e?`), then the D2 effects wall (`Perform`/`await`).
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

@@ -938,6 +938,26 @@ exists (`compiler-architecture-design.md`).
     unsupported unchanged. SPEC untouched; no graded row moves (still partial). **The pure value /
     literal / control-flow / data / imperative-loop surface is now fully compiled.** Next: **D1(xxi)** =
     type tests (`e is Ctor(b)` — tag compare + payload bind), then the D2 effects wall (`Perform`/`await`).
+  - **D1(xxi) — type tests compile (the frontier twin flips again) — DONE 2026-06.**
+    The type-test guardrail D1(xx) left (`r is Ok(v)`) was holding. A runtime type test now lowers, in
+    both of eval's shapes. (1) A **binder** test in an `if` condition (`if e is Ok(v) then T else E`)
+    eval desugars to a one-armed ctor match binding the payload; the compiler does the same — a new
+    `typeTestIf` reuses the D1(iv) `PCtor` decision-spine (tag test + payload bind), running `T` in the
+    bound scope and falling to `E` on a tag mismatch (in value position the spine is reified by a
+    `Block`, like a value `match`). (2) A **binder-less** `e is Name` is a Bool; eval returns
+    `v.tag === "VCtor" && v.name === name`, so the compiler emits a `CtorTest` comp →
+    `(e != null && e.$t === "C" && e.name === "Name")`. The `!= null` guard (not `&&`) is deliberate:
+    a falsy primitive subject (`0`/`""`/`false`) must still return a proper `false`, not leak the
+    operand and misprint. Green fixture `compile_typetest_test.velve` (a binder test on a custom ADT;
+    a nullary-ctor test; a bare `is` as a Bool; a value-position binder test; and the **falsy-payload**
+    case — `Ok(0)` binds the 0, and `isOk(Ok(0))` still returns `true`) compiles **byte-identically** to
+    eval (`12` / `9` / `0` / `point` / `round-ish` / `true` / `false` / `0` / `99`). The frontier twin
+    rolled to the **PROPAGATE operator** (`half(n)?` — unwrap an `Ok` or early-return the `Error`; the
+    spine has no propagate lowering, `Propagate` hits `normComp`'s `default`) — the next unrepresented
+    form — still exit 2. **No pre-existing corpus file flipped.** Harness: **43 match, 0 mismatch, 0
+    js-crash**, 108 unsupported (256 files) — +1 match (the fixture), unsupported unchanged. SPEC
+    untouched; no graded row moves (still partial). Next: **D1(xxii)** = the propagate operator
+    (`e?` — unwrap-or-early-return on Result), then the D2 effects wall (`Perform`/`await`).
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

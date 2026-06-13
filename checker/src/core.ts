@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xx) loops): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
+// SCOPE (through D1(xxi) type-tests): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -46,10 +46,13 @@
 // a pointer `p.* = v` refuses); and the `loop` construct — an unbounded imperative loop
 // lowered to an IIFE around a labeled `while (true)`, with `break`/`continue` as real labeled
 // control flow and a CPS loop-body lowering that threads the "iterate again" terminator into
-// each branch (D1(xx)). TYPE TESTS (`e is Ctor(b)`), then `Perform`/`await` (effects) are next
-// (D1(xxi)+, D2 — the loop closes the pure-compute/control-flow surface before the effects wall).
+// each branch (D1(xx)); and TYPE TESTS — `e is Ctor(b)`: the binder form (in an `if` cond)
+// desugars to a ctor-pattern match binding the payload, the binder-less form lowers to a
+// `CtorTest` Bool (`v.$t==="C" && v.name===name`) (D1(xxi)). The PROPAGATE operator (`e?`),
+// then `Perform`/`await` (effects) are next (D1(xxii)+, D2 — the effects wall).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
+import type { Span } from "./span.js";
 
 // ── The node grammar (§11.3) ────────────────────────────────────────────────────
 
@@ -79,6 +82,7 @@ export type IRComp =
   | { k: "Ctor"; name: string; payload: IRAtom | null } // build a tagged variant (nullary ⇒ payload null)
   | { k: "CtorName"; ctor: IRAtom }                    // read a variant's tag (a string) — for the match test
   | { k: "CtorPayload"; ctor: IRAtom }                 // read a variant's payload — to bind/recurse
+  | { k: "CtorTest"; ctor: IRAtom; name: string }      // `e is Name` — a runtime tag check yielding a Bool
   | { k: "Record"; spread: IRAtom | null; fields: { name: string; value: IRAtom }[] } // build a record (spread base, then explicit fields — display order)
   | { k: "Field"; obj: IRAtom; field: string }         // read a named field
   | { k: "List"; elems: IRAtom[] }                     // build a sequence (display `[a, b, …]`)
@@ -205,6 +209,12 @@ class Lowering {
     switch (e.tag) {
       case "Do": return this.block(e.stmts, scope);
       case "If": {
+        // `if e is Ctor(b) then … else …` (D1(xxi)) — eval desugars a binder type-test
+        // condition to a ctor-pattern match (eval.ts If handler), so we lower it through
+        // the same decision-spine: the payload binds in the `then` scope, a tag mismatch
+        // falls to `else`. A binder-less `is` is an ordinary Bool, handled by `norm` below.
+        if (e.cond.tag === "TypeTest" && e.cond.binder && e.cond.against.tag === "TRNamed")
+          return this.typeTestIf(e.cond.expr, e.cond.against.name, e.cond.binder, e.then, e.else_, scope, e.cond.span);
         const c = this.norm(e.cond, scope);
         const then = this.tail(e.then, new Set(scope));
         const els = e.else_ ? this.tail(e.else_, new Set(scope)) : RET_UNIT;
@@ -252,6 +262,25 @@ class Lowering {
       else then = wrap(st.binds, { k: "If", cond: st.atom, then, else_: next });
     }
     return then;
+  }
+
+  // `if e is Ctor(b) then T else E` (D1(xxi)). eval desugars a binder type-test condition
+  // to a one-armed ctor match — `match e | Ctor(b) -> T | _ -> E` — so this builds the same
+  // decision-spine `branch` does for that arm: compile the `PCtor(b)` pattern against the
+  // subject atom, run `T` in the bound scope on success, fall through to `E` (or Unit) on a
+  // tag mismatch. Reuses `pattern`'s ctor lowering (the tag test + payload bind from D1(iv)).
+  private typeTestIf(subjExpr: Expr, ctorName: string, binder: Pat | null, thenE: Expr, elseE: Expr | null, scope: Set<string>, span: Span): IRExpr {
+    const s = this.norm(subjExpr, scope);
+    const ctorPat: Pat = { tag: "PCtor", name: ctorName, inner: binder, span };
+    const p = this.pattern(ctorPat, s.atom, scope);
+    const elseIR = elseE ? this.tail(elseE, new Set(scope)) : RET_UNIT;
+    let then = this.tail(thenE, p.scope);
+    for (let i = p.steps.length - 1; i >= 0; i--) {
+      const st = p.steps[i]!;
+      if (st.s === "bind") then = { k: "Let", name: st.bind.name, comp: st.bind.comp, body: then };
+      else then = wrap(st.binds, { k: "If", cond: st.atom, then, else_: elseIR });
+    }
+    return wrap(s.binds, then);
   }
 
   // Compile a pattern against the subject atom into an ordered `MatchStep[]`: a
@@ -607,6 +636,11 @@ class Lowering {
         // `&&`/`||` use (D1(x)) — the cond is an atom, each branch a value-`IRExpr`
         // emitted as a ternary arm (IIFE-wrapped when it has its own spine). A branchless
         // `if` (no `else`) yields Unit, mirroring `tail`'s `RET_UNIT`.
+        // A binder type-test condition (`if e is Ok(v) …`) desugars to a ctor match (D1(xxi));
+        // in value position its decision-spine is reified by a `Block`, exactly like a value
+        // `match`.
+        if (e.cond.tag === "TypeTest" && e.cond.binder && e.cond.against.tag === "TRNamed")
+          return { binds: [], comp: { k: "Block", body: this.typeTestIf(e.cond.expr, e.cond.against.name, e.cond.binder, e.then, e.else_, scope, e.cond.span) } };
         const c = this.norm(e.cond, scope);
         const then = this.tail(e.then, new Set(scope));
         const els = e.else_ ? this.tail(e.else_, new Set(scope)) : RET_UNIT;
@@ -627,6 +661,17 @@ class Lowering {
         const inner = new Set(scope);
         for (const pn of params) inner.add(pn);
         return { binds: [], comp: { k: "Lambda", params, body: this.tail(e.body, inner) } };
+      }
+      case "TypeTest": {
+        // A binder-less type test `e is Name` (D1(xxi)) — a Bool. eval returns
+        // `v.tag === "VCtor" && v.name === name`, so the compiler emits the equivalent
+        // runtime tag check on the `$t:"C"`-tagged ctor value (a `CtorTest` comp). Against a
+        // non-named type eval returns `true` unconditionally (`name === null`); that path is
+        // refused rather than folded, since no well-typed program reaches it. (A binder test
+        // only ever appears in an `if` condition, desugared above; here `binder` is null.)
+        if (e.against.tag !== "TRNamed") throw new CompileUnsupported("type test against a non-named type");
+        const s = this.norm(e.expr, scope);
+        return { binds: s.binds, comp: { k: "CtorTest", ctor: s.atom, name: e.against.name } };
       }
       case "Loop": {
         // An unbounded imperative loop (D1(xx)). eval runs the body block forever, sharing
