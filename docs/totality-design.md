@@ -105,9 +105,14 @@ that keeps Tier 1 from having to be clever.
   per-frame update function, and `animated` interpolators (animated-design). These
   *cannot* be allowed to hang, so the marker is implied — a hanging frame is
   unrepresentable, which is exactly the "motion you can't write inaccessibly"
-  spirit applied to "frames you can't write hangingly."
-- **Optional** everywhere else — pure helpers, refinement predicates, anything you
-  want to lean on.
+  spirit applied to "frames you can't write hangingly." (The per-frame `update`
+  is deferred to Track C with the interaction model.)
+- **Implied by structural role** — SHIPPED 2026-06 (`implied_total_test`/`_bad`):
+  **refinement predicates** (a fn in a `where pred(value)` runs at refinement
+  time) and **store reducers** (pure state transitions) get the §12.6 check with
+  no marker. This is construct-implied totality (endgame S4); it moved refinement
+  predicates out of "optional" below.
+- **Optional** everywhere else — pure helpers, anything you want to lean on.
 - **Impossible** for the things that are *supposed* to run forever: the game's main
   loop, a `store`/`machine` process, a server. Those are partial by nature. `@total`
   is for the inner work functions they call, not the outer loop.

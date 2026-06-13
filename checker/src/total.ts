@@ -109,12 +109,21 @@ export function checkTotality(mod: Module, resolutions: ResolutionMap): Totality
   collectFns(mod.decls, fns);
 
   const totalNames = new Set([...fns.values()].filter(d => d.total).map(d => d.name));
-  if (totalNames.size === 0) return { diagnostics: diags, candidates };
+  // Construct-implied totality (endgame S4): refinement predicates join the
+  // total set; store reducers are checked as synthesized one-clause DFns.
+  collectPredicateFns(mod.decls, fns, totalNames);
+  const reducers: DFn[] = [];
+  collectReducers(mod.decls, reducers);
+  if (totalNames.size === 0 && reducers.length === 0) return { diagnostics: diags, candidates };
 
   const reports = new Map<string, FnReport>();
   for (const name of totalNames) {
     reports.set(name, checkFn(fns.get(name)!, totalNames, resolutions, diags, candidates));
   }
+  // Reducers don't recurse and aren't callable by name, so they only exercise
+  // the downward gate — check them, but keep them out of the mutual-recursion
+  // scan (their synthetic names are not real call targets).
+  for (const r of reducers) checkFn(r, totalNames, resolutions, diags, candidates);
 
   // Mutual recursion: the per-fn gate lets total→total calls through, so two
   // @total fns calling each other would silently loop. Edges restricted to
@@ -133,6 +142,90 @@ function collectFns(decls: Decl[], out: Map<string, DFn>): void {
   for (const d of decls) {
     if (d.tag === "DFn") out.set(d.name, d);
     if (d.tag === "DModule") collectFns(d.decls, out);
+  }
+}
+
+// ── Construct-implied totality (SPEC §12.6, endgame S4) ───────────────────────
+//
+// Some structural roles are total by virtue of WHERE they sit, with no `@total`
+// marker — totality comes from the construct, not a declaration. Two such roles
+// (the pure ones; effectful roles like machine transitions are governed by the
+// effect system instead):
+//
+//   • a REFINEMENT PREDICATE — a function called in a `type T = Base where
+//     pred(value)` clause runs at refinement/check time, so it must terminate;
+//     and constEval can only fold a predicate whose call-closure is total
+//     (totality-design §5.1). The predicate fn is itself a `def`, so it is
+//     already in `fns`: we add its name to the total set and the existing
+//     downward gate forces its closure total too.
+//   • a STORE REDUCER — a `messages` handler is a pure state transition. It is
+//     not a `def`, so we synthesize a one-clause DFn per reducer and run it
+//     through the same §12.6 check (no recursion ⇒ just the downward gate).
+//
+// Both are corpus-safe by construction: every existing predicate fn is already
+// `@total` (or a builtin), and every existing reducer body is structural record/
+// arithmetic/total-builtin compute. Game `update` is the third such role and
+// stays deferred to Track C with the interaction model.
+
+// Walk an expression collecting the names of functions it calls by name.
+function collectCallees(e: Expr, out: Set<string>): void {
+  switch (e.tag) {
+    case "Call":
+      if (e.fn.tag === "Var") out.add(e.fn.name); else collectCallees(e.fn, out);
+      for (const a of e.args) collectCallees(a, out);
+      for (const na of e.named) collectCallees(na.value, out);
+      return;
+    case "BinOp":     collectCallees(e.left, out); collectCallees(e.right, out); return;
+    case "UnOp":      collectCallees(e.expr, out); return;
+    case "Field":     collectCallees(e.obj, out); return;
+    case "Index":     collectCallees(e.obj, out); collectCallees(e.index, out); return;
+    case "If":
+      collectCallees(e.cond, out); collectCallees(e.then, out);
+      if (e.else_) collectCallees(e.else_, out);
+      return;
+    case "Match":
+      collectCallees(e.subject, out);
+      for (const b of e.branches) { if (b.guard) collectCallees(b.guard, out); collectCallees(b.body, out); }
+      return;
+    case "Lambda":    collectCallees(e.body, out); return;
+    case "Range":     collectCallees(e.from, out); collectCallees(e.to, out); return;
+    case "Tuple":
+    case "List":      for (const el of e.elems) collectCallees(el, out); return;
+    case "Record":
+      if (e.spread) collectCallees(e.spread, out);
+      for (const f of e.fields) collectCallees(f.value, out);
+      return;
+    default: return;   // leaves (Lit/Var/...) and non-predicate forms contribute no callee
+  }
+}
+
+// Names of functions used as refinement predicates (present in `fns`).
+function collectPredicateFns(decls: Decl[], fns: Map<string, DFn>, out: Set<string>): void {
+  for (const d of decls) {
+    if (d.tag === "DType" && d.body.tag === "TBAlias" && d.body.pred) {
+      const callees = new Set<string>();
+      collectCallees(d.body.pred, callees);
+      for (const name of callees) if (fns.has(name)) out.add(name);
+    }
+    if (d.tag === "DModule") collectPredicateFns(d.decls, fns, out);
+  }
+}
+
+// Synthesize a one-clause DFn for each store reducer so the §12.6 check applies.
+function collectReducers(decls: Decl[], out: DFn[]): void {
+  for (const d of decls) {
+    if (d.tag === "DStore") {
+      for (const m of d.messages) {
+        out.push({
+          tag: "DFn", name: `${d.name}.${m.name}`, sig: null, total: true, span: d.span,
+          clauses: [{
+            params: m.params, ret: null, effects: [], effectTails: [],
+            body: m.body, where_: [], lifetimeConstraints: [], surface: null, span: d.span,
+          }],
+        });
+      }
+    }
+    if (d.tag === "DModule") collectReducers(d.decls, out);
   }
 }
 
@@ -499,7 +592,7 @@ class Walker {
       }
       // No resolution entry: a builtin.
       if (TOTAL_HOF_BUILTINS.has(callee.name)) {
-        this.checkHofArg(e, env);
+        this.checkHofArg(e);
         return;
       }
       if (!TOTAL_BUILTINS.has(callee.name)) {
@@ -518,23 +611,23 @@ class Walker {
     this.expr(callee, env);
   }
 
-  // HOF builtins iterate a finite collection; the residual obligation is the fn
-  // argument at position 0 (inverse of the latent-effect rule, SPEC §12.4).
-  private checkHofArg(e: Expr & { tag: "Call" }, env: Env): void {
+  // HOF builtins iterate a finite collection; the residual obligation is the
+  // FUNCTION argument — which, under the data-first convention (`filter(xs, f)`,
+  // `foldl(xs, init, f)`, fn-first `map(f, xs)`, and pipes that shift it), may
+  // sit at any position. So we validate every argument that IS a function and
+  // ignore the data args: a lambda was already walked by the args loop in
+  // `call`; a named fn argument must be total, since the HOF may invoke it.
+  // (A fn passed by *parameter* — `kind: "param"` — can't be told from a data
+  // param by resolution alone and is left to the direct-call gate, §12.4.)
+  private checkHofArg(e: Expr & { tag: "Call" }): void {
     const hof = (e.fn as Expr & { tag: "Var" }).name;
-    const f = e.args[0];
-    if (!f) return;  // curried/underapplied — the gate fires where it's applied
-    if (f.tag === "Lambda") return;  // body already walked by the args loop above
-    if (f.tag === "Var") {
+    for (const f of e.args) {
+      if (f.tag !== "Var") continue;             // lambda (walked) or data — not a named fn
       const b = this.resolutions.get(f);
-      if (b?.kind === "fn" && this.totalNames.has(f.name)) return;
-      if (b?.kind === "ctor") return;
-      if (b?.kind === "var" && env.localLambdas.has(f.name)) return;
-      if (!b && TOTAL_BUILTINS.has(f.name)) return;
-      this.err(e.span, `@total function '${this.fnName}' passes '${f.tag === "Var" ? f.name : "?"}' (not @total) to '${hof}' — the callee may call it`);
-      return;
+      if (b?.kind === "fn" && !this.totalNames.has(f.name)) {
+        this.err(e.span, `@total function '${this.fnName}' passes '${f.name}' (not @total) to '${hof}' — the callee may call it`);
+      }
     }
-    this.err(e.span, `@total function '${this.fnName}' passes a computed function to '${hof}' — the structural check cannot bound it`);
   }
 
   // Is the argument sitting at position `i` strictly smaller than param `i`?

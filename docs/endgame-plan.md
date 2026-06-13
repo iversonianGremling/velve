@@ -145,7 +145,15 @@ facts, callees assume their signatures) just shipped. What's left in-arc:
   for the up-flowing effect row, sugar for the inline `Effect [...] T` wrapper
   (rows union; the inline form stays for effect tails). So the function body
   head now mirrors the module body head exactly — `effects:` then `proofs:`,
-  the duals of `capabilities:` then `proofs:`.
+  the duals of `capabilities:` then `proofs:`. **Construct-implied totality
+  shipped too** (2026-06, `implied_total_test`/`_bad`, SPEC §12.6): pure
+  structural roles — refinement predicates and store reducers — get the §12.6
+  totality check from their position with no `@total` marker (predicates join
+  `totalNames`; reducers are synthesized as one-clause DFns). Corpus-safe by a
+  full sweep (every predicate fn is already `@total`/builtin, every reducer body
+  is structural compute); the work also fixed `checkHofArg`'s stale fn-first
+  assumption to the data-first convention. Game `update` is the third such role,
+  deferred to Track C with the interaction model.
 - **A5. `sortBy` infer/eval reconciliation** *(1 slice, small)*. **SHIPPED
   2026-06** (`sortby_test`/`_bad`). The divergence was total: infer typed
   `sortBy(xs, keyFn)` (list-first, one-arg key) while eval read `args[0]` as a

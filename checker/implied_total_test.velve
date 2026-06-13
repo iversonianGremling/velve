@@ -1,0 +1,31 @@
+@edition "2026.6"
+
+-- Construct-implied totality (SPEC §12.6, endgame S4): pure structural roles are
+-- total by their POSITION, with no @total marker. A refinement predicate runs at
+-- refinement time, so it must terminate (and constEval only folds a total
+-- predicate); a store reducer is a pure state transition. Both get the §12.6
+-- check from context — note `isPositive` and the reducers carry NO @total, yet
+-- are held to (and pass) the structural-totality check.
+-- Expected: clean; runs.
+
+-- a refinement predicate, implicitly total (no @total marker):
+def isPositive(n: Number): Bool
+  n > 0
+
+type Pos = Number where isPositive(value)
+
+-- store reducers, implicitly total (pure state transitions; the second uses a
+-- total HOF builtin over the state list, data-first):
+store Counter
+  state
+    n : Number = 0
+    log : List(Number) = []
+  messages
+    Inc -> #{ n: n + 1 }
+    Scale (k: Number) -> #{ n: n * k }
+    Record -> #{ log: append(log, n) }
+  pub
+    count = n
+
+def main(): ()
+  print("count {Counter.count}")

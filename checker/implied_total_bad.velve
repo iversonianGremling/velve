@@ -1,0 +1,31 @@
+@edition "2026.6"
+
+-- The rejections construct-implied totality forces (SPEC §12.6, endgame S4): a
+-- refinement predicate and a store reducer are held to the §12.6 check with NO
+-- @total marker — the obligation comes from the role, and the same downward gate
+-- applies (totality flows down).
+-- Expected: exactly 2 errors.
+
+-- 1: a refinement predicate that never terminates (recurses with no decrease) —
+-- an error even with no @total, because its use in a `where` demands totality.
+def looping(n: Number): Bool
+  looping(n)
+
+type Bad = Number where looping(value)
+
+-- a non-total helper (its own recursion is unchecked — it asked for nothing).
+def grow(n: Number): Number
+  grow(n)
+
+-- 2: a store reducer calling a non-total fn — the implicitly-total reducer's
+-- downward gate rejects the call.
+store Counter
+  state
+    n : Number = 0
+  messages
+    Inc -> #{ n: grow(n) }
+  pub
+    count = n
+
+def main(): Number
+  0

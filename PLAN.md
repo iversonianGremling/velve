@@ -991,6 +991,28 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       (its dispatch gap now errors via the unconditional rule instead of the
       hardened path — same count, the message-path change is past the 80-char
       first-error slice). No grammar change.
+- [x] **Construct-implied totality (endgame S4)**: ✅ DONE (2026-06,
+      `implied_total_test`/`_bad` — 0 errors + runs `count 0`, and exactly 2
+      errors). Pure structural roles get the §12.6 totality check from their
+      position, no `@total` marker: (1) **refinement predicates** — a fn called
+      in a `type T = Base where pred(value)` clause is added to `totalNames`
+      (`collectPredicateFns` walks each `TBAlias` pred for callees that are
+      `def`s), so its closure is forced total too (constEval already needed a
+      total predicate to fold); (2) **store reducers** — each `messages` handler
+      is synthesized as a one-clause DFn (`collectReducers`) and run through
+      `checkFn` (no recursion ⇒ just the downward gate). Effectful roles
+      (machine transitions, inputmap actions) stay governed by effects; game
+      `update` deferred to Track C. **Corpus-safe by measurement**: every
+      existing predicate fn is already `@total`/a builtin, and every existing
+      reducer body is structural record/arith/total-builtin compute — confirmed
+      by a full reducer-body sweep before writing a line. One latent bug
+      surfaced and was fixed: `checkHofArg` assumed the fn at `args[0]`
+      (fn-first), but the language is data-first (`filter(xs, f)`, same
+      convention the A5 sortBy fix established) — `particle_system`'s
+      `emitters |> filter(...)` reducers tripped it. Rewrote it to validate
+      whichever argument is a function and ignore the data args; baseline went
+      26→28→26 (the fix removed the two false positives), so both baselines =
+      the two new rows only. No grammar change.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →
