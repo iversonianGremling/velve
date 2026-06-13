@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xiv) reassignment): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit);
+// SCOPE (through D1(xv) atoms): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -45,7 +45,8 @@ export type IRLit =
   | { t: "Num"; v: number }
   | { t: "Str"; v: string }
   | { t: "Bool"; v: boolean }
-  | { t: "Unit" };
+  | { t: "Unit" }
+  | { t: "Atom"; name: string };   // `:name` — a tagged, INTERNED value so `==` is identity
 
 // Atoms are trivial — pure, no naming needed.
 export type IRAtom =
@@ -552,9 +553,11 @@ function lowerLit(l: Lit): IRLit {
     case "Str":  return { t: "Str", v: l.value };
     case "Bool": return { t: "Bool", v: l.value };
     case "Unit": return { t: "Unit" };
-    // :atoms fold to tagged runtime values and Durations fold to Num(ms) (§11.3);
-    // both land in a later slice — refuse rather than guess their `display`.
-    case "Atom":     throw new CompileUnsupported(`atom literal :${l.name}`);
+    // An atom `:name` folds to a tagged, INTERNED runtime value (D1(xv)): eval compares
+    // VAtoms by name, so the emitter interns `$atom(n)` to a per-name singleton, making
+    // JS `===` (what `==`/match `PLit` lower to) agree with eval's by-name equality.
+    case "Atom":     return { t: "Atom", name: l.name };
+    // Durations fold to Num(ms) (§11.3) — a later slice; refuse rather than guess display.
     case "Duration": throw new CompileUnsupported("duration literal");
   }
 }

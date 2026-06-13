@@ -659,8 +659,20 @@ frontier). Harness: **35 match / 0 mismatch / 0 js-crash / 109 unsupported** (24
 one corpus flip `move_ok` — a `mut` Copy-scalar reassigned in place, whose affine machinery
 erases on the JS tier), −1 unsupported. The frontier twin rolled to an **atom literal**
 (`:red` — `lowerLit` refuses it; needs a `$atom`-tagged value with `:name` display).
-**Remaining for D1(xv)+**: atom/duration literals; field/index assignment; loops; then
-`Perform` in D2.
+
+**D1(xv) shipped (2026-06) — atom literals (the frontier twin flips again).** An atom
+`:name` now lowers: eval compares VAtoms by name, so the compiler folds `:name` to a tagged
+`$atom("name")` value that is INTERNED (one singleton per name, via a module `Map`), making
+JS `===` — what `==`/match `PLit` lower to — agree with eval's by-name equality. A new
+`IRLit` variant `{t:"Atom", name}` (rides `IRAtom`), an interning `lit()` emit, and a
+`$show` `$t:"A"` branch. Harness: **36 match / 0 mismatch / 0 js-crash / 109 unsupported**
+(250 files) — +1 match (fixture `compile_atom_test.velve`, byte-identical `:red / :teal /
+true / false / go / unknown`), no corpus flip. A bare `let c = :red` has the singleton type
+`:red`, so a concrete `c == :green` is a type error — false-equality runs through an
+`Atom`-typed parameter. The frontier twin rolled to a **duration literal** (`5s` — eval folds
+to its ms count `5000`; `lowerLit` still refuses the fold).
+**Remaining for D1(xvi)+**: duration literals (fold to `Num(ms)`); field/index assignment;
+loops; then `Perform` in D2.
 
 ---
 

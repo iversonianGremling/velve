@@ -45,6 +45,8 @@ function lit(l: IRLit): string {
     case "Str":  return JSON.stringify(l.v);
     case "Bool": return l.v ? "true" : "false";
     case "Unit": return "$unit";
+    // `$atom` interns by name, so two `:red`s are the SAME object and `===` is by-name.
+    case "Atom": return `$atom(${JSON.stringify(l.name)})`;
   }
 }
 
@@ -149,7 +151,11 @@ export function emitModule(mod: IRModule, callMain = true): string {
     '// Identity wrapper: keeps a lambda anonymous (arg-position ⇒ no inferred `.name`),',
     '// so $show shows `<fn:<lambda>>` while a `def` reference keeps its real name.',
     'const $lam = (f) => f;',
-    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : (v && v.$t === "C") ? (v.payload !== null ? v.name + "(" + $show(v.payload) + ")" : v.name) : (v && v.$t === "R") ? "{ " + Object.entries(v.fs).map(([k, val]) => k + ": " + $show(val)).join(", ") + " }" : (v && v.$t === "L") ? "[" + v.es.map($show).join(", ") + "]" : typeof v === "function" ? "<fn:" + (v.name || "<lambda>") + ">" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
+    '// An atom `:name`, INTERNED so two `:red`s are the same object ⇒ `===` is by-name,',
+    '// matching eval\'s VAtom equality; displays `:name`.',
+    'const $atomTable = new Map();',
+    'const $atom = (n) => { let a = $atomTable.get(n); if (a === undefined) { a = { $t: "A", name: n }; $atomTable.set(n, a); } return a; };',
+    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : (v && v.$t === "C") ? (v.payload !== null ? v.name + "(" + $show(v.payload) + ")" : v.name) : (v && v.$t === "R") ? "{ " + Object.entries(v.fs).map(([k, val]) => k + ": " + $show(val)).join(", ") + " }" : (v && v.$t === "L") ? "[" + v.es.map($show).join(", ") + "]" : (v && v.$t === "A") ? ":" + v.name : typeof v === "function" ? "<fn:" + (v.name || "<lambda>") + ">" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
     ...Object.entries(BUILTIN_IMPL)
       .filter(([name]) => !userNames.has(name))
       .map(([name, impl]) => `const ${name} = ${impl};`),

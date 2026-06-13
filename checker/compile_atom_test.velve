@@ -1,0 +1,27 @@
+@edition "2026.6"
+
+-- D1(xv) green fixture — atom literals `:name`. eval represents an atom as a VAtom and
+-- compares them BY NAME; the compiler folds `:name` to a tagged `$atom("name")` value that
+-- is INTERNED (one singleton per name), so JS `===` — what `==` and a `match` literal arm
+-- lower to — agrees with eval's by-name equality. Covers an atom displayed (`:name`),
+-- atom equality with `==` over an `Atom`-typed value (both true and false — a bare `let c =
+-- :red` has the SINGLETON type `:red`, so the false case runs through a general `Atom`
+-- parameter), and a `match` dispatching on atom arms. Byte-identical to eval.
+
+def colorName(c: Atom): String
+  match c
+    | :red -> "stop"
+    | :green -> "go"
+    | _ -> "unknown"
+
+def isRed(c: Atom): Bool
+  c == :red
+
+def main(): Effect [io] ()
+  let c = :red
+  println(c)                  -- :red  : an atom displays with its colon
+  println(:teal)              -- :teal : a literal atom printed directly
+  println(isRed(:red))        -- true  : interned ⇒ === by name
+  println(isRed(:green))      -- false
+  println(colorName(:green))  -- go    : match dispatch on atom arms
+  println(colorName(:blue))   -- unknown

@@ -1,11 +1,11 @@
 @edition "2026.6"
 
--- D1(xiv) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it uses an ATOM literal (`:red`). eval represents it as a VAtom that
--- displays `:red`; `lowerLit` in the compiler refuses an atom literal — it would need a
--- tagged runtime value (a `$atom("red")` wrapper whose `$show` reproduces value.ts's `:name`
--- display, the same `$t`-tag scheme tuples/ctors/records/lists use). The differential
--- harness must report it `unsupported` — a CLEAN refusal at the compiler frontier.
+-- D1(xv) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it uses a DURATION literal (`5s`). eval folds a duration to its
+-- millisecond count as a plain Number (so `5s` displays `5000`); `lowerLit` in the
+-- compiler still refuses the duration literal (§11.3 says it erases to `Num(ms)`, but the
+-- fold is not yet wired). The differential harness must report it `unsupported` — a CLEAN
+-- refusal at the compiler frontier, never a miscompile.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
@@ -14,11 +14,11 @@
 -- constructors; D1(v) PAST records; D1(vi) PAST lists; D1(vii) PAST closures-as-values;
 -- D1(viii) PAST first-class `def` references; D1(ix) PAST first-class BUILTIN references;
 -- D1(x) PAST short-circuit `&&`/`||`; D1(xi) PAST non-tail `if` as a value; D1(xii) PAST
--- non-tail `match` as a value; D1(xiii) PAST multi-clause `def`s; D1(xiv) PAST reassignment
--- of a `mut` binding (see compile_reassign_test). The frontier now sits at ATOM literals.
--- This file uses one, so it still refuses; when atom literals lower (a later D1 slice, a
--- `$atom`-tagged value), it flips from `unsupported` to a print with no edit.
+-- non-tail `match` as a value; D1(xiii) PAST multi-clause `def`s; D1(xiv) PAST reassignment;
+-- D1(xv) PAST atom literals (`$atom`-tagged, interned; see compile_atom_test). The frontier
+-- now sits at DURATION literals. This file uses one, so it still refuses; when durations
+-- lower (a later D1 slice, folding `5s` → `5000`), it flips from `unsupported` to a print.
 
 def main(): Effect [io] ()
-  let c = :red
-  println(c)
+  let d = 5s
+  println(d)

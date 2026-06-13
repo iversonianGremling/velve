@@ -812,6 +812,26 @@ exists (`compiler-architecture-design.md`).
     left; the frontier stayed unsupported, reassignment→atom). SPEC untouched; no graded row
     moves (still partial). Next: **D1(xv)** = atom literals (`$atom`-tagged value, `:name`
     display) — still pre-effect.
+  - **D1(xv) — atom literals compile (the frontier twin flips again) — DONE 2026-06.** The
+    value D1(xiv)'s guardrail was holding. An atom `:name` now lowers. eval represents it as
+    a VAtom and compares atoms BY NAME, so the compiler folds `:name` to a tagged
+    `$atom("name")` value that is **INTERNED** — one singleton object per name, via a module
+    `Map` — so JS `===` (what `==` and a `match` literal arm lower to) agrees with eval's
+    by-name equality without any special-casing. A new `IRLit` variant `{t:"Atom", name}`
+    (atoms are trivial/pure, so they ride `IRAtom`), `lit()` emits the interning call, and
+    `$show` gains a `$t:"A"` branch (`:name`, the `$t`-tag scheme tuples/ctors/records/lists
+    already use). Green fixture `compile_atom_test.velve` (an atom displayed, a literal atom
+    printed directly, atom equality both true and false through an `Atom`-typed parameter,
+    and a `match` dispatching on atom arms) compiles **byte-identically** to eval (`:red /
+    :teal / true / false / go / unknown`). (A bare `let c = :red` has the SINGLETON type
+    `:red`, so the checker rejects `c == :green` at a concrete site — the false-equality case
+    runs through a general `Atom` parameter; a type subtlety, not a compiler one.) The
+    frontier twin `compile_frontier_test.velve` rolled to a **duration literal** (`5s` — eval
+    folds it to its millisecond count `5000`; `lowerLit` still refuses the fold) — the next
+    unrepresented form — still exit 2. No pre-existing corpus file flipped. Harness: **36
+    match, 0 mismatch, 0 js-crash**, 109 unsupported (250 files) — +1 match (the fixture),
+    unsupported unchanged. SPEC untouched; no graded row moves (still partial). Next:
+    **D1(xvi)** = duration literals (fold `5s` → `Num(5000)`) — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,
