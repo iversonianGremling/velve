@@ -97,6 +97,19 @@ facts, callees assume their signatures) just shipped. What's left in-arc:
   model in the error). Scope-local. `proof_scope_bad`'s not-checkable pin moved
   `arith` → `overflow`. **Vocabulary 6/7; only `overflow` (Phase B) remains.**
 - **A3. Fractional-measure slice + binary-search showcase** *(1 slice)*.
+  **SHIPPED 2026-06** (`proof_binsearch_test`/`_bad`): the floor-aware step
+  turned out to need NO change to terminates.ts — the fix is to admit `floor(e)`
+  into the translatable fragment (facts.ts `floorArg`) and model it in smt.ts as
+  an Int-sorted term bracketed by `e − 1 < ⌊e⌋ ≤ e`, the same ToReal-wrapped Int
+  trick as the `length` symbol. Integrality is what closes the gap: with
+  `m = lo + floor(span/2)` the left half recurses on `⌊span/2⌋`, pinned to `0`
+  for span ∈ [1, 2), which IS ≤ span − 1 — the existing "unit decrease over ℝ
+  above a floor is finite" soundness covers it (no fractional-index detour
+  needed; the indices stay integer because the recursion passes the floor). The
+  showcase ships green under `proofs: [bounds, total]` on one function — `bounds`
+  on the guarded read, `total` on the halving measure — and the floor term now
+  serves `bounds`/`nonzero`/`arith` too. Original framing kept below.
+
   Probed during the SortedList arc: with `m = lo + span/2` the left-half
   measure fails over ℝ for span ∈ [1, 2); `m = lo + (span-1)/2` fixes the
   measure but leaves fractional indices. The slice: teach the

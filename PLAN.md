@@ -866,6 +866,30 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       **Vocabulary 6/7 checkable — only `overflow` (sized-types substrate, §5)
       remains.** Zero grammar changes, zero eval.ts changes. NO re-grade:
       type-core holds A+; this deepens the gradient within kind.
+- [x] **Floored measures + the binary-search showcase (endgame A3)**:
+      ✅ DONE (2026-06, SPEC §12.6, `proof_binsearch_test`/`_bad` — 0 errors + runs
+      `5/0/9/-1/-1`, and exactly 2 errors; baselines unchanged except the two new
+      rows, the test row graduating 1 err → 0 err). The gradient's showcase: ONE
+      recursive binary search green under `proofs: [bounds, total]`, both
+      obligations on one function — `bounds` on every read `xs[mid]` (guarded onto
+      the sync interval floor), `total` on the halving measure. The window is a
+      start `lo` and a length `span`; the left half recurses on `floor(span / 2)`,
+      which over ℝ does NOT unit-decrease for `span ∈ [1, 2)` (`span/2 ∈ [0.5, 1)`,
+      not ≤ `span − 1`). As built: `floor(e)` enters the **translatable fragment**
+      (facts.ts `floorArg`, both bare `floor` and `Math.floor`), and smt.ts models
+      it as a fresh **Int-sorted** const bracketed by `e − 1 < ⌊e⌋ ≤ e` — the same
+      ToReal-wrapped Int trick as the `length` symbol. Integrality is the whole
+      proof: on `span ∈ [1, 2)`, `⌊span/2⌋` is pinned to `0`, which IS ≤ `span − 1`
+      — the termination analog of the bounds-soundness floor argument
+      (`0 ≤ i < len ⟹ 0 ≤ ⌊i⌋ < len`). **terminates.ts is unchanged**: the existing
+      "unit decrease over ℝ above a floor is finite" soundness covers a floored arg
+      once the term is correctly Int-axiomatized. The `_bad` pins the limit — its
+      `if span <= 0` (vs the green's `if span < 1`) leaves the `(0, 1)` gap live
+      where `⌊span/2⌋ = 0 ≰ span − 1`, Z3 answering `span = 1/2`; plus a floored
+      index with no upper bound (`span = 1, length(xs) = 0`). The same floor term
+      serves `bounds`/`nonzero`/`arith`. Zero grammar changes, zero eval.ts changes.
+      NO re-grade: type-core holds A+; this completes the no-new-surface half of the
+      Phase A proof arc.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

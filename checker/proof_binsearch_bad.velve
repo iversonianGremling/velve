@@ -1,0 +1,32 @@
+-- The binary-search showcase's failing twin: where the floor does NOT save the
+-- proof. `proofs: [bounds, total]`, so every def is implicitly @total and every
+-- read must be in range. Two honest gaps, each with a Z3 model:
+--
+--   1. The floored halving with the WRONG guard. `if span <= 0` leaves the
+--      window (0, 1) live, and there ⌊span/2⌋ = 0, which is NOT ≤ span − 1
+--      (span − 1 is negative). Integrality cannot help — the floor IS 0 and
+--      0 still overshoots. Z3 answers with a fractional span ∈ (0, 1). This is
+--      the dual of the green fixture's `if span < 1`, which excludes exactly
+--      that gap. (mirrors proof_terminates_test's `if n <= 0` lesson.)
+--
+--   2. A floored index with no UPPER bound. ⌊span/2⌋ ≥ 0 is provable from
+--      span ≥ 1, but nothing bounds it below length(xs), so the read may run
+--      off the end — Z3 finds a large span. The floor is in the solver
+--      fragment now, so this is a real Z3 verdict, not a conservative floor
+--      error.
+--
+-- Expected: exactly 2 errors.
+@edition "2026.6"
+
+module binsearch_bad
+  proofs: [bounds, total]
+
+  -- 1: measure error — the guard admits span ∈ (0, 1) where ⌊span/2⌋ = 0 ≰ span − 1.
+  def hsearch(span: Number): Number
+    if span <= 0 then 0
+    else 1 + hsearch(floor(span / 2))
+
+  -- 2: bounds error — ⌊span/2⌋ has no proven upper bound against length(xs).
+  def at(xs: List(Number), span: Number): Number
+    if span < 1 then -1
+    else xs[floor(span / 2)]

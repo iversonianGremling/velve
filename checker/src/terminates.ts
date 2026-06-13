@@ -24,6 +24,14 @@
 // The fact env (facts.ts) supplies F — if/match/guard facts plus multi-clause
 // literal heads — which is what lets a NON-CONSTANT decrease prove:
 // `shrink(n - k, k)` under `k >= 1` is beyond any structural check.
+//
+// A FLOORED measure rides the same engine with no change here: `floor(e)` is
+// now in the translatable fragment (facts.ts), modeled by smt.ts as an
+// Int-sorted term bracketed by e − 1 < ⌊e⌋ ≤ e. A binary search recursing on
+// `floor(span / 2)` then proves unit-decrease — over ℝ that halving overshoots
+// for span ∈ [1, 2), but integrality pins ⌊span/2⌋ to 0 there, which IS
+// ≤ span − 1 (the runtime-floor analog of the bounds-soundness argument). The
+// existing "unit decrease over ℝ above a floor is finite" soundness covers it.
 import type { Expr, FnClause } from "./ast.js";
 import type { Span } from "./span.js";
 import type { Diagnostic, ResolutionMap } from "./resolve.js";

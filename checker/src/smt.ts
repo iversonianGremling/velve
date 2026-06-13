@@ -5,7 +5,10 @@
 //     the divisor is proved nonzero on that path.
 //   • `@total` measure jobs (terminates.ts): per recursive call, path facts
 //     ∧ ¬(arg ≤ param − 1), and path facts ∧ param < 0 — both UNSAT for one
-//     argument position means the fn unit-decreases a floored measure.
+//     argument position means the fn unit-decreases a floored measure. A
+//     `floor(e)` term in any fact becomes a fresh Int-sorted const bracketed
+//     by `e − 1 < ⌊e⌋ ≤ e` — integrality is what lets a halving measure prove
+//     unit-decrease on span ∈ [1, 2) (⌊span/2⌋ is pinned to 0 there ≤ span − 1).
 //   • `bounds` residue (facts.ts): two queries per index read — path facts
 //     ∧ index < 0, and path facts ∧ index ≥ length(xs) — both UNSAT means
 //     the read is in range. `length(x)` terms become Int-sorted constants
@@ -144,34 +147,78 @@ function lenCall(obj: string, span: Span): Expr {
 // range only ever strengthens toward UNSAT, never weakens.
 async function checkUnsat(Z3: Ctx, facts: Fact[]): Promise<{ verdict: string; example?: string }> {
   const names = new Set<string>(), lens = new Set<string>();
+  const floors = new Map<string, Expr>();  // canonical key → the floored inner term
   for (const f of facts) {
     for (const n of f.names) names.add(n);
-    collectLens(f.lhs, lens); collectLens(f.rhs, lens);
+    collectInterp(f.lhs, lens, floors); collectInterp(f.rhs, lens, floors);
   }
   const consts = new Map([...names].map(n => [n, Z3.Real.const(n)] as const));
   // Int-sorted underneath, ToReal-wrapped so it compares against Real terms
   // (the wrap keeps the integrality constraint — that's the whole point).
   for (const n of lens) consts.set(`len$${n}`, Z3.ToReal(Z3.Int.const(`len$${n}`)));
+  // `floor(e)` rides the SAME Int-sorted trick: a fresh integer per distinct
+  // inner term, bracketed by `e − 1 < ⌊e⌋ ≤ e`. Create every floor const first
+  // (a nested ⌊…⌊…⌋…⌋ inner refers to another), then assert the brackets.
+  for (const k of floors.keys()) consts.set(`flr$${k}`, Z3.ToReal(Z3.Int.const(`flr$${k}`)));
   const solver = new Z3.Solver();
   for (const n of lens) solver.add(consts.get(`len$${n}`)!.ge(0));
+  for (const [k, inner] of floors) {
+    const f = consts.get(`flr$${k}`)!, ie = term(Z3, inner, consts);
+    solver.add(f.le(ie));
+    solver.add(f.gt(ie.sub(Z3.Real.val(1))));
+  }
   for (const f of facts) solver.add(cmp(Z3, f, consts));
   const verdict = await solver.check();
   if (verdict !== "sat") return { verdict };
   const model = solver.model();
   const example = [...consts.entries()]
-    .filter(([n]) => !lens.has(n))  // the list itself has no numeric value — only its length does
+    .filter(([n]) => !lens.has(n) && !n.startsWith("flr$"))  // lists/floor-helpers have no standalone value
     .map(([n, c]) => `${n.replace(/^len\$(.*)$/, "length($1)")} = ${model.eval(c, true).toString()}`).join(", ");
   return { verdict, example };
 }
 
-// Length-call occurrences inside a vetted fact term. Shape-only on purpose:
-// the collection side (facts.ts `lenArg`) already checked the callee resolves
-// to the builtin before letting the term into a fact.
-function collectLens(e: Expr, into: Set<string>): void {
+// Interpreted-call occurrences inside a vetted fact term: `length(x)` (an Int
+// length symbol) and `floor(e)` (an Int floored term). Shape-only on purpose —
+// the collection side (facts.ts `lenArg`/`floorArg`) already vetted the callee
+// resolves to the builtin before the term entered a fact.
+function collectInterp(e: Expr, lens: Set<string>, floors: Map<string, Expr>): void {
   switch (e.tag) {
-    case "Call": { const a = e.args[0]; if (a?.tag === "Var") into.add(a.name); return; }
-    case "BinOp": collectLens(e.left, into); collectLens(e.right, into); return;
-    case "UnOp": collectLens(e.expr, into); return;
+    case "Call": {
+      const inner = floorInner(e);
+      if (inner) { floors.set(floorKey(inner), inner); collectInterp(inner, lens, floors); return; }
+      const a = e.args[0]; if (a?.tag === "Var") lens.add(a.name); return;
+    }
+    case "BinOp": collectInterp(e.left, lens, floors); collectInterp(e.right, lens, floors); return;
+    case "UnOp": collectInterp(e.expr, lens, floors); return;
+  }
+}
+
+// The floored inner term of a `floor(e)` / `Math.floor(e)` call, or null. Pure
+// syntax (the fragment was vetted upstream), distinguishing floor from length
+// by callee name so `floor(x)`'s arg is never mistaken for a length symbol.
+function floorInner(e: Expr): Expr | null {
+  if (e.tag !== "Call" || e.args.length !== 1) return null;
+  const isFloor = (e.fn.tag === "Var" && e.fn.name === "floor")
+    || (e.fn.tag === "Field" && e.fn.field === "floor");
+  return isFloor ? (e.args[0] ?? null) : null;
+}
+
+// A canonical key for a floored inner term: two syntactically equal floors map
+// to the SAME Int const (so they're provably equal). Only the translatable
+// fragment reaches here.
+function floorKey(e: Expr): string {
+  switch (e.tag) {
+    case "Var": return e.name;
+    case "Lit": return e.lit.tag === "Num" ? String(e.lit.value) : "?";
+    case "BinOp": return `(${floorKey(e.left)}${e.op}${floorKey(e.right)})`;
+    case "UnOp": return `(${e.op}${floorKey(e.expr)})`;
+    case "Call": {
+      const inner = floorInner(e);
+      if (inner) return `floor(${floorKey(inner)})`;
+      const a = e.args[0];
+      return a?.tag === "Var" ? `length(${a.name})` : "?";
+    }
+    default: return "?";
   }
 }
 
@@ -181,6 +228,8 @@ function term(Z3: Ctx, e: Expr, consts: Map<string, Arith>): Arith {
   switch (e.tag) {
     case "Var": return consts.get(e.name)!;
     case "Call": {
+      const inner = floorInner(e);
+      if (inner) return consts.get(`flr$${floorKey(inner)}`)!;
       const a = e.args[0];
       if (a?.tag === "Var") return consts.get(`len$${a.name}`)!;
       break;

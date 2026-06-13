@@ -438,9 +438,29 @@ export function translatable(e: Expr): boolean {
       if (e.op === "/" && (numLit(e.right) ?? 0) === 0) return false;
       return ["+", "-", "*", "/"].includes(e.op) && translatable(e.left) && translatable(e.right);
     case "UnOp": return e.op === "-" && translatable(e.expr);
-    case "Call": return lenArg(e) !== null;
+    case "Call": return lenArg(e) !== null || floorArg(e) !== null;
     default: return false;
   }
+}
+
+// The OTHER interpreted call besides `length`: `floor(e)` (and the ambient
+// `Math.floor(e)`), where `e` is itself translatable. The runtime floors it to
+// an integer; the solver (smt.ts) models it as an Int-sorted term bracketed by
+// `e − 1 < ⌊e⌋ ≤ e`. Integrality is the whole point — it lets a halving measure
+// prove unit-decrease on span ∈ [1, 2): ⌊span/2⌋ is pinned to 0 there, which IS
+// ≤ span − 1, the runtime-floor analog of the bounds-soundness argument. Same
+// builtin-identity rule as `lenArg`: a user binding shadows and gets a
+// resolution entry, so any resolution at all means the bare name is opaque.
+export function floorArg(e: Expr): Expr | null {
+  if (e.tag !== "Call" || e.args.length !== 1 || e.named.length > 0) return null;
+  const inner = e.args[0];
+  if (!inner) return null;
+  const bare = e.fn.tag === "Var" && e.fn.name === "floor"
+    && currentResolutions?.get(e.fn) === undefined;
+  const qualified = e.fn.tag === "Field" && e.fn.field === "floor"
+    && e.fn.obj.tag === "Var" && e.fn.obj.name === "Math";
+  if (!bare && !qualified) return null;
+  return translatable(inner) ? inner : null;
 }
 
 // The one interpreted call: `length(x)` where `x` is a bare name and the
