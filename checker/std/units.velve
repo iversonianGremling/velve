@@ -1,0 +1,84 @@
+@edition "2026.6"
+
+-- std/units — the general unit-of-measure library (B2(iii), numeric-dimension
+-- design §2/§4/§5). Duration shipped its own Number↔unit bridge in B2(ii); this
+-- generalizes that to the SI base dimensions and the common derived ones, now
+-- that Phase C imports let a unit library travel by `import` instead of by hand.
+--
+-- The whole library stands on ONE language primitive: literal defaulting (§5).
+-- A compile-time-constant number takes the unit its annotation names, so
+-- `let oneMeter: Meters = 1` mints the unit's "one" value. Every constructor is
+-- then the `*`/`/` algebra (§2.2), not a second primitive:
+--   • `meters(n)  = n * oneMeter`     -- Number * Meters  → Meters   (scale in)
+--   • `inMeters(d) = d / oneMeter`    -- Meters / Meters  → Number   (scale out)
+-- This is exactly design §4's conversion table: a literal or constructor crosses
+-- INTO a unit; dividing the unit out crosses back. No implicit coercion exists —
+-- a non-constant `Number` assigned to a unit-typed binding is still an error.
+--
+-- Runtime is identity: a united value IS its number on JS (eval never sees the
+-- dimension, SPEC §12.6). The dimensions are a compile-time shape discipline; the
+-- algebra below RUNS on plain arithmetic and only TYPES as dimensioned.
+
+module units
+  -- ── SI base dimensions ──────────────────────────────────────────────────────
+  type Meters    = Number unit m
+  type Kilograms = Number unit kg
+  type Seconds   = Number unit s              -- same dimension as a `Duration`
+
+  -- ── common derived dimensions ───────────────────────────────────────────────
+  type Area         = Number unit m^2
+  type Velocity     = Number unit m/s
+  type Acceleration = Number unit m/s^2
+  type Force        = Number unit kg*m/s^2    -- Newtons: kg·m·s⁻²
+
+  -- The base "one unit" values. Each is the single literal-defaulting site (§5)
+  -- for its dimension; everything else is derived arithmetic.
+  let oneMeter:   Meters       = 1
+  let oneKilo:    Kilograms    = 1
+  let oneSecond:  Seconds      = 1
+  let oneMps:     Velocity     = 1
+  let oneMps2:    Acceleration = 1
+  let oneNewton:  Force        = 1
+
+  -- ── constructors: Number → unit (scale by the base, §4) ───────────────────────
+  def meters(n: Number): Meters
+    n * oneMeter
+
+  def kilograms(n: Number): Kilograms
+    n * oneKilo
+
+  def seconds(n: Number): Seconds
+    n * oneSecond
+
+  -- ── extractors: unit → Number (divide the unit out, §4) ───────────────────────
+  def inMeters(d: Meters): Number
+    d / oneMeter
+
+  def inKilograms(m: Kilograms): Number
+    m / oneKilo
+
+  def inSeconds(t: Seconds): Number
+    t / oneSecond
+
+  def inMps(v: Velocity): Number
+    v / oneMps
+
+  def inMps2(a: Acceleration): Number
+    a / oneMps2
+
+  def inNewtons(f: Force): Number
+    f / oneNewton
+
+  -- ── derived relations: the algebra composes dimensions for free ───────────────
+  -- distance / time → velocity (m/s); the result's dimension is computed, not
+  -- declared, then unifies with the `Velocity` annotation.
+  def speed(distance: Meters, time: Seconds): Velocity
+    distance / time
+
+  -- velocity / time → acceleration (m/s²).
+  def rate(v: Velocity, time: Seconds): Acceleration
+    v / time
+
+  -- Newton's second law: mass · acceleration → force (kg·m/s²).
+  def force(mass: Kilograms, a: Acceleration): Force
+    mass * a

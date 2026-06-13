@@ -236,9 +236,9 @@ types**, not eight scattered numeric sketches.
     is United, so plain-Number Math is byte-identical (baseline diff: only the two
     new rows). **Conversions**: the `Duration` stdlib module (`fromMs`/`fromSeconds`/
     `toMs`) retyped to the shared `United`, becoming the explicit Number↔Duration
-    bridge (runtime identity). Still deferred: a *general* unit-value constructor /
-    literal-defaulting surface (B2(iii) / design §5) — Duration has its bridge,
-    other units are still params-only.
+    bridge (runtime identity). The *general* unit-value constructor /
+    literal-defaulting surface (B2(iii) / design §5) shipped later as C1(v) once
+    imports landed — see Phase C below; until then other units were params-only.
 - **B3. Sized types + the `overflow` obligation** *(2 slices)*. (i) The
   stdlib range-refinement family (`u8 i8 u16 i16 u32 i32`) with gates
   (`u8(n): Result u8 String`) and closed ops — mirrors the
@@ -359,7 +359,21 @@ Phase D's neutral IR being the down payment). The proof vocabulary closes.
     per-file scoping waits on qualified module access. Baseline 225→229, 0 CRASH,
     the whole pre-existing corpus byte-identical (the migrated consumers stay
     clean — they imported every member they use).
-    *Remaining in C1:* `std/units` (the deferred B2(iii) general constructor); LSP.
+  - **(v) DONE 2026-06** (`units_lib_test`/`units_lib_bad`; `checker/std/units.velve`):
+    the deferred B2(iii) general unit constructor, shipped now that imports land.
+    **The one new primitive is literal defaulting** (numeric-dimension §5): a
+    compile-time-CONSTANT number takes the unit its annotation names, at every
+    `let`-ascription site (`literalDefaultsToUnit`, guarded by `constEval` → a
+    non-constant `Number` still errors, explicit-casts-only §4). On that keystone
+    `std/units` is pure Velve: `let oneMeter: Meters = 1` is the one defaulting
+    site per dimension, every constructor/extractor is the `*`/`/` algebra
+    (`meters(n)=n*oneMeter`, `inMeters(d)=d/oneMeter`). Ships SI base + derived
+    (`Velocity`/`Acceleration`/`Area`/`Force`) with constructors, extractors, and
+    derived relations (`speed`/`rate`/`force`) whose dimension is computed and
+    checked; green runs 42/10/5/350. Baseline 229→232, 0 CRASH, pre-existing
+    corpus byte-identical. NOT a re-grade — Low-level already moved B−→A− at
+    B3(ii); the held-back `+` is Phase D native IR.
+    *Remaining in C1:* LSP.
 - **C2. `is Ok(a)` payload binding / flow narrowing** *(1 slice)*. The
   optional PLAN box: `if x is Ok(a)` binds the payload in the then-branch
   (and feeds the fact env — cheap synergy with A1's binder seeding;
@@ -440,7 +454,7 @@ because chunks are blocked on it.
 ```
 A1 binder seeding ──→ C2 is-Ok narrowing
 A3 measure facts ──→ binary-search showcase (same slice)
-B1 design note ──→ B2 units ──→ (std/units after C1)
+B1 design note ──→ B2 units ──→ std/units (shipped as C1(v))
 B1 design note ──→ B3 sized types ──→ overflow (7/7)
 B3 IR width tag ──→ D0/D1 IR design honors it
 C1 imports ──→ std/ distribution of every library
@@ -504,7 +518,7 @@ the backend and breadth are then build phases, not open questions.
 - **Phase B done** ✅ (2026-06) = `proofs: [overflow]` fixture green with a Z3
   model in the `_bad` (`proof_overflow_test`/`_bad`); `ms*ms → Duration²` pin
   green; Low-level row re-graded with the fixture named. B2(iii) general
-  `std/units` is the only optional remainder, deferred to after Phase C imports.
+  `std/units` shipped after Phase C imports as C1(v) (`units_lib_test`).
 - **Phase C done** = `std/refined` imported (not included) by a green
   fixture; corpus baselines hold through the registry refactor.
 - **Phase D done** = every corpus fixture's compiled output ≡ eval output;

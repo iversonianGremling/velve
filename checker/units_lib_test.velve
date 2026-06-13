@@ -1,0 +1,39 @@
+@edition "2026.6"
+
+-- C1(v) / B2(iii): the general unit library, imported. `std/units` ships the SI
+-- dimensions with Number↔unit constructors built on literal defaulting (§5) plus
+-- the `*`/`/` algebra — no per-unit primitive. Here we import a slice of it and
+-- run a tiny kinematics calc: the dimensions are CHECKED at compile time, the
+-- arithmetic RUNS on the erased number semantics. Expected: 0 errors.
+import { meters, seconds, kilograms, speed, rate, force } from "std/units"
+import { inMeters, inMps, inMps2, inNewtons } from "std/units"
+
+-- literal defaulting also reaches the imported unit TYPES (type names stay public
+-- under C1(iv)): a constant annotated `Meters` defaults straight in, no constructor.
+def litMeters(): Number
+  let d: Meters = 42
+  inMeters(d)
+
+-- A 100 m dash in 10 s → 10 m/s; that velocity reached over 2 s → 5 m/s²; on a
+-- 70 kg sprinter → 350 N. Every intermediate carries its COMPUTED dimension, each
+-- checked against its annotation; the extractors divide the unit back out.
+def dashSpeed(): Number
+  let v: Velocity = speed(meters(100), seconds(10))
+  inMps(v)                                          -- 10
+
+def dashAccel(): Number
+  let v: Velocity     = speed(meters(100), seconds(10))
+  let a: Acceleration = rate(v, seconds(2))
+  inMps2(a)                                         -- 5
+
+def sprintForce(): Number
+  let v: Velocity     = speed(meters(100), seconds(10))
+  let a: Acceleration = rate(v, seconds(2))
+  let f: Force        = force(kilograms(70), a)
+  inNewtons(f)                                      -- 350
+
+def main(): Effect [io] ()
+  print("literal default = {litMeters()}")     -- 42
+  print("dash speed m/s  = {dashSpeed()}")      -- 10
+  print("dash accel m/s2 = {dashAccel()}")      -- 5
+  print("sprint force N  = {sprintForce()}")    -- 350

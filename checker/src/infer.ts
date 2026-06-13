@@ -2083,10 +2083,29 @@ class Inferrer {
   // pass 1 (an ascription is checked; a bare binding's fresh var is resolved), then —
   // if the RHS folds to a constant and the binding is immutable — record it so a
   // later prop reference (`background=panel`) can resolve and prove contrast.
+  // Literal defaulting (numeric-dimension-design §5): a compile-time-CONSTANT
+  // number takes the unit its annotation names — `let d: Meters = 5`. This is the
+  // ONE Number→unit crossing without a constructor, and the keystone the whole
+  // `std/units` library stands on (`let oneMeter: Meters = 1`, then the `*`/`/`
+  // algebra mints every other constructor). It is sound *because* the value is
+  // constant: `constEval` returns a number only when no runtime name is read, so
+  // nothing is silently coerced — a non-constant `Number` still falls through to
+  // `unify` and the explicit-casts-only mismatch error (§4). Units carry no range,
+  // so (unlike a sized type) the fold needs no bound check — any number defaults.
+  // Returns true iff the default applied (the caller then skips the unify).
+  private literalDefaultsToUnit(declT: Type, vt: Type, value: Expr): boolean {
+    const dt = this.ctx.subst.apply(declT);
+    const v  = this.ctx.subst.apply(vt);
+    return dt.tag === "United"
+        && v.tag === "Prim" && v.kind === "Number"
+        && typeof constEval(value, this.moduleConsts) === "number";
+  }
+
   private inferLet(decl: Extract<Decl, { tag: "DLet" }>, env: TypeEnv): void {
     const vt = this.inferExpr(decl.value, env);
     const declared = env.lookup(decl.name);
-    if (declared) unify(declared.type, vt, this.ctx, decl.span, `let ${decl.name}`);
+    if (declared && !this.literalDefaultsToUnit(declared.type, vt, decl.value))
+      unify(declared.type, vt, this.ctx, decl.span, `let ${decl.name}`);
     if (!decl.mutable) {
       const cv = constEval(decl.value, this.moduleConsts);
       if (cv !== undefined) this.moduleConsts.set(decl.name, cv);
@@ -3565,11 +3584,15 @@ class Inferrer {
           if (stmt.ascription) {
             const prevErrCount = this.ctx.diagnostics.length;
             const declT = resolveRef(stmt.ascription, new Map(), this.sagaRets);
-            unify(declT, vt, this.ctx, stmt.span);
-            // If the ascription check failed, bind the name as Unknown so downstream
-            // uses of this variable don't cascade into follow-on type errors.
-            if (this.ctx.diagnostics.length > prevErrCount) bindType = { tag: "Unknown" };
-            else this.checkEffectErasure(declT, vt, stmt.span, "binding ascription");
+            if (this.literalDefaultsToUnit(declT, vt, stmt.value)) {
+              bindType = declT;   // the constant literal takes the unit (§5)
+            } else {
+              unify(declT, vt, this.ctx, stmt.span);
+              // If the ascription check failed, bind the name as Unknown so downstream
+              // uses of this variable don't cascade into follow-on type errors.
+              if (this.ctx.diagnostics.length > prevErrCount) bindType = { tag: "Unknown" };
+              else this.checkEffectErasure(declT, vt, stmt.span, "binding ascription");
+            }
           }
           const next = env.child();
           this.bindPat(stmt.pat, bindType, next);
@@ -3624,9 +3647,13 @@ class Inferrer {
           if (stmt.ascription) {
             const prevErrCount = this.ctx.diagnostics.length;
             const declT = resolveRef(stmt.ascription, new Map(), this.sagaRets);
-            unify(declT, bindType, this.ctx, stmt.span);
-            if (this.ctx.diagnostics.length > prevErrCount) bindType = { tag: "Unknown" };
-            else this.checkEffectErasure(declT, bindType, stmt.span, "binding ascription");
+            if (this.literalDefaultsToUnit(declT, bindType, stmt.value)) {
+              bindType = declT;   // the constant literal takes the unit (§5)
+            } else {
+              unify(declT, bindType, this.ctx, stmt.span);
+              if (this.ctx.diagnostics.length > prevErrCount) bindType = { tag: "Unknown" };
+              else this.checkEffectErasure(declT, bindType, stmt.span, "binding ascription");
+            }
           }
           const next = env.child();
           this.bindPat(stmt.pat, bindType, next);

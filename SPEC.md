@@ -712,6 +712,34 @@ pin, once an error), `400ms / 100ms : Number`, `1 / 30s : s^-1` (frequency). The
 explicit `Number`↔`Duration` conversion bridge (runtime identity; the type
 checker enforces the boundary).
 
+**Crossing into a unit — literal defaulting + constructors** (B2(iii) SHIPPED
+2026-06, `units_lib_test`/`units_lib_bad`). Conversions are explicit, but there
+are exactly two ways across the boundary and they compose:
+
+- **Literal defaulting.** A *compile-time-constant* number takes the unit named
+  by its annotation — `let d: Meters = 5` defaults the `5` into `Meters`. This is
+  the **only** `Number`→unit crossing without a constructor, and it is sound
+  because the value is constant: there is no runtime coercion to hide. A
+  **non-constant** `Number` assigned to a unit-typed binding is still an error
+  (`let d: Meters = n` where `n : Number` ⇒ "expected Meters, got Number").
+- **Constructors, built on the algebra.** Given the unit's "one" value (itself a
+  literal-defaulting site, `let oneMeter: Meters = 1`), a constructor is just
+  scaling and an extractor is just dividing the unit out — no second primitive:
+
+  ```
+  def meters(n: Number): Meters   n * oneMeter    -- Number * Meters → Meters
+  def inMeters(d: Meters): Number  d / oneMeter    -- Meters / Meters → Number
+  ```
+
+These ship as the **`std/units`** library (`import { meters, seconds, … } from
+"std/units"`): the SI base dimensions (`Meters`/`Kilograms`/`Seconds`) and common
+derived ones (`Velocity`/`Acceleration`/`Area`/`Force`), each with a `Number`→unit
+constructor and a unit→`Number` extractor, plus derived relations (`speed`,
+`rate`, `force`) that compute their result dimension from the algebra and check it
+against the annotation. The whole library is pure Velve — it adds no compiler
+primitive beyond literal defaulting. Now that imports ship (§7.3), a unit library
+travels by `import` rather than by hand.
+
 **Sized types** (B3(i) SHIPPED 2026-06, `sized_test`/`sized_bad`) are the
 dimensionless-but-bounded sibling. The integer family ships as a stdlib
 range-refinement library over `Number` — `U8 I8 U16 I16 U32 I32` as

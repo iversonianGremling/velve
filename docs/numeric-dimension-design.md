@@ -257,6 +257,20 @@ deferring to runtime. The bare-number → `Px` coercion in layout props (styles
 §4.1) is the precedent; this note generalizes it to "a literal coerces into any
 `Number`-based type its annotation names, range-checked by folding."
 
+> **AS BUILT (2026-06, B2(iii)).** Literal defaulting ships for the **unit** case
+> at every `let`-ascription site (`literalDefaultsToUnit` in infer.ts): when the
+> annotation is a `United` type and `constEval` folds the value to a number, the
+> binding takes the unit instead of erroring. Units carry no range, so the fold
+> needs no bound check (any number defaults), and a non-constant value still hits
+> the §4 mismatch. The **sized** case needs no new machinery to *type-check*: a
+> sized type is a transparent `Refinement` over `Number` (§3.1), so a bare-Number
+> literal unifies with the annotation with no error. **Honest gap:** the range
+> *predicate* is enforced by `checkRefinementLits` at constructor/argument sites,
+> **not** at a bare `let`-ascription — so `let x: u8 = 300` is currently *accepted*
+> (out of range, unchecked). The §5 example pinning that as an error is aspirational
+> for the sized case; the unit case (no range) is fully shipped. Closing the sized
+> `let`-ascription range check is a small follow-on, deliberately not bundled here.
+
 ---
 
 ## 6. What this unblocks (the re-grade arithmetic)
@@ -285,8 +299,21 @@ the width tags this note specs are the down payment on it.
   (`Meters`/`Seconds`/`Velocity`), `_bad` pins `m + s`, `m * s` mis-annotation.
 - **B2 (ii)** — `Math.*` interplay (sqrt halves exponents, transcendentals
   require dimensionless), conversions, the `ms*ms → Duration²` showcase pin.
-- **B2 (iii, optional)** — a small `std/units` library (SI base + common derived)
-  if wanted; sequenced after Phase C imports land so it can be `import`ed.
+- **B2 (iii) AS BUILT (2026-06)** — the `std/units` library + the literal-
+  defaulting keystone it needs (`units_lib_test`/`units_lib_bad`), sequenced after
+  Phase C imports as planned (it travels by `import`). **The one new primitive is
+  literal defaulting (§5)**: a compile-time-CONSTANT number takes the unit its
+  annotation names, applied at every `let`-ascription site (module `let`, block
+  `let`, `try`-body `let`) — guarded by `constEval` returning a number, so a
+  non-constant `Number` still hits the explicit-casts-only mismatch (§4). With
+  that, the library is pure Velve: `let oneMeter: Meters = 1` is the one defaulting
+  site per dimension, and every constructor/extractor is the `*`/`/` algebra
+  (`meters(n) = n * oneMeter`, `inMeters(d) = d / oneMeter`) — design §4's
+  conversion table, made executable. Ships SI base (`Meters`/`Kilograms`/`Seconds`)
+  + derived (`Velocity`/`Acceleration`/`Area`/`Force`) with constructors, extractors,
+  and derived relations (`speed`/`rate`/`force`) whose result dimension is computed
+  and checked. NOT a further re-grade: §6 already moved Low-level B−→A− at B3(ii),
+  and the held-back `+` is Phase D native IR, untouched here.
 - **B3 (i) AS BUILT (2026-06)** — the `U8 … I32` range-refinement family + gates
   + faulting ops + the IR width tag (`sized_test`/`sized_bad`). Built per §3.1,
   with two as-built notes: (a) the idealized lowercase `u8` *type* name isn't

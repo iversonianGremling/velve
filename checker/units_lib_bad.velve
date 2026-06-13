@@ -1,0 +1,20 @@
+@edition "2026.6"
+
+-- C1(v) / B2(iii) guardrails. Three facets of the explicit-casts-only rule (§4)
+-- and literal defaulting (§5), each one error:
+import { meters, seconds, speed } from "std/units"
+
+-- (1) §5 is for CONSTANTS only: a runtime Number never silently becomes a unit.
+def widen(n: Number): Meters
+  let bad: Meters = n                -- error: expected Meters, got Number
+  bad
+
+-- (2) the library's algebra keeps dimensions honest: speed returns a Velocity
+--     (m/s), which is not a Meters — no implicit coercion crosses dimensions.
+def confused(): Meters
+  speed(meters(100), seconds(10))    -- error: unit mismatch Meters vs m/s
+
+-- (3) constructors type their arguments: speed's 2nd arg is Seconds, and a
+--     Meters value is not a Seconds.
+def wrongArg(): Velocity
+  speed(meters(100), meters(10))     -- error: unit mismatch s vs m

@@ -393,7 +393,7 @@ dimension machinery generalize?
     `bounds` against the width range; width params seed their range so a guarded op
     proves, the unguarded one reports the out-of-range model (the two `proof_*_bad`
     re-pins flipped from not-checkable to a real overflow, as their comments predicted).
-    Still optional: B2(iii) general unit constructor (after Phase C imports).
+    B2(iii) general unit constructor shipped after imports as C1(v) (`units_lib_test`).
 - [ ] 🟡 Resolve `Number` internal repr before the compiled target (overflow
   semantics, bit ops on floats — `mask & flag` in the fixtures is already
   doing implementation-defined work).
@@ -693,7 +693,34 @@ dimension machinery generalize?
   picks; true per-file scoping waits on qualified module access. Baseline: 225→229
   files, 0 CRASH; diff over the pre-existing corpus is EMPTY (the migrated consumers
   stay clean — each imports every member it uses). New fixtures: green 0 err + runs
-  `9`/`20`; both bad fixtures 1 err. Remaining in C1: `std/units`; then LSP.
+  `9`/`20`; both bad fixtures 1 err.
+
+  **C1(v) std/units — the general unit constructor (B2(iii)) — DONE 2026-06**
+  (`units_lib_test`/`units_lib_bad`; `checker/std/units.velve`). Closes the unit
+  story deferred from B2(ii): every unit beyond `Duration` was params-only because
+  there was no way to MAKE a unit value from a `Number`. **The one new primitive is
+  literal defaulting** (numeric-dimension §5): a compile-time-CONSTANT number takes
+  the unit its annotation names (`let d: Meters = 5`), implemented as
+  `literalDefaultsToUnit` and applied at all three `let`-ascription sites (module
+  `let`, block `SBind`, `try`-body `SBind`). It is guarded by `constEval` returning
+  a number, so a **non-constant** `Number` still hits the explicit-casts-only
+  mismatch (`let d: Meters = n` ⇒ "expected Meters, got Number") — the §4 rule
+  holds. On that keystone, `std/units` is **pure Velve, zero further primitives**:
+  `let oneMeter: Meters = 1` is the single defaulting site per dimension, and every
+  constructor/extractor is the existing `*`/`/` algebra (`meters(n) = n * oneMeter`
+  scales in, `inMeters(d) = d / oneMeter` divides out — design §4's conversion table
+  made executable). Ships SI base (`Meters`/`Kilograms`/`Seconds`) + derived
+  (`Velocity`/`Acceleration`/`Area`/`Force = kg*m/s^2`) with constructors,
+  extractors, and derived relations (`speed`/`rate`/`force`) whose result dimension
+  is COMPUTED by the algebra and checked against the annotation. Green imports a
+  slice and runs a kinematics calc: 42 / 10 / 5 / 350. Bad pins three guardrail
+  facets (non-constant Number, Velocity≠Meters, Seconds≠Meters) = 3 errors.
+  **Honest gap (documented in design §5):** the sibling sized-type literal default
+  (`let x: u8 = 300`) type-checks but is NOT range-checked at a bare `let`-ascription
+  — that check fires at constructor/arg sites only; closing it is a small follow-on,
+  not bundled here. Baseline 229→232, 0 CRASH, pre-existing corpus byte-identical.
+  NOT a re-grade (Low-level already A− at B3(ii); held-back `+` is Phase D native IR).
+  Remaining in C1: LSP.
 
 ---
 
