@@ -1,0 +1,35 @@
+@edition "2026.6"
+
+-- D1(xvii): `for` COMPREHENSIONS compile (map/filter/nested-generator → a list).
+-- eval evaluates clauses left-to-right: generators NEST (cartesian product) and filters
+-- PRUNE; the body runs at the innermost depth and each result is pushed. The compiler
+-- lowers this to nested `for…of` over each source's `.es` with an `if` per filter and a
+-- `$acc.push(body)` at the bottom — byte-identical to eval, asserted by the differential
+-- harness. Covers: a plain map, a filter, a filter+map, a two-generator cartesian product,
+-- a dependent second generator reading the first's binding, and an interleaved filter.
+
+def doubled(xs: List(Number)): List(Number)
+  for (x in xs) -> x * 2
+
+def evens(xs: List(Number)): List(Number)
+  for (x in xs, x % 2 == 0) -> x
+
+def evenSquares(xs: List(Number)): List(Number)
+  for (x in xs, x % 2 == 0) -> x * x
+
+def pairs(xs: List(Number), ys: List(Number)): List(Number)
+  for (x in xs, y in ys) -> x * 10 + y
+
+def flatten(xss: List(List(Number))): List(Number)
+  for (row in xss, x in row) -> x
+
+def triLabels(xs: List(Number)): List(String)
+  for (x in xs, x > 1, y in xs, y > x) -> "{x}-{y}"
+
+def main(): Effect [io] ()
+  println(doubled([1, 2, 3]))
+  println(evens([1, 2, 3, 4, 5, 6]))
+  println(evenSquares([1, 2, 3, 4]))
+  println(pairs([1, 2], [3, 4]))
+  println(flatten([[1, 2], [3], [4, 5]]))
+  println(triLabels([1, 2, 3]))

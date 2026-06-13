@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xvi) durations): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
+// SCOPE (through D1(xvii) comprehensions): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -34,8 +34,13 @@
 // IIFE (D1(xii)); and MULTI-CLAUSE `def`s — clause dispatch over the parameter patterns,
 // compiled to one JS `function` whose body is a `match`-on-the-arguments decision-spine
 // (D1(xiii)); and REASSIGNMENT of a `mut` binding — a `let mut` lowers to a JS `let`, a
-// bare `x = e` to an assignment yielding Unit (D1(xiv)). Field/index assignment (`SAssign`),
-// loops, atom/duration literals, and `Perform` (effects) are next (D1(xv)+, D2).
+// bare `x = e` to an assignment yielding Unit (D1(xiv)); ATOM literals `:name` — a tagged,
+// interned runtime value so JS `===` matches eval's by-name equality (D1(xv)); DURATION
+// literals `5s` — folded to their millisecond Number, the Duration type erasing per §11.5
+// (D1(xvi)); and `for` COMPREHENSIONS — `for (x in xs, …guards) -> body` lowered to nested
+// `for…of` over each source's `.es` with an `if` per guard, accumulating a list (D1(xvii)).
+// Field/index assignment (`SAssign`), RANGES (`1..n`), `while`/`loop`, and `Perform`
+// (effects) are next (D1(xviii)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
 
@@ -73,8 +78,18 @@ export type IRComp =
   | { k: "Index"; obj: IRAtom; index: IRAtom }         // read element `index` of a list
   | { k: "Lambda"; params: string[]; body: IRExpr }    // an anonymous closure value — captures by lexical scope
   | { k: "Cond"; cond: IRAtom; then: IRExpr; else_: IRExpr } // a value-producing conditional — the lazy `if` short-circuit `&&`/`||` lower to
-  | { k: "Block"; body: IRExpr };                       // reify an arbitrary value-`IRExpr` (e.g. a `match` decision-spine) as a value
+  | { k: "Block"; body: IRExpr }                        // reify an arbitrary value-`IRExpr` (e.g. a `match` decision-spine) as a value
+  | { k: "For"; clauses: IRForClause[]; body: IRExpr }; // a list comprehension — nested generators × filters building a list
 // Perform — D2.
+
+// A lowered `for`-comprehension clause. A generator binds a simple name to each
+// element of its (value-`IRExpr`) iterable; a filter prunes when its cond is false.
+// Both the iterable and the cond are full value-`IRExpr`s, NOT pre-hoisted atoms, so
+// a later generator may depend on an earlier one's binding (`for (xs in xss, x in xs)`)
+// — each is evaluated at its own nesting depth inside the emitted loop.
+export type IRForClause =
+  | { k: "Gen"; name: string; iter: IRExpr }
+  | { k: "Filter"; cond: IRExpr };
 
 // Expressions — the ANF spine. `Match` does NOT survive into the IR: D1(ii) lowers
 // it to the `If`/`Let` decision-spine already here (classic match compilation), so
@@ -507,6 +522,31 @@ class Lowering {
         const inner = new Set(scope);
         for (const pn of params) inner.add(pn);
         return { binds: [], comp: { k: "Lambda", params, body: this.tail(e.body, inner) } };
+      }
+      case "For": {
+        // A list comprehension (D1(xvii)). eval evaluates the clauses left-to-right:
+        // generators NEST (each element of an earlier source scopes the later clauses —
+        // a cartesian product) and filters PRUNE; the body runs at the innermost depth,
+        // each result pushed onto a list. The JS analogue is nested `for…of` over each
+        // source's `.es`, an `if` per filter, and a `$acc.push(body)` at the bottom (see
+        // emitjs `For`). Each generator binds a SIMPLE name — a destructuring binding
+        // (`for ((a, b) in …)`) spells a `PTuple`/`PRecord` and trips `patName`'s frontier,
+        // a later slice. The iterable and filter cond stay full value-`IRExpr`s (not hoisted
+        // atoms) so a later generator can read an earlier binding. A `break`/`continue` in
+        // the body is its own AST node and trips the frontier in `tail`, so a comprehension
+        // carrying one refuses rather than miscompiling eval's Break/Continue signals.
+        const clauses: IRForClause[] = [];
+        const inner = new Set(scope);
+        for (const cl of e.clauses) {
+          if (cl.tag === "Filter") {
+            clauses.push({ k: "Filter", cond: this.tail(cl.cond, new Set(inner)) });
+          } else {
+            const name = patName(cl.binding);
+            clauses.push({ k: "Gen", name, iter: this.tail(cl.iter, new Set(inner)) });
+            inner.add(name);
+          }
+        }
+        return { binds: [], comp: { k: "For", clauses, body: this.tail(e.body, inner) } };
       }
       case "Call": {
         if (e.fn.tag !== "Var") throw new CompileUnsupported("call of a computed function");

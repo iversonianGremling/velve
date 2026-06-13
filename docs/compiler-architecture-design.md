@@ -682,8 +682,24 @@ Harness: **37 match / 0 mismatch / 0 js-crash / 109 unsupported** (251 files) �
 upstream, so the fixture exercises durations as literals and among themselves. The frontier
 twin rolled to a **`for` comprehension** (`for (x in xs) -> x * 2` — the spine has no
 comprehension lowering, the `For` AST node is refused).
-**Remaining for D1(xvii)+**: `for` comprehensions; field/index assignment; then `Perform`
-in D2.
+
+**D1(xvii) shipped (2026-06) — `for` comprehensions (nested generators × filters → a list).**
+A comprehension now lowers. eval evaluates its clauses left-to-right — generators NEST (a
+cartesian product), bare-Bool clauses PRUNE as filters, the body runs at the innermost depth
+and each result is pushed. The compiler mirrors it: a new `For` IRComp over `IRForClause[]`
+(`Gen{name, iter}` / `Filter{cond}`, each holding a full value-`IRExpr` so a later generator
+can read an earlier binding), emitted as an arrow-IIFE that folds the clauses into nested
+`for…of` over each source's `.es` with an `if` per filter, accumulating `$acc` and returning a
+fresh `$list`. Simple-binder generators only (a destructuring binding trips `patName`; a
+`break`/`continue` body trips `tail`) — either refuses, never miscompiles eval's signals.
+Harness: **39 match / 0 mismatch / 0 js-crash / 108 unsupported** (252 files) — +2 match
+(fixture `compile_comprehension_test.velve`, byte-identical across map / filter / cartesian /
+dependent-generator / interpolated-guard cases, plus one legit corpus flip), −1 unsupported.
+The one flip — `for_in_test.velve` (an edition-grammar comprehension fixture) — moved
+`unsupported` → `match`, verified byte-identical. The frontier twin rolled to a **RANGE**
+(`for (x in 1..n) -> x` — the spine has no range lowering, `Range` hits `normComp`'s `default`).
+**Remaining for D1(xviii)+**: ranges (`1..n` → a list); field/index assignment; `while`/`loop`;
+then `Perform` in D2.
 
 ---
 

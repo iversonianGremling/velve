@@ -851,6 +851,28 @@ exists (`compiler-architecture-design.md`).
     unsupported (251 files) — +1 match (the fixture), unsupported unchanged. SPEC untouched;
     no graded row moves (still partial). Next: **D1(xvii)** = `for` comprehensions (map/filter
     over a list) — still pre-effect.
+  - **D1(xvii) — `for` comprehensions compile (the frontier twin flips again) — DONE 2026-06.**
+    The `for (x in xs) -> x * 2` guardrail D1(xvi) left was holding. A comprehension now lowers:
+    eval evaluates its clauses left-to-right — generators NEST (a cartesian product) and bare-Bool
+    clauses PRUNE as filters, the body running at the innermost depth with each result pushed onto
+    a list. The compiler mirrors that exactly: a new `For` IRComp carrying `IRForClause[]` (each a
+    `Gen{name, iter}` or `Filter{cond}`, both keeping their iterable/cond as full value-`IRExpr`s
+    so a later generator may read an earlier binding), emitted as an arrow-IIFE that folds the
+    clauses into nested `for…of` over each source's `.es` with an `if` per filter, accumulating
+    into `$acc` and returning a fresh `$list`. A simple-binder generator only — a destructuring
+    binding trips `patName`'s frontier, and a `break`/`continue` in the body is its own AST node
+    that trips `tail`'s frontier, so either refuses rather than miscompiling eval's signals. Green
+    fixture `compile_comprehension_test.velve` (plain map; a filter; filter+map; a two-generator
+    cartesian product; a *dependent* second generator over the first's binding; an interleaved
+    guard with string interpolation) compiles **byte-identically** to eval (`[2,4,6]` / `[2,4,6]` /
+    `[4,16]` / `[13,14,23,24]` / `[1,2,3,4,5]` / `[2-3]`). The frontier twin rolled to a **RANGE**
+    (`for (x in 1..n) -> x` — eval fills `[from,to)`; the spine has no range lowering, the `Range`
+    AST node hits `normComp`'s `default` and is refused) — the next unrepresented form — still exit
+    2. **One legitimate corpus flip**: `for_in_test.velve` (an edition-grammar comprehension fixture)
+    moved `unsupported` → `match`, verified byte-identical (`[2, 4]`). Harness: **39 match, 0
+    mismatch, 0 js-crash**, 108 unsupported (252 files) — +2 match (the new fixture + the flip), −1
+    unsupported (the flip). SPEC untouched; no graded row moves (still partial). Next: **D1(xviii)**
+    = ranges (`1..n` → an integer-fill list), or field/index assignment — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

@@ -10,7 +10,7 @@
 // prelude's `$show` mirrors `value.ts`'s `display`, and the operator table mirrors
 // `eval.ts`'s `evalBinOp`, exactly.
 
-import type { IRModule, IRFn, IRExpr, IRComp, IRAtom, IRLit } from "./core.js";
+import type { IRModule, IRFn, IRExpr, IRComp, IRForClause, IRAtom, IRLit } from "./core.js";
 
 // Operator → JS operator. Mirrors eval.ts evalBinOp: `^` is power (NOT bitwise xor),
 // `++` is string concat (lists are out of core), `==`/`!=` are strict on the spine's
@@ -95,7 +95,27 @@ function comp(c: IRComp): string {
     // Reify a value-`IRExpr` (a `match` decision-spine) as a value — `exprValue` wraps a
     // non-trivial spine in an arrow-IIFE returning the branch value, an atom if trivial.
     case "Block": return exprValue(c.body);
+    // A list comprehension (D1(xvii)). An arrow-IIFE accumulates into `$acc`: each
+    // generator becomes a `for…of` over its source's `.es` (the JS list backing array),
+    // each filter an `if`, and the body a `$acc.push(…)` at the innermost depth — the
+    // nesting IS eval's left-to-right clause recursion (a cartesian product pruned by
+    // filters). The result is a fresh `$list` value.
+    case "For": return `(() => {\n  const $acc = [];\n${forClauses(c.clauses, 0, c.body, "  ")}  return { $t: "L", es: $acc };\n})()`;
   }
+}
+
+// Fold a comprehension's clauses into nested `for…of` / `if`, bottoming out in a push of
+// the body's value. Each generator iterates its source's `.es`; each filter guards the
+// remaining nesting. Sources and conds are emitted via `exprValue` so a spine-bearing one
+// (e.g. a generator over a `match` result) IIFE-wraps, and a later generator reading an
+// earlier binding evaluates at the right depth.
+function forClauses(clauses: IRForClause[], i: number, bodyE: IRExpr, indent: string): string {
+  if (i === clauses.length) return `${indent}$acc.push(${exprValue(bodyE)});\n`;
+  const cl = clauses[i]!;
+  const inner = forClauses(clauses, i + 1, bodyE, indent + "  ");
+  if (cl.k === "Filter")
+    return `${indent}if (${exprValue(cl.cond)}) {\n${inner}${indent}}\n`;
+  return `${indent}for (const ${cl.name} of ${exprValue(cl.iter)}.es) {\n${inner}${indent}}\n`;
 }
 
 // Emit an IRExpr as a single JS *expression* yielding its value — for a `Cond` branch.

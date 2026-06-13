@@ -1178,6 +1178,27 @@ dimension machinery generalize?
   unsupported unchanged). SPEC untouched; no graded row moves (still partial). **Next: D1(xvii)** — `for`
   comprehensions (map/filter over a list) — still pre-effect.
 
+- [x] 🟢 **Phase D1(xvii) — `for` comprehensions compile (nested generators × filters → a list) — DONE
+  2026-06** (`core.ts` new `For` IRComp + `IRForClause[]` and the `For` case in `normComp`; `emitjs.ts`
+  `For` emit + `forClauses` fold; `compile_comprehension_test.velve`). The `for (x in xs) -> x * 2`
+  guardrail D1(xvi) left was holding. A comprehension now lowers: eval evaluates clauses left-to-right —
+  generators NEST (cartesian product), bare-Bool clauses PRUNE as filters, the body runs innermost and
+  each result is pushed. The compiler mirrors it — each `Gen{name, iter}`/`Filter{cond}` keeps its
+  iterable/cond as a full value-`IRExpr` (so a later generator can read an earlier binding), emitted as
+  an arrow-IIFE folding the clauses into nested `for…of` over each source's `.es` with an `if` per
+  filter, accumulating `$acc` → a fresh `$list`. Simple-binder generators only (a destructuring binding
+  trips `patName`; a `break`/`continue` body trips `tail`) — either refuses, never miscompiles eval's
+  signals. Green `compile_comprehension_test` (plain map; filter; filter+map; two-generator cartesian
+  product; *dependent* second generator; interleaved guard + string interpolation) byte-identical to
+  eval (`[2,4,6]` / `[2,4,6]` / `[4,16]` / `[13,14,23,24]` / `[1,2,3,4,5]` / `[2-3]`). The frontier twin
+  `compile_frontier_test` ROLLED comprehension→**RANGE** (`for (x in 1..n) -> x` — eval fills `[from,to)`;
+  the spine has no range lowering, `Range` hits `normComp`'s `default`) — next unrepresented form — still
+  exit 2. **One legitimate corpus flip:** `for_in_test.velve` (an edition-grammar comprehension fixture)
+  moved `unsupported` → `match`, verified byte-identical (`[2, 4]`). Harness: **39 match / 0 mismatch / 0
+  js-crash / 108 unsupported** across 252 files (+2 match = new fixture + the flip; −1 unsupported = the
+  flip). SPEC untouched; no graded row moves (still partial). **Next: D1(xviii)** — ranges (`1..n` → an
+  integer-fill list), or field/index assignment — still pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)
