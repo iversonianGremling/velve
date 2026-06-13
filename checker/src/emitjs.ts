@@ -60,6 +60,9 @@ function comp(c: IRComp): string {
     }
     case "Tuple": return `$tuple(${c.elems.map(atom).join(", ")})`;
     case "Proj":  return `${atom(c.tuple)}.es[${c.index}]`;
+    case "Ctor":  return `$ctor(${JSON.stringify(c.name)}, ${c.payload ? atom(c.payload) : "null"})`;
+    case "CtorName":    return `${atom(c.ctor)}.name`;
+    case "CtorPayload": return `${atom(c.ctor)}.payload`;
   }
 }
 
@@ -94,7 +97,9 @@ export function emitModule(mod: IRModule, callMain = true): string {
     'const $unit = Symbol("unit");',
     '// Heap values carry a `$t` tag so $show dispatches to value.ts `display` exactly.',
     'const $tuple = (...es) => ({ $t: "T", es });',
-    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
+    '// A tagged variant: nullary ⇒ payload null (displays as the bare name).',
+    'const $ctor = (name, payload) => ({ $t: "C", name, payload });',
+    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : (v && v.$t === "C") ? (v.payload !== null ? v.name + "(" + $show(v.payload) + ")" : v.name) : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
     ...Object.entries(BUILTIN_IMPL)
       .filter(([name]) => !userNames.has(name))
       .map(([name, impl]) => `const ${name} = ${impl};`),

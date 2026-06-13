@@ -9,15 +9,17 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(iii) tuples): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
+// SCOPE (through D1(iv) ctors): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
-// `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); and TUPLES — built
-// as values and destructured in `match` arms via positional `PTuple` patterns
-// (D1(iii)). Everything else is refused LOUDLY via CompileUnsupported — the frontier
-// is explicit, never a silent miscompile. ADT ctors, lists, records, closures-as-
-// values, destructuring `let`/params, `Perform` (effects), and non-tail `if` join
-// points are the next slices (D1(iii)+, D2).
+// `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
+// destructured via `PTuple` (D1(iii)); and ADT CONSTRUCTORS — built (applied `Ok(x)`
+// or nullary `None`) and destructured in `match` arms via `PCtor` (D1(iv)). The
+// supported ctor names are the module's own `type … = | …` variants plus the core
+// data ctors eval defines globally (Ok/Error/Some/None). Everything else is refused
+// LOUDLY via CompileUnsupported — the frontier is explicit, never a silent
+// miscompile. Lists, records, closures-as-values, destructuring `let`/params,
+// `Perform` (effects), and non-tail `if` join points are the next slices (D1(v)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch } from "./ast.js";
 
@@ -44,8 +46,11 @@ export type IRComp =
   | { k: "Call"; fn: string; args: IRAtom[] }          // saturated; fn is a name
   | { k: "PrimOp"; op: string; args: IRAtom[]; width?: Width }
   | { k: "Tuple"; elems: IRAtom[] }                    // build a positional aggregate
-  | { k: "Proj"; tuple: IRAtom; index: number };       // read element `index` of a tuple
-// Ctor / List / Record / Field / Index / Lambda / Perform — D1(iii)+, D2.
+  | { k: "Proj"; tuple: IRAtom; index: number }        // read element `index` of a tuple
+  | { k: "Ctor"; name: string; payload: IRAtom | null } // build a tagged variant (nullary ⇒ payload null)
+  | { k: "CtorName"; ctor: IRAtom }                    // read a variant's tag (a string) — for the match test
+  | { k: "CtorPayload"; ctor: IRAtom };                // read a variant's payload — to bind/recurse
+// List / Record / Field / Index / Lambda / Perform — D1(v)+, D2.
 
 // Expressions — the ANF spine. `Match` does NOT survive into the IR: D1(ii) lowers
 // it to the `If`/`Let` decision-spine already here (classic match compilation), so
@@ -90,9 +95,15 @@ type MatchStep =
   | { s: "bind"; bind: Bind }
   | { s: "test"; binds: Bind[]; atom: IRAtom };
 
+// What the lowerer knows about a constructor name: its arity. `nullary` ctors are
+// referenced as a bare `Var` and build a payload-less variant; unary ctors are
+// `Call`ed with their single payload. (Velve variants carry 0 or 1 payload — a
+// multi-field variant spells its payload as one tuple type, so arity is binary.)
+type CtorInfo = { nullary: boolean };
+
 class Lowering {
   private n = 0;
-  constructor(private userFns: Set<string>) {}
+  constructor(private userFns: Set<string>, private ctors: Map<string, CtorInfo>) {}
   private fresh(): string { return `_t${this.n++}`; }
 
   fn(params: string[], body: Expr): IRExpr {
@@ -195,8 +206,35 @@ class Lowering {
         }
         return { steps, scope: sc };
       }
+      case "PCtor": {
+        // Discriminate on the variant tag, then (if the pattern names a payload)
+        // project it and recurse. Mirrors eval.ts matchInto's PCtor: a name mismatch
+        // falls through; arity is type-guaranteed, so the tag test is the whole
+        // refutation (the payload-presence checks eval also does are redundant on
+        // check-passing programs). The tag-read + `==` ride the test's own binds, so
+        // they evaluate only when control reaches this branch.
+        const tag = this.fresh();
+        const eq = this.fresh();
+        const steps: MatchStep[] = [{
+          s: "test",
+          binds: [
+            { name: tag, comp: { k: "CtorName", ctor: subj } },
+            { name: eq, comp: { k: "PrimOp", op: "==", args: [{ k: "Var", name: tag }, { k: "Lit", lit: { t: "Str", v: p.name } }] } },
+          ],
+          atom: { k: "Var", name: eq },
+        }];
+        let sc = scope;
+        if (p.inner) {
+          const slot = this.fresh();
+          steps.push({ s: "bind", bind: { name: slot, comp: { k: "CtorPayload", ctor: subj } } });
+          const sub = this.pattern(p.inner, { k: "Var", name: slot }, sc);
+          steps.push(...sub.steps);
+          sc = sub.scope;
+        }
+        return { steps, scope: sc };
+      }
       default:
-        throw new CompileUnsupported(`match pattern ${p.tag} (heap-value destructuring — D1(iii)+)`);
+        throw new CompileUnsupported(`match pattern ${p.tag} (heap-value destructuring — D1(v)+)`);
     }
   }
 
@@ -231,10 +269,9 @@ class Lowering {
   // Normalize an expression to an ATOM, accumulating the `Let`-able binds it needs.
   private norm(e: Expr, scope: Set<string>): { binds: Bind[]; atom: IRAtom } {
     if (e.tag === "Lit") return { binds: [], atom: { k: "Lit", lit: lowerLit(e.lit) } };
-    if (e.tag === "Var") {
-      if (!scope.has(e.name)) throw new CompileUnsupported(`free variable '${e.name}' (no first-class fns/ctors yet)`);
-      return { binds: [], atom: { k: "Var", name: e.name } };
-    }
+    if (e.tag === "Var" && scope.has(e.name)) return { binds: [], atom: { k: "Var", name: e.name } };
+    // An out-of-scope `Var` is not necessarily an error — it may be a nullary ctor
+    // (`None`). Defer to normComp, which builds the variant or refuses by name.
     const c = this.normComp(e, scope);
     const t = this.fresh();
     return { binds: [...c.binds, { name: t, comp: c.comp }], atom: { k: "Var", name: t } };
@@ -245,8 +282,14 @@ class Lowering {
     switch (e.tag) {
       case "Lit": return { binds: [], comp: { k: "Atom", atom: { k: "Lit", lit: lowerLit(e.lit) } } };
       case "Var": {
-        if (!scope.has(e.name)) throw new CompileUnsupported(`free variable '${e.name}'`);
-        return { binds: [], comp: { k: "Atom", atom: { k: "Var", name: e.name } } };
+        if (scope.has(e.name)) return { binds: [], comp: { k: "Atom", atom: { k: "Var", name: e.name } } };
+        // A bare name out of scope: a nullary ctor builds a payload-less variant; a
+        // unary ctor used unapplied would be a first-class function (refused); anything
+        // else is a genuine free variable.
+        const ci = this.ctors.get(e.name);
+        if (ci?.nullary) return { binds: [], comp: { k: "Ctor", name: e.name, payload: null } };
+        if (ci) throw new CompileUnsupported(`first-class constructor '${e.name}' (apply it)`);
+        throw new CompileUnsupported(`free variable '${e.name}'`);
       }
       case "BinOp": {
         // Short-circuit `&&`/`||` and pipe `|>` need control flow / first-class fns;
@@ -271,6 +314,14 @@ class Lowering {
         if (e.fn.tag !== "Var") throw new CompileUnsupported("call of a computed function");
         if (e.named.length) throw new CompileUnsupported("named arguments (D1 later)");
         const fn = e.fn.name;
+        const ci = this.ctors.get(fn);
+        if (ci) {
+          // Applying a constructor builds a variant. A unary ctor takes exactly its
+          // one payload; a nullary ctor is never applied in well-typed code.
+          if (ci.nullary || e.args.length !== 1) throw new CompileUnsupported(`constructor '${fn}' applied to ${e.args.length} args`);
+          const a = this.norm(e.args[0]!, scope);
+          return { binds: a.binds, comp: { k: "Ctor", name: fn, payload: a.atom } };
+        }
         if (!this.userFns.has(fn) && !BUILTINS.has(fn))
           throw new CompileUnsupported(`call to '${fn}' (not a def or supported builtin)`);
         const parts = e.args.map(a => this.norm(a, scope));
@@ -313,9 +364,25 @@ function patName(p: Pat): string {
   throw new CompileUnsupported(`binding pattern ${p.tag}`);
 }
 
+// The core data constructors eval.ts defines in every program's prelude
+// (Result + Option). Available globally — a file uses `Ok`/`Error`/`Some`/`None`
+// without a local `type` decl — so the lowerer seeds them unconditionally. Their
+// display (`Ok(x)`, `None`) is exactly the user-ADT display $show reproduces.
+const PRELUDE_CTORS: Array<[string, boolean]> = [
+  ["Ok", false], ["Error", false], ["Some", false], ["None", true],
+];
+
 export function lowerModule(mod: Module): IRModule {
   const userFns = new Set<string>();
   for (const d of mod.decls) if (d.tag === "DFn") userFns.add(d.name);
+
+  // Constructor registry: the prelude data ctors plus every variant of every
+  // `type … = | A | B(p)` in the module. A variant with no payload is nullary.
+  const ctors = new Map<string, CtorInfo>();
+  for (const [name, nullary] of PRELUDE_CTORS) ctors.set(name, { nullary });
+  for (const d of mod.decls)
+    if (d.tag === "DType" && d.body.tag === "TBAdt")
+      for (const v of d.body.variants) ctors.set(v.name, { nullary: v.payload === null });
 
   const fns: IRFn[] = [];
   let hasMain = false;
@@ -327,7 +394,7 @@ export function lowerModule(mod: Module): IRModule {
     if (d.clauses.length !== 1) throw new CompileUnsupported(`multi-clause def '${d.name}' (D1(ii))`);
     const cl = d.clauses[0]!;
     const params = cl.params.map(p => patName(p.pat));
-    fns.push({ name: d.name, params, body: new Lowering(userFns).fn(params, cl.body) });
+    fns.push({ name: d.name, params, body: new Lowering(userFns, ctors).fn(params, cl.body) });
     if (d.name === "main") hasMain = true;
   }
   return { fns, hasMain };

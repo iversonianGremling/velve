@@ -1,0 +1,56 @@
+@edition "2026.6"
+
+-- D1(iv) green fixture: ADT CONSTRUCTORS compile — built and destructured. This is
+-- the file the old compile_frontier_test guardrail promised would flip: it builds
+-- variants (applied `Circle(2)` / `Ok(5)` and nullary `Point` / `None`) and takes
+-- them apart in `match` arms via `PCtor`, including NESTED ctor+tuple patterns and a
+-- guard over a bound payload. Compiled JS must print byte-identically to eval: the
+-- runtime `$ctor` wrapper carries a `$t:"C"` tag so `$show` reproduces value.ts's
+-- VCtor display exactly — `Name(payload)` for a payload variant, bare `Name` for a
+-- nullary one. Both the module's own `type` variants and the prelude data ctors
+-- (Ok/Error/Some/None) are in scope.
+
+type Shape
+  = Circle Number
+  | Rect (Number, Number)
+  | Point
+
+-- payload destructuring, incl. a ctor wrapping a TUPLE payload (PCtor → PTuple)
+def area(s: Shape): Number
+  match s
+    | Circle(r) -> r * r * 3
+    | Rect((w, h)) -> w * h
+    | Point -> 0
+
+-- built-in Option as a returned VALUE: nullary None vs payload Some, displayed
+def headOr(x: Number, empty: Bool): Option(Number)
+  if empty then None else Some(x)
+
+-- built-in Result wrapping a user ADT: NESTED ctor patterns + a tuple inside
+def classify(r: Result Number Shape): Number
+  match r
+    | Ok(n) -> n
+    | Error(Circle(rad)) -> rad
+    | Error(Rect((w, h))) -> w + h
+    | Error(Point) -> -1
+
+-- a guard reading a payload bound by the ctor pattern
+def sign(o: Option(Number)): String
+  match o
+    | Some(n) if n > 0 -> "pos"
+    | Some(n) -> "nonpos"
+    | None -> "none"
+
+def main(): Effect [io] ()
+  println(area(Circle(2)))
+  println(area(Rect((3, 4))))
+  println(area(Point))
+  println(headOr(7, false))
+  println(headOr(7, true))
+  println(classify(Ok(5)))
+  println(classify(Error(Circle(9))))
+  println(classify(Error(Rect((2, 8)))))
+  println(classify(Error(Point)))
+  println(sign(Some(3)))
+  println(sign(Some(0)))
+  println(sign(None))

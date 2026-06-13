@@ -1,25 +1,24 @@
 @edition "2026.6"
 
--- D1(ii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it destructures a CONSTRUCTOR in its `match` arms (`Ok(v)` /
--- `Error(e)`), which binds the payload of a heap value the compute spine has no
--- representation for yet. The differential harness must report it `unsupported` — a
--- CLEAN refusal at the compiler frontier — never a miscompile, never a JS crash.
+-- D1(iv) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it builds a RECORD (`#{ x: 3, y: 4 }`) and reads a field — a heap
+-- value the compute spine has no representation for yet. The differential harness must
+-- report it `unsupported` — a CLEAN refusal at the compiler frontier — never a
+-- miscompile, never a JS crash.
 --
--- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no
--- checker rejection rule, so the guarantee under test is "the compiler refuses what
--- it cannot yet lower, loudly", asserted by the harness rather than by an error
--- count. D1(ii) moved the frontier PAST scalar `match`; D1(iii) moved it PAST tuple
--- construction + `(p, q)` destructuring (see compile_tuple_test). The frontier now
--- sits at the remaining heap values — ADT ctors, records, lists, closures. This file
--- destructures a CONSTRUCTOR, so it still refuses; when ADT ctors lower (D1(iv)), it
--- flips from `unsupported` to a MATCH with no edit.
+-- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
+-- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
+-- yet lower, loudly", asserted by the harness rather than by an error count. D1(ii)
+-- moved the frontier PAST scalar `match`; D1(iii) PAST tuples; D1(iv) PAST ADT
+-- constructors (Ok/Error/Some/None + user `type` variants — see compile_ctor_test).
+-- The frontier now sits at the remaining heap values — records, lists, closures. This
+-- file builds a RECORD, so it still refuses; when records lower (a later D1 slice), it
+-- flips from `unsupported` to a print with no edit.
 
-def unwrap(r: Result Number String): Number
-  match r
-    | Ok(v) -> v
-    | Error(e) -> 0
+type Point = { x: Number, y: Number }
+
+def originX(p: Point): Number
+  p.x
 
 def main(): Effect [io] ()
-  println(unwrap(Ok(42)))
-  println(unwrap(Error("nope")))
+  println(originX(#{ x: 3, y: 4 }))

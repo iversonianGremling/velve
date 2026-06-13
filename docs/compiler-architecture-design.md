@@ -492,9 +492,24 @@ test — arity is type-guaranteed). Tuple was the thinnest cut: positional, fixe
 0 js-crash / 116 unsupported** (238 files). Honest deviation: D1(iii) was forecast as
 the whole heap-value core; tuples shipped alone, the rest slid forward. The frontier
 twin (constructor destructuring) is unchanged — it flips when ctors land.
-**Remaining for D1(iv)+**: ADT `Ctor`s + constructor patterns, records, lists,
-closures with explicit capture; destructuring `let`/params and non-tail match value;
-then `Perform` in D2.
+
+**D1(iv) shipped (2026-06) — ADT constructors (the frontier twin flips).** Variants are
+built — applied (`Ok(5)`) or nullary (`None`) — and destructured via `PCtor`, nesting
+freely (`Error(Rect((w, h)))`). The runtime reuses tuples' `$t` scheme: `$ctor(name,
+payload) → {$t:"C", name, payload}` (nullary ⇒ `null`), so `$show` reproduces value.ts
+VCtor display — `Name(x)` or bare `Name`. Three IR comps — `Ctor` (build), `CtorName`
+(read tag; the match test rides an existing `==` PrimOp), `CtorPayload` (read to
+bind/recurse). A `PCtor` discriminates on the tag, then projects+recurses into the same
+`MatchStep[]` spine (arity is type-guaranteed, so the tag test is the whole refutation —
+eval's redundant payload-null checks are elided). Supported ctor names = the module's
+own `type` variants ∪ the prelude data ctors eval defines globally (Ok/Error/Some/None);
+a unary ctor used unapplied is refused as a first-class function. Harness: **19 match / 0
+mismatch / 0 js-crash / 115 unsupported** (239 files). The flip landed as forecast: the
+frontier twin was repointed to build a **record** (the next unrepresented heap value) and
+still refuses; enabling ctors also flipped the pre-existing `ctor_pattern_test.velve`
+green (honest baseline movement, byte-identical to eval).
+**Remaining for D1(v)+**: records + `PRecord`, lists, closures with explicit capture;
+destructuring `let`/params and non-tail match value; then `Perform` in D2.
 
 ---
 

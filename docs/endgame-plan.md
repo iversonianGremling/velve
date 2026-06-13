@@ -534,6 +534,33 @@ exists (`compiler-architecture-design.md`).
     files). SPEC untouched; no graded row moves (still partial). Next: **D1(iv)** = ADT
     `Ctor`s + constructor patterns (flips the frontier twin), then records, lists,
     closures — still pre-effect.
+  - **D1(iv) — ADT constructors compile (the frontier twin flips) — DONE 2026-06.** The
+    slice D1(iii)'s guardrail was waiting on. Constructors are now BUILT — applied
+    (`Circle(2)`, `Ok(5)`) or nullary (`Point`, `None`) — and DESTRUCTURED in `match`
+    arms via `PCtor`, including **nested** ctor patterns and a ctor wrapping a tuple
+    payload (`Error(Rect((w, h)))`). One new runtime convention reuses the `$t` tagging
+    scheme tuples introduced: `$ctor(name, payload) → {$t:"C", name, payload}` (nullary
+    ⇒ payload `null`), so `$show` reproduces value.ts VCtor display exactly — `Name(x)`
+    for a payload variant, bare `Name` for a nullary one. Three IR computations: `Ctor`
+    (build), `CtorName` (read the tag — the match test rides an existing `==` PrimOp),
+    `CtorPayload` (read to bind/recurse). A `PCtor` discriminates on the tag, then (if
+    it names a payload) projects it and **recurses** into the same `MatchStep[]` spine
+    tuples generalized — arity is type-guaranteed, so the tag test is the whole
+    refutation (eval's redundant payload-presence checks are elided on check-passing
+    programs). Supported ctor names = the module's own `type … = | …` variants plus the
+    prelude data ctors eval defines globally (Ok/Error/Some/None); a unary ctor used
+    unapplied is refused as a first-class function. Green fixture
+    `compile_ctor_test.velve` (a user `Shape` ADT + built-in Result/Option, nullary +
+    payload variants, value display, nested patterns, tuple-in-ctor, a payload guard)
+    compiles **byte-identically** to eval across 12 lines. The frontier twin
+    `compile_frontier_test.velve` was rewritten to build a **record** (`#{ x, y }`) — the
+    next unrepresented heap value — and still refuses cleanly (exit 2). **Honest baseline
+    movement**: enabling ctors also flipped the pre-existing corpus file
+    `ctor_pattern_test.velve` from `unsupported` to `match` (a real ctor-pattern program
+    now runs compiled, byte-identical to eval) — not a regression, the feature landing.
+    Harness: **19 match, 0 mismatch, 0 js-crash**, 115 unsupported (239 files). SPEC
+    untouched; no graded row moves (still partial). Next: **D1(v)** = records (build +
+    field read + `PRecord`), then lists, then closures-as-values — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

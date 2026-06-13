@@ -890,6 +890,28 @@ dimension machinery generalize?
   mismatch / 0 js-crash / 116 unsupported** across 238 files. SPEC untouched; no graded
   row moves (still partial). **Next: D1(iv)** — ADT `Ctor`s + constructor patterns
   (flips the frontier twin), then records, lists, closures — still pre-effect.
+- [x] 🟢 **Phase D1(iv) — ADT constructors compile (the frontier twin flips) — DONE
+  2026-06** (`core.ts` `Ctor`/`CtorName`/`CtorPayload` IR comps + ctor registry +
+  `PCtor` in the `MatchStep[]` compiler; `emitjs.ts` `$ctor` runtime + `$show` `$t:"C"`
+  dispatch; `compile_ctor_test.velve`). The slice D1(iii)'s guardrail was waiting on.
+  Constructors are now BUILT — applied (`Circle(2)`, `Ok(5)`) or nullary (`Point`,
+  `None`) — and DESTRUCTURED via `PCtor`, including **nested** patterns and a ctor over
+  a tuple payload (`Error(Rect((w, h)))`). Reuses tuples' `$t` scheme: `$ctor(name,
+  payload) → {$t:"C", name, payload}` (nullary ⇒ `null`), so `$show` reproduces value.ts
+  VCtor display — `Name(x)` or bare `Name`. Three IR comps: `Ctor` (build), `CtorName`
+  (read tag; the test rides an existing `==` PrimOp), `CtorPayload` (read to
+  bind/recurse). `PCtor` discriminates on the tag, then projects+recurses into the same
+  spine (arity type-guaranteed ⇒ the tag test is the whole refutation; eval's redundant
+  payload-null checks elided). Supported ctor names = the module's own `type` variants ∪
+  prelude data ctors (Ok/Error/Some/None); a unary ctor used unapplied is refused as a
+  first-class function. Green fixture `compile_ctor_test.velve` compiles
+  **byte-identically** to eval (12 lines). The frontier twin `compile_frontier_test.velve`
+  was repointed to build a **record** (`#{ x, y }`) and still refuses (exit 2). **Honest
+  baseline movement**: enabling ctors also flipped the pre-existing
+  `ctor_pattern_test.velve` from `unsupported` to `match` (the feature landing, not a
+  regression). Harness: **19 match / 0 mismatch / 0 js-crash / 115 unsupported** across
+  239 files. SPEC untouched; no graded row moves (still partial). **Next: D1(v)** —
+  records (build + field read + `PRecord`), then lists, then closures — still pre-effect.
 
 ---
 
