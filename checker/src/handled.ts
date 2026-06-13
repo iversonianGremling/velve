@@ -37,7 +37,9 @@ function walkDecls(decls: Decl[], inHandled: boolean, types: Map<Expr, Type>, di
     // v1 scope: function bodies. Store messages / machines / sagas are
     // documented out of scope in SPEC §12.7 (their bodies are message
     // handlers, not the compute the obligation targets).
-    if (inHandled && d.tag === "DFn")
+    // A per-function `proofs: [handled]` clause (A4) scopes the obligation to
+    // THIS def without the enclosing module declaring it.
+    if (d.tag === "DFn" && (inHandled || d.proofs?.includes("handled")))
       for (const c of d.clauses) walkExpr(c.body, types, diags);
   }
 }
@@ -48,7 +50,7 @@ function isResult(t: Type | undefined): boolean {
 
 function err(diags: Diagnostic[], span: Stmt["span"], what: string): void {
   diags.push({ kind: "error", span,
-    message: `proof obligation 'handled': ${what} — match it, propagate it with '?', or return it (the module declares proofs: [handled])` });
+    message: `proof obligation 'handled': ${what} — match it, propagate it with '?', or return it (declared via proofs: [handled])` });
 }
 
 // A statement whose value is dropped: non-final in do/try/retry/transaction,

@@ -125,6 +125,9 @@ function checkClauseHeads(
       continue;
     }
     if (decl.tag !== "DFn" || decl.clauses.length < 2) continue;
+    // A per-function `proofs: [exhaustive]` clause (A4) hardens THIS def's
+    // clause-head gap to an error without the enclosing module declaring it.
+    const fnHardened = hardened || (decl.proofs?.includes("exhaustive") ?? false);
 
     const arity = decl.clauses[0]!.params.length;
     if (arity === 0) continue;
@@ -151,10 +154,10 @@ function checkClauseHeads(
       const where = arity > 1 ? `parameter ${i + 1} (${adt})` : `the ${adt} argument`;
       const base = `non-exhaustive clause heads for '${decl.name}' — ${where} missing: ${missing.join(", ")}`;
       diags.push({
-        kind: hardened || deprecated ? "error" : "warning",
+        kind: fnHardened || deprecated ? "error" : "warning",
         span: decl.span,
         message: deprecated ? base
-          : hardened ? `${base} (module declares proofs: [exhaustive])`
+          : fnHardened ? `${base} (declares proofs: [exhaustive])`
           : `${base} (rejected from edition 2026.6)`,
       });
     }

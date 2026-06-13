@@ -161,6 +161,11 @@ export interface FnClause {
   // Surface this element-returning function renders onto. `value` is null for the
   // named form (`using panel`), set for the inline declare-and-apply sugar.
   surface: { name: string; value: Expr | null } | null;
+  // Finer proof scope (SPEC §12.7 A4): a `proofs: [...]` clause at the head of
+  // this clause's body promises THIS function's obligations — the same closed
+  // vocabulary as the module scope, validated identically at lowering. Unioned
+  // onto DFn.proofs (proofs are a function-level promise, spelled per clause).
+  proofs?: string[];
   span: Span;
 }
 
@@ -181,7 +186,14 @@ export type Decl =
        // marker, NOT a pseudo-effect (totality-design §6 DECIDED) — it shares
        // only the call-gate *shape* with effects, run in the opposite direction
        // (totality flows DOWN the call graph: a total fn may only call total code).
-       total?: boolean }                                                     & Node)
+       total?: boolean;
+       // Finer proof scope (SPEC §12.7 A4): obligations promised by a per-
+       // function `proofs: [...]` clause, unioned across this function's
+       // clauses. The proof passes (facts/handled) treat a def in this set
+       // exactly as if its enclosing module declared the obligation — the same
+       // assume/guarantee, scoped to one def. `total` here also sets `total`
+       // above (it routes through the existing totality engine unchanged).
+       proofs?: string[] }                                                    & Node)
 
   | ({ tag: "DType";
        name: string;

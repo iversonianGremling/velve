@@ -927,6 +927,29 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       untouched except the two new rows. With this + A3 + A2 + A1's `Ok`-half, all
       four Phase-A-done criteria are met; A4 (may be cut) and A1's `let`-direct
       follow-on are the only in-arc remainder.
+- [x] **Per-function proof scope (endgame A4, S1)**: ✅ DONE (2026-06,
+      `proof_fnscope_test`/`_bad` — 0 errors + runs `20 5 3 10`, and exactly 5
+      errors). A `proofs: [...]` clause at the head of a function body promises
+      THAT def's obligations — the module need not declare them. Grammar:
+      `optional($.proofs_decl)` added to the `function_def` block-body head,
+      reusing the module-scope `proofs_decl` production verbatim (mirrors the
+      module body head); regenerate is deterministic (identical parser.c), the
+      change purely additive. Lowering: `lowerFnClause` pulls the clause out of
+      the body, validates it through the same closed-vocabulary `lowerProofs`,
+      and `lowerFnGroup` unions it onto `DFn.proofs` (a `total` member also sets
+      `DFn.total`, so it routes through the totality engine unchanged). All four
+      proof passes (`facts` bounds/nonzero/arith, `handled`) OR the per-function
+      obligation into their in-scope test at each `DFn` — a sibling without the
+      clause is unconstrained (`loose` does the read `get` proves, silent). The
+      surface is a *trailing* clause, NOT the sketched `Proof [...] T` result
+      brackets (those would overload the return-type surface); the set reads
+      better as a clause, and the `effects: [...]` clause (S2) will share the
+      shape. Per-block `@proof[…]{}` cut for now (OQ#3): module + per-function
+      cover every fixture; block granularity would push the fact walkers below
+      `DFn` granularity for no demonstrated need. The bounds/nonzero/arith/
+      handled error suffixes were reworded "the module declares" → "declared
+      via" (now accurate at either scope); check baseline = the two new rows +
+      that one cosmetic reword, run baseline = the two new rows.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

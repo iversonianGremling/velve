@@ -724,6 +724,10 @@ export default grammar({
         optional($.using_clause),
         $._newline,
         $._indent,
+        // Finer proof scope (SPEC §12.7 A4): a `proofs: [...]` clause as the
+        // head of the body promises THIS function's obligations, mirroring the
+        // module body head — the same `proofs_decl` production, reused verbatim.
+        optional($.proofs_decl),
         repeat1($._statement),
         $._dedent,
       ),

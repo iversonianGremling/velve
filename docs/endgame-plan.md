@@ -125,12 +125,20 @@ facts, callees assume their signatures) just shipped. What's left in-arc:
   soundness argument — the measure needs its analog), then ship the
   `bounds`+`terminates` binary search as the showcase fixture for the whole
   gradient.
-- **A4. Finer proof scopes** *(1–2 slices)*. Per-def `Proof [bounds] T`
-  result brackets and per-block `@proof[...] { }` — both PROPOSED in SPEC
-  §12.7. Grammar change (regenerate + rebuild both sides of the baseline
-  stash; additive corpus test). Per-def first (it rides the type-annotation
-  surface); per-block only if wanted after — it may honestly be cut: the
-  module scope has covered every real fixture so far.
+- **A4. Finer proof scopes** *(1–2 slices)*. **PER-FUNCTION SHIPPED 2026-06**
+  (`proof_fnscope_test`/`_bad`). The set-valued obligation list ships as a
+  *trailing* `proofs: [...]` clause at the head of a function body (mirroring
+  the module body head — the `proofs_decl` production reused verbatim), NOT the
+  originally-sketched per-def `Proof [bounds] T` result brackets, which would
+  have overloaded the return-type surface. Grammar change was purely additive
+  (regenerate is deterministic — identical parser.c; corpus baselines held but
+  for the two new rows + one cosmetic message reword). All four proof passes
+  (`facts` bounds/nonzero/arith, `handled`) and the totality engine read the
+  per-function obligation by OR-ing it into the in-scope test at each `DFn`; a
+  sibling without the clause is unconstrained. **Per-block `@proof[...] { }`
+  CUT for now** (OQ#3): the module + per-function scopes cover every fixture;
+  block granularity would push the fact walkers below `DFn` granularity for no
+  demonstrated need.
 - **A5. `sortBy` infer/eval reconciliation** *(1 slice, small)*. **SHIPPED
   2026-06** (`sortby_test`/`_bad`). The divergence was total: infer typed
   `sortBy(xs, keyFn)` (list-first, one-arg key) while eval read `args[0]` as a

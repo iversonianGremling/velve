@@ -91,8 +91,9 @@ function walkDecls(decls: Decl[], inNonZero: boolean, resolutions: ResolutionMap
       walkDecls(d.decls, inNonZero || d.proofs.includes("nonzero"), resolutions, out);
       continue;
     }
-    // v1 scope: function bodies, like `handled` (SPEC §12.7).
-    if (inNonZero && d.tag === "DFn")
+    // v1 scope: function bodies, like `handled` (SPEC §12.7). A per-function
+    // `proofs: [nonzero]` clause (A4) puts THIS def in scope without the module.
+    if (d.tag === "DFn" && (inNonZero || d.proofs?.includes("nonzero")))
       for (const [i, c] of d.clauses.entries())
         walkFacts(c.body, clauseEnv(d.clauses, i), (e, env) => {
           if (e.tag === "BinOp" && (e.op === "/" || e.op === "%"))
@@ -145,7 +146,7 @@ function walkBoundsDecls(decls: Decl[], inBounds: boolean, types: Map<Expr, Type
       walkBoundsDecls(d.decls, inBounds || d.proofs.includes("bounds"), types, resolutions, out);
       continue;
     }
-    if (inBounds && d.tag === "DFn")
+    if (d.tag === "DFn" && (inBounds || d.proofs?.includes("bounds")))
       for (const [i, c] of d.clauses.entries())
         walkFacts(c.body, [...clauseEnv(d.clauses, i), ...witnessSeeds(c)], (e, env) => {
           const demand = WITNESS_DEMANDS.get(e);
@@ -205,7 +206,7 @@ function proveWitnessArg(e: Expr, d: WitnessDemand, env: Env, out: BoundsResult)
 
 function boundsError(span: Span, detail: string): Diagnostic {
   return { kind: "error", span,
-    message: `proof obligation 'bounds': cannot prove the index in range — ${detail} (the module declares proofs: [bounds])` };
+    message: `proof obligation 'bounds': cannot prove the index in range — ${detail} (declared via proofs: [bounds])` };
 }
 
 function proveIndex(e: Extract<Expr, { tag: "Index" }>, env: Env, types: Map<Expr, Type>, out: BoundsResult): void {
@@ -322,7 +323,7 @@ function walkArithDecls(decls: Decl[], inArith: boolean, resolutions: Resolution
       walkArithDecls(d.decls, inArith || d.proofs.includes("arith"), resolutions, out);
       continue;
     }
-    if (inArith && d.tag === "DFn")
+    if (d.tag === "DFn" && (inArith || d.proofs?.includes("arith")))
       for (const [i, c] of d.clauses.entries())
         walkFacts(c.body, clauseEnv(d.clauses, i), (e, env) => {
           const dom = arithCall(e);
@@ -403,7 +404,7 @@ function impliesConstraint(op: CmpOp, k: number, need: ArithConstraint): boolean
 
 function arithError(span: Span, fn: string, need: ArithConstraint, detail: string): Diagnostic {
   return { kind: "error", span,
-    message: `proof obligation 'arith': cannot prove ${fn}'s argument ${need.op} ${need.k} — ${detail} (the module declares proofs: [arith])` };
+    message: `proof obligation 'arith': cannot prove ${fn}'s argument ${need.op} ${need.k} — ${detail} (declared via proofs: [arith])` };
 }
 
 // The reusable fact-env walk: visits EVERY expression with the fact env in
@@ -631,7 +632,7 @@ function floorError(d: Expr): Diagnostic {
     ? `no fact proves '${d.name}' nonzero on this path — guard it (\`if ${d.name} == 0\`, or match on 0)`
     : "the divisor is not a provable term — bind it to a name and guard that, or use the NonZero witness type (SPEC §7.1)";
   return { kind: "error", span: d.span,
-    message: `proof obligation 'nonzero': cannot prove the divisor nonzero — ${hint} (the module declares proofs: [nonzero])` };
+    message: `proof obligation 'nonzero': cannot prove the divisor nonzero — ${hint} (declared via proofs: [nonzero])` };
 }
 
 function proveDivisor(d: Expr, env: Env, out: NonZeroResult): void {
@@ -639,7 +640,7 @@ function proveDivisor(d: Expr, env: Env, out: NonZeroResult): void {
   if (lit !== null) {
     if (lit === 0)
       out.diagnostics.push({ kind: "error", span: d.span,
-        message: "proof obligation 'nonzero': division by the literal 0 (the module declares proofs: [nonzero])" });
+        message: "proof obligation 'nonzero': division by the literal 0 (declared via proofs: [nonzero])" });
     return;
   }
   if (d.tag === "Var" && entailsNonZero(env, d.name)) return;

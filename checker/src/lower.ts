@@ -367,7 +367,13 @@ export class Lowerer {
     const sig = sigNode ? this.lowerFnSig(sigNode) : null;
     const clauses = nodes.map(n => this.lowerFnClause(n));
     const span = (nodes[0] ?? sigNode)!;
-    return { tag: "DFn", name, sig, clauses, lowLevel, total, span: this.sp(span) };
+    // Union the per-clause `proofs: [...]` clauses (SPEC §12.7 A4) into a single
+    // function-level promise. `total` routes through the existing totality
+    // engine — set the marker so total.ts sees it exactly as a `@total def`.
+    const proofs = [...new Set(clauses.flatMap(c => c.proofs ?? []))];
+    if (proofs.includes("total")) total = true;
+    return { tag: "DFn", name, sig, clauses, lowLevel, total,
+             ...(proofs.length ? { proofs } : {}), span: this.sp(span) };
   }
 
   private lowerFnSig(n: N): FnSig {
@@ -398,14 +404,20 @@ export class Lowerer {
 
     const whereNodes = bodyNodes.filter(c => c.type === "where_stmt");
     const usingNode = bodyNodes.find(c => c.type === "using_clause");
-    const bodyContent = bodyNodes.filter(c => c.type !== "where_stmt" && c.type !== "using_clause");
+    // Per-function `proofs: [...]` clause (SPEC §12.7 A4): same production as
+    // the module scope, validated by the same closed-vocabulary check.
+    const proofsNode = bodyNodes.find(c => c.type === "proofs_decl");
+    const proofs = proofsNode ? this.lowerProofs(proofsNode) : [];
+    const bodyContent = bodyNodes.filter(c =>
+      c.type !== "where_stmt" && c.type !== "using_clause" && c.type !== "proofs_decl");
     const where_ = whereNodes.flatMap(w => this.lowerWhereBindings(w));
     const lifetimeConstraints = whereNodes.flatMap(w => this.lowerLifetimeConstraints(w));
     const surface = usingNode ? this.lowerUsingClause(usingNode) : null;
     const rawRetNode = typeIdx >= 0 ? rest[typeIdx] : undefined;
     const { effects, effectTails, retRef: ret } = this.unpackEffectType(rawRetNode ?? null);
 
-    return { params, ret, effects, effectTails, body: this.lowerBody(bodyContent), where_, lifetimeConstraints, surface, span: this.sp(n) };
+    return { params, ret, effects, effectTails, body: this.lowerBody(bodyContent), where_, lifetimeConstraints, surface,
+             ...(proofs.length ? { proofs } : {}), span: this.sp(n) };
   }
 
   // `using S` / `using surface = <expr>`: extract the role name and (for the inline

@@ -5453,6 +5453,10 @@
           "named": true
         },
         {
+          "type": "proofs_decl",
+          "named": true
+        },
+        {
           "type": "propagate_expr",
           "named": true
         },

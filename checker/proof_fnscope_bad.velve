@@ -1,0 +1,38 @@
+-- Per-function `proofs: [...]` guardrails (SPEC §12.7 A4). The clause is held to
+-- the same standard as the module scope: declared = enforced (an unprovable
+-- obligation is an error, never a silent skip), and the closed vocabulary is
+-- validated identically — an unknown word and a not-yet-checkable word both
+-- reject right at the clause.
+-- Expected: exactly 5 errors.
+@edition "2026.6"
+
+module leaky
+
+  -- 1: `proofs: [bounds]` on an unguarded read — i can be anything.
+  def raw(xs: List(Number), i: Number): Number
+    proofs: [bounds]
+    xs[i]
+
+  -- 2: `proofs: [nonzero]` with no fact on the divisor.
+  def crash(a: Number, b: Number): Number
+    proofs: [nonzero]
+    a / b
+
+  -- 3: `proofs: [total]` on a recursion with no decrease — never terminates.
+  def spin(n: Number): Number
+    proofs: [total]
+    spin(n)
+
+  -- 4: unknown obligation word — the vocabulary is closed.
+  def vague(): Number
+    proofs: [fast]
+    1
+
+  -- 5: `overflow` is in the vocabulary but not checkable yet — declaring it
+  -- would promise an unenforced guarantee.
+  def wide(): Number
+    proofs: [overflow]
+    1
+
+def main(): Number
+  raw([1, 2], 0)

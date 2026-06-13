@@ -1,0 +1,42 @@
+-- Finer proof scope (SPEC §12.7 A4): a `proofs: [...]` clause at the head of a
+-- function body promises THAT def's obligations — the module need not declare
+-- them. Same closed vocabulary, same assume/guarantee as the module scope, just
+-- scoped to one def; it mirrors the module body head (the `proofs_decl`
+-- production, reused verbatim). The point this fixture pins: the obligation is
+-- per-function, so a sibling WITHOUT the clause is unconstrained — `loose` does
+-- the very read `get` must prove, and is silent because it never opted in.
+-- Expected: clean; runs.
+@edition "2026.6"
+
+module mixed
+
+  -- bounds, scoped to this def: the guarded read settles on the interval floor.
+  def get(xs: List(Number), i: Number): Number
+    proofs: [bounds]
+    if i >= 0 && i < length(xs) then xs[i] else -1
+
+  -- nonzero, scoped to this def: the else arm knows the divisor != 0.
+  def ratio(a: Number, b: Number): Number
+    proofs: [nonzero]
+    if b == 0 then 0 else a / b
+
+  -- total, scoped to this def: routes through the totality engine (decrease +
+  -- downward call gate) exactly as `@total` would. The literal base clause is
+  -- single-line and carries no clause; the promise lives on the block clause
+  -- and is unioned onto the function.
+  def countdown(0): Number -> 0
+  def countdown(n: Number): Number
+    proofs: [total]
+    1 + countdown(n - 1)
+
+  -- NO clause: the same unguarded read `get` had to prove — unconstrained here,
+  -- because the obligation scoped to `get` and never flowed to `loose`.
+  def loose(xs: List(Number), i: Number): Number
+    xs[i]
+
+def main(): Effect [io] ()
+  let xs = [10, 20, 30]
+  println(get(xs, 1))
+  println(ratio(10, 2))
+  println(countdown(3))
+  println(loose(xs, 0))
