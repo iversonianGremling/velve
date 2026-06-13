@@ -1,0 +1,51 @@
+@edition "2026.6"
+
+-- D1(v) green fixture: RECORDS compile — built (`#{ x: a }`), field-read (`p.x`),
+-- spread (`#{ ...base, k: v }`), and destructured in `match` via `PRecord`. This is
+-- the value the old compile_frontier_test guardrail promised would flip. Compiled JS
+-- must print byte-identically to eval: the runtime `$record` wrapper carries a
+-- `$t:"R"` tag so `$show` reproduces value.ts's VRecord display — `{ k: v, … }` in
+-- INSERTION order. eval builds a Map (spread fields first, then explicit; an explicit
+-- key shadowing a spread key updates in place, keeping its slot); JS `{ ...base.fs, k }`
+-- has the same order, so a spread+overwrite displays its fields in the original order.
+
+type Point = { x: Number, y: Number }
+
+def originX(p: Point): Number
+  p.x
+
+def sumP(p: Point): Number
+  p.x + p.y
+
+-- a record value built and RETURNED, then displayed
+def mk(a: Number, b: Number): Point
+  #{ x: a, y: b }
+
+-- spread: base fields first, explicit `y` overwrites IN PLACE (x,y order preserved)
+def moveY(p: Point, ny: Number): Point
+  #{ ...p, y: ny }
+
+-- PRecord destructuring (shorthand binds) + a guard reading a bound field
+-- (`&&` is short-circuit — a later slice — so the y split is a nested `if`)
+def quadrant(p: Point): String
+  match p
+    | { x, y } if x > 0 -> if y > 0 then "ne" else "se"
+    | { x, y } -> "other"
+
+-- a record FIELD that is itself a heap value (a ctor), field-read then matched
+-- (`record_pattern` is shorthand-only — `{ a, b }` — so nesting goes through `.tag`)
+def label(r: { tag: Option(Number) }): Number
+  match r.tag
+    | Some(n) -> n
+    | None -> 0
+
+def main(): Effect [io] ()
+  println(originX(#{ x: 3, y: 4 }))
+  println(sumP(#{ x: 3, y: 4 }))
+  println(mk(1, 2))
+  println(moveY(#{ x: 5, y: 6 }, 99))
+  println(quadrant(#{ x: 1, y: 1 }))
+  println(quadrant(#{ x: 1, y: 0 }))
+  println(quadrant(#{ x: 0, y: 0 }))
+  println(label(#{ tag: Some(7) }))
+  println(label(#{ tag: None }))

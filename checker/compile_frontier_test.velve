@@ -1,24 +1,22 @@
 @edition "2026.6"
 
--- D1(iv) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it builds a RECORD (`#{ x: 3, y: 4 }`) and reads a field — a heap
--- value the compute spine has no representation for yet. The differential harness must
--- report it `unsupported` — a CLEAN refusal at the compiler frontier — never a
--- miscompile, never a JS crash.
+-- D1(v) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it builds a LIST (`[1, 2, 3]`) and sums it — a heap value the
+-- compute spine has no representation for yet. The differential harness must report
+-- it `unsupported` — a CLEAN refusal at the compiler frontier — never a miscompile,
+-- never a JS crash.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
 -- yet lower, loudly", asserted by the harness rather than by an error count. D1(ii)
 -- moved the frontier PAST scalar `match`; D1(iii) PAST tuples; D1(iv) PAST ADT
--- constructors (Ok/Error/Some/None + user `type` variants — see compile_ctor_test).
--- The frontier now sits at the remaining heap values — records, lists, closures. This
--- file builds a RECORD, so it still refuses; when records lower (a later D1 slice), it
--- flips from `unsupported` to a print with no edit.
+-- constructors; D1(v) PAST records — built, field-read, and `PRecord`-destructured
+-- (see compile_record_test). The frontier now sits at the remaining heap values —
+-- LISTS and closures-as-values. This file builds a list, so it still refuses; when
+-- lists lower (a later D1 slice), it flips from `unsupported` to a print with no edit.
 
-type Point = { x: Number, y: Number }
-
-def originX(p: Point): Number
-  p.x
+def count(xs: List(Number)): Number
+  length(xs)
 
 def main(): Effect [io] ()
-  println(originX(#{ x: 3, y: 4 }))
+  println(count([1, 2, 3]))

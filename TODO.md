@@ -913,6 +913,30 @@ dimension machinery generalize?
   239 files. SPEC untouched; no graded row moves (still partial). **Next: D1(v)** —
   records (build + field read + `PRecord`), then lists, then closures — still pre-effect.
 
+- [x] 🟢 **Phase D1(v) — records compile (the frontier twin flips again) — DONE 2026-06**
+  (`core.ts` `Record`/`Field` IR comps + `PRecord` in the `MatchStep[]` compiler;
+  `emitjs.ts` `$record` runtime + `$show` `$t:"R"` dispatch; `compile_record_test.velve`).
+  The value D1(iv)'s guardrail was holding. Records are now BUILT — `#{ x: a, y: b }`,
+  including `...spread` — FIELD-READ (`p.x`), and DESTRUCTURED via `PRecord`. Extends the
+  `$t` scheme: `$record(fs) → {$t:"R", fs}` where `fs` is a plain object whose key-insertion
+  order IS the display order, so `$show` reproduces value.ts VRecord display — `{ k: v, … }`,
+  empty as `{  }`. The order is load-bearing: eval builds a `Map` (spread first, then
+  explicit; a shadowing key updates **in place**, keeping its slot), and JS `{ ...base.fs, k }`
+  matches exactly — so `#{ ...p, y: 99 }` displays its fields in the original order. Two IR
+  comps: `Record` (build; optional spread atom + ordered fields) and `Field` (read). `PRecord`
+  is pure projection like `PTuple` (no shape test — the checker guarantees the fields are
+  present); the grammar's `record_pattern` is shorthand-only (`{ x, y }`), so each field binds
+  a `PVar`. Green fixture `compile_record_test.velve` (build, field-read, spread+overwrite, a
+  `PRecord` arm with a guard reading a bound field, a record field holding a ctor read via
+  `.tag` then matched) compiles **byte-identically** to eval (9 lines). The frontier twin
+  `compile_frontier_test.velve` was rolled to build a **list** (`[1, 2, 3]`) and still refuses
+  (exit 2). Unlike D1(iv), **no** pre-existing corpus file flipped — the only new green is the
+  fixture (the `&&` in an early draft of its guard was the short-circuit-operator frontier, not
+  records; split into a nested `if` to keep the slice honest). Harness: **20 match / 0 mismatch
+  / 0 js-crash / 115 unsupported** across 240 files. SPEC untouched; no graded row moves (still
+  partial). **Next: D1(vi)** — lists (build + index/length + `PList`), then closures, then
+  destructuring `let`/params — still pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

@@ -508,8 +508,24 @@ mismatch / 0 js-crash / 115 unsupported** (239 files). The flip landed as foreca
 frontier twin was repointed to build a **record** (the next unrepresented heap value) and
 still refuses; enabling ctors also flipped the pre-existing `ctor_pattern_test.velve`
 green (honest baseline movement, byte-identical to eval).
-**Remaining for D1(v)+**: records + `PRecord`, lists, closures with explicit capture;
-destructuring `let`/params and non-tail match value; then `Perform` in D2.
+
+**D1(v) shipped (2026-06) — records (the frontier twin flips again).** Records are built —
+`#{ x: a }`, including `...spread` — field-read (`p.x`), and destructured via `PRecord`.
+The runtime extends the `$t` scheme: `$record(fs) → {$t:"R", fs}` where `fs` is a plain
+object whose key-insertion order is the display order, so `$show` reproduces value.ts
+VRecord display — `{ k: v, … }`, empty as `{  }`. The order is load-bearing: eval builds a
+`Map` (spread first, then explicit; a shadowing key updates in place, keeping its slot), and
+JS `{ ...base.fs, k }` matches exactly — so `#{ ...p, y: 99 }` displays in the original
+field order. Two IR comps — `Record` (build; optional spread atom + ordered fields) and
+`Field` (read). `PRecord` is pure projection like `PTuple` (no shape test — the checker
+guarantees the fields are present); `record_pattern` is shorthand-only, so each field binds
+a `PVar`. Harness: **20 match / 0 mismatch / 0 js-crash / 115 unsupported** (240 files). The
+flip landed as forecast: the frontier twin was rolled to build a **list** (the next
+unrepresented heap value) and still refuses. Unlike D1(iv), no pre-existing corpus file
+flipped — the only new green is the fixture (the `&&` in an early draft of its guard was the
+short-circuit frontier, not records; split into a nested `if`).
+**Remaining for D1(vi)+**: lists + `PList`, closures with explicit capture; destructuring
+`let`/params and non-tail match value; then `Perform` in D2.
 
 ---
 

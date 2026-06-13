@@ -63,6 +63,12 @@ function comp(c: IRComp): string {
     case "Ctor":  return `$ctor(${JSON.stringify(c.name)}, ${c.payload ? atom(c.payload) : "null"})`;
     case "CtorName":    return `${atom(c.ctor)}.name`;
     case "CtorPayload": return `${atom(c.ctor)}.payload`;
+    case "Record": {
+      const fs = c.fields.map(f => `${JSON.stringify(f.name)}: ${atom(f.value)}`);
+      const body = c.spread ? [`...${atom(c.spread)}.fs`, ...fs] : fs;
+      return `$record({ ${body.join(", ")} })`;
+    }
+    case "Field": return `${atom(c.obj)}.fs[${JSON.stringify(c.field)}]`;
   }
 }
 
@@ -99,7 +105,9 @@ export function emitModule(mod: IRModule, callMain = true): string {
     'const $tuple = (...es) => ({ $t: "T", es });',
     '// A tagged variant: nullary ⇒ payload null (displays as the bare name).',
     'const $ctor = (name, payload) => ({ $t: "C", name, payload });',
-    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : (v && v.$t === "C") ? (v.payload !== null ? v.name + "(" + $show(v.payload) + ")" : v.name) : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
+    '// A record: fields in a plain object, whose key-insertion order is the display order.',
+    'const $record = (fs) => ({ $t: "R", fs });',
+    'const $show = (v) => v === $unit ? "()" : (v && v.$t === "T") ? "(" + v.es.map($show).join(", ") + ")" : (v && v.$t === "C") ? (v.payload !== null ? v.name + "(" + $show(v.payload) + ")" : v.name) : (v && v.$t === "R") ? "{ " + Object.entries(v.fs).map(([k, val]) => k + ": " + $show(val)).join(", ") + " }" : typeof v === "boolean" ? (v ? "true" : "false") : typeof v === "string" ? v : String(v);',
     ...Object.entries(BUILTIN_IMPL)
       .filter(([name]) => !userNames.has(name))
       .map(([name, impl]) => `const ${name} = ${impl};`),

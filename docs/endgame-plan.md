@@ -561,6 +561,32 @@ exists (`compiler-architecture-design.md`).
     Harness: **19 match, 0 mismatch, 0 js-crash**, 115 unsupported (239 files). SPEC
     untouched; no graded row moves (still partial). Next: **D1(v)** = records (build +
     field read + `PRecord`), then lists, then closures-as-values — still pre-effect.
+  - **D1(v) — records compile (the frontier twin flips again) — DONE 2026-06.** The
+    value D1(iv)'s guardrail was holding. Records are now BUILT — `#{ x: a, y: b }`,
+    including `...spread` — FIELD-READ (`p.x`), and DESTRUCTURED in `match` via
+    `PRecord`. One new runtime convention extends the `$t` scheme: `$record(fs) →
+    {$t:"R", fs}` where `fs` is a plain JS object whose key-insertion order IS the
+    display order, so `$show` reproduces value.ts VRecord display exactly — `{ k: v, … }`
+    in insertion order, the empty record as `{  }`. The order subtlety is load-bearing:
+    eval builds a `Map` (spread fields first, then explicit; an explicit key shadowing a
+    spread key updates **in place**, keeping its slot), and JS `{ ...base.fs, k: v }` has
+    exactly those semantics — so a spread+overwrite (`#{ ...p, y: 99 }`) displays its
+    fields in the original order. Two IR computations: `Record` (build, optional spread
+    atom + ordered explicit fields) and `Field` (read a named field). `PRecord` is pure
+    projection like `PTuple` — no shape test, since the checker guarantees the subject is
+    a record carrying the named fields; the grammar's `record_pattern` is shorthand-only
+    (`{ x, y }`), so each field binds a `PVar`. Green fixture `compile_record_test.velve`
+    (build, field-read, spread+overwrite, a `PRecord` arm with a guard reading a bound
+    field, and a record field holding a ctor read via `.tag` then matched) compiles
+    **byte-identically** to eval across 9 lines. The frontier twin
+    `compile_frontier_test.velve` was rolled to build a **list** (`[1, 2, 3]`) — the next
+    unrepresented heap value — and still refuses cleanly (exit 2). Unlike D1(iv), **no**
+    pre-existing corpus file flipped: the only new green is the fixture itself (the `&&`
+    in an earlier draft of the guard was the short-circuit-operator frontier, not records
+    — split into a nested `if` to keep the slice honest). Harness: **20 match, 0 mismatch,
+    0 js-crash**, 115 unsupported (240 files). SPEC untouched; no graded row moves (still
+    partial). Next: **D1(vi)** = lists (build + index/length + `PList`), then
+    closures-as-values, then destructuring `let`/params — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

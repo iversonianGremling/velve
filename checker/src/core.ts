@@ -9,17 +9,18 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(iv) ctors): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
+// SCOPE (through D1(v) records): single-clause `def`s; `Lit` (Str/Num/Bool/Unit);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
-// destructured via `PTuple` (D1(iii)); and ADT CONSTRUCTORS — built (applied `Ok(x)`
-// or nullary `None`) and destructured in `match` arms via `PCtor` (D1(iv)). The
-// supported ctor names are the module's own `type … = | …` variants plus the core
-// data ctors eval defines globally (Ok/Error/Some/None). Everything else is refused
-// LOUDLY via CompileUnsupported — the frontier is explicit, never a silent
-// miscompile. Lists, records, closures-as-values, destructuring `let`/params,
-// `Perform` (effects), and non-tail `if` join points are the next slices (D1(v)+, D2).
+// destructured via `PTuple` (D1(iii)); ADT CONSTRUCTORS — built (applied `Ok(x)` or
+// nullary `None`) and destructured in `match` arms via `PCtor` (D1(iv)); and RECORDS
+// — built (`#{ x: a }`, incl. `...spread`), field-read (`p.x`), and destructured via
+// `PRecord` (D1(v)). The supported ctor names are the module's own `type … = | …`
+// variants plus the core data ctors eval defines globally (Ok/Error/Some/None).
+// Everything else is refused LOUDLY via CompileUnsupported — the frontier is
+// explicit, never a silent miscompile. Lists, closures-as-values, destructuring
+// `let`/params, `Perform` (effects), and non-tail `if` joins are next (D1(vi)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch } from "./ast.js";
 
@@ -49,8 +50,10 @@ export type IRComp =
   | { k: "Proj"; tuple: IRAtom; index: number }        // read element `index` of a tuple
   | { k: "Ctor"; name: string; payload: IRAtom | null } // build a tagged variant (nullary ⇒ payload null)
   | { k: "CtorName"; ctor: IRAtom }                    // read a variant's tag (a string) — for the match test
-  | { k: "CtorPayload"; ctor: IRAtom };                // read a variant's payload — to bind/recurse
-// List / Record / Field / Index / Lambda / Perform — D1(v)+, D2.
+  | { k: "CtorPayload"; ctor: IRAtom }                 // read a variant's payload — to bind/recurse
+  | { k: "Record"; spread: IRAtom | null; fields: { name: string; value: IRAtom }[] } // build a record (spread base, then explicit fields — display order)
+  | { k: "Field"; obj: IRAtom; field: string };        // read a named field
+// List / Index / Lambda / Perform — D1(vi)+, D2.
 
 // Expressions — the ANF spine. `Match` does NOT survive into the IR: D1(ii) lowers
 // it to the `If`/`Let` decision-spine already here (classic match compilation), so
@@ -233,8 +236,26 @@ class Lowering {
         }
         return { steps, scope: sc };
       }
+      case "PRecord": {
+        // Read each named field and recurse the sub-pattern against it. Like PTuple
+        // this is pure projection — no shape test: the checker guarantees the subject
+        // is a record carrying these fields (eval's tag/presence checks are redundant
+        // on check-passing programs). Field order in the pattern is irrelevant; binds
+        // accumulate left-to-right. The grammar's `record_pattern` is shorthand-only
+        // (`{ x, y }`), so each `f.pat` is a PVar — but we recurse generically anyway.
+        const steps: MatchStep[] = [];
+        let sc = scope;
+        for (const f of p.fields) {
+          const slot = this.fresh();
+          steps.push({ s: "bind", bind: { name: slot, comp: { k: "Field", obj: subj, field: f.name } } });
+          const sub = this.pattern(f.pat, { k: "Var", name: slot }, sc);
+          steps.push(...sub.steps);
+          sc = sub.scope;
+        }
+        return { steps, scope: sc };
+      }
       default:
-        throw new CompileUnsupported(`match pattern ${p.tag} (heap-value destructuring — D1(v)+)`);
+        throw new CompileUnsupported(`match pattern ${p.tag} (heap-value destructuring — D1(vi)+)`);
     }
   }
 
@@ -309,6 +330,24 @@ class Lowering {
         // wrapper carries a tag so `$show` reproduces value.ts's VTuple exactly.
         const parts = e.elems.map(x => this.norm(x, scope));
         return { binds: parts.flatMap(p => p.binds), comp: { k: "Tuple", elems: parts.map(p => p.atom) } };
+      }
+      case "Record": {
+        // A keyed heap value (D1(v)). eval builds a Map: the spread's fields first
+        // (in their own order), then explicit fields appended — an explicit key that
+        // shadows a spread key updates in place, keeping its original slot. JS object
+        // `{ ...base.fs, k: v }` has exactly these insertion-order semantics, so the
+        // runtime $record wrapper reproduces value.ts's VRecord `display` field order.
+        const spread = e.spread ? this.norm(e.spread, scope) : null;
+        const parts = e.fields.map(f => ({ name: f.name, c: this.norm(f.value, scope) }));
+        const binds = [...(spread ? spread.binds : []), ...parts.flatMap(p => p.c.binds)];
+        return { binds, comp: { k: "Record", spread: spread ? spread.atom : null, fields: parts.map(p => ({ name: p.name, value: p.c.atom })) } };
+      }
+      case "Field": {
+        // A record field read (`p.x`). The checker has proven `obj` is a record with
+        // this field, so the read is total. (eval's `Field` also serves saga handles
+        // and modules — out of the pure core; those obj exprs trip the frontier first.)
+        const o = this.norm(e.obj, scope);
+        return { binds: o.binds, comp: { k: "Field", obj: o.atom, field: e.field } };
       }
       case "Call": {
         if (e.fn.tag !== "Var") throw new CompileUnsupported("call of a computed function");
