@@ -655,6 +655,48 @@ def attempt(f: (String -> Result Number e)): Result Number e
   rule (§12.4) governs user HOFs as before. Builtin HOF signatures carry
   effect *tails* since S4c (§12.4; user-spelled tails are E2, deferred).
 
+### 2.15 Units of measure
+
+**Status: B2(i) SHIPPED 2026-06** (`uom_test`/`uom_bad`; design in
+`docs/numeric-dimension-design.md`). A unit type is a `Number` carrying a
+**dimension** — declared with a `unit` tail on a `Number` alias:
+
+```
+type Meters   = Number unit m
+type Seconds  = Number unit s
+type Velocity = Number unit m/s
+type Accel    = Number unit m/s^2
+type Area     = Number unit m^2
+```
+
+The dimension expression is a product/quotient of base-unit atoms with integer
+exponents (`m`, `m/s`, `m/s^2`). Internally it lowers to a normalized exponent
+vector (`m/s²` is `{m:1, s:-2}`); that vector is the type's **canonical
+identity** — `m/s` and a declared `Velocity` are the same type regardless of the
+alias name.
+
+**The arithmetic algebra** (the whole point — one rule set for every dimension):
+
+| Op | Rule | Example |
+|---|---|---|
+| `*` | exponents **add** | `Meters * Meters : m^2`; `Meters * Number : m` (scaling) |
+| `/` | exponents **subtract** | `Meters / Seconds : m/s` |
+| `/` | a cancelled dimension **collapses to `Number`** | `Meters / Meters : Number` |
+| `+` `-` | require **matching** dimensions | `m + m : m`; `m + s` is an error |
+| `==` `<` … | require **matching** dimensions | `m < s` is an error |
+
+A unit is **not transparent** to its `Number` base (unlike a refinement type,
+§2.6): `m + s` is a type error, and a bare `Number` does not unify with a
+`Meters` — conversions are **explicit only** (a future constructor / annotation,
+deferred with the rest of B2). The solver never sees dimensions; this is a
+structural shape discipline (like the effect row, §12.4), and it **erases at
+runtime** — every united value is just a `Number` when it runs.
+
+`Duration` (§3.13) is the precursor of this algebra, hand-built; it remains a
+distinct `Named` type for now (so `ms * ms` still errors). Folding it into the
+unit algebra — making `ms * ms : Duration²` legal — is the B2(ii) step. Sized
+types (`u8`/`i32`) are the dimensionless-but-bounded sibling, B3.
+
 ---
 
 ## 3. Syntax

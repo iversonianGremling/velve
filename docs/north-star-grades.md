@@ -605,6 +605,13 @@ path once the width substrate exists. So the §3.4 🔴 is no longer "unwritten"
 as B2 (units) + B3 (sized types + `overflow`), and the grade is held at B− pending those two
 builds, not pending the design.
 
+**B2(i) SHIPPED 2026-06** (`uom_test`/`uom_bad`, SPEC §2.15): the `United` type variant +
+`unit` grammar + the full `*`/`/`/`+`/`-`/cmp dimensional algebra (with the cancelled-dimension
+→ `Number` collapse) are built — axis (2) now has its general mechanism, not just the
+hand-built `Duration`. Remaining for the re-grade: B2(ii) folds `Duration` in (`ms*ms →
+Duration²`) + conversions, then B3 (sized types + `overflow`) lands axis (1). Grade stays B−
+until those close.
+
 ---
 
 ## 6. Accessibility-as-proof — the styling analog

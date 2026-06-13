@@ -62,6 +62,18 @@ native/WASM emitter (Phase D) lower the same source to machine primitives.
 
 ## 2. Units of measure (B2)
 
+> **B2(i) AS BUILT (2026-06)** — `uom_test`/`uom_bad`, SPEC §2.15. The
+> `{ tag: "United"; base; dims; name? }` variant, the `unit_clause` grammar tail
+> (flat signed-factor form), the registration (a `UNITS` map parallel to
+> `REFINEMENTS`; resolved in `resolveRef`), and the full `*`/`/`/`+`/`-`/cmp
+> algebra + dimensionless-collapse all shipped exactly as specced below. `unify`
+> compares two `United` by `dimsEqual` and lets `United`-vs-base fall through to
+> the mismatch error — the explicit-casts-only rule (§4) enforced for free.
+> **Not yet built (deferred):** unit-value construction (constructors /
+> literal-defaulting, §5) and folding `Duration` into the algebra (B2(ii), the
+> `ms*ms → Duration²` showcase). So today's fixture validates the algebra
+> through unit-typed defs and runs on the erased plain-`Number` semantics.
+
 ### 2.1 Surface — refinement-flavored declaration
 
 A unit type is declared with the `unit` tail on a `Number`-based `type`, reusing

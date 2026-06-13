@@ -19,6 +19,7 @@ export type Type =
   | { tag: "Async";      inner: Type }                                    // Async(a) §2.10
   | { tag: "Stream";     inner: Type }                                    // Stream(a) §2.9
   | { tag: "Refinement"; base: Type; pred: string; args?: (Expr | null)[] }  // transparent to `base`; `pred` is the refinement type's name (look up predicate AST in REFINEMENTS). `args` carries dependent value-arguments aligned with the refinement's params, e.g. InBounds(listLength xs) → [listLength xs]
+  | { tag: "United";     base: Type; dims: Dims; name?: string }            // units of measure (B2, numeric-dimension-design.md): a `Number` carrying a dimension. UNLIKE Refinement, NOT transparent to `base` — `m + s` errors. The solver never sees `dims`; it is a structural shape discipline (like effects). `dims` is the canonical identity (`m/s` ≡ Velocity); `name` is the alias the user wrote (for friendlier printing), dropped after arithmetic so a computed dimension prints as `m/s`.
   | { tag: "ErrRow";     entries: RowEntry[]; owner: string; tails: number[] }  // inferred error row (error-rows-design v1, row tails v2/S4b): the ctor set a `Result T _` def raises. ONE shared instance per def — `?` accumulates entries in place; rows never unify, they are inclusion-checked at pins. `tails` are the def's quantified type vars whose bindings flow into the row (a callback's error type); each USE of a tailed def gets a per-call-site clone whose tails are judged after inference. Check-time only (eval never sees it).
   | { tag: "Unknown" }                                                    // pre-inference placeholder
 
@@ -35,6 +36,53 @@ export interface Field {
   name: string;
   type: Type;
   optional: boolean;
+}
+
+// A dimension vector (units of measure, B2): base-unit atom → integer exponent,
+// NORMALIZED so a zero exponent is never stored. The empty map is dimensionless
+// (it collapses to bare `Number`). This is the canonical identity of a unit type
+// — `m/s` and a declared `Velocity` share one Dims, regardless of the alias name.
+export type Dims = { readonly [atom: string]: number };
+
+// Build a normalized Dims from raw signed factors (lower produces these from the
+// grammar's `unit_clause`), summing repeats and dropping anything that cancels.
+export function mkDims(factors: ReadonlyArray<{ atom: string; exp: number }>): Dims {
+  const acc: Record<string, number> = {};
+  for (const { atom, exp } of factors) acc[atom] = (acc[atom] ?? 0) + exp;
+  for (const k of Object.keys(acc)) if (acc[k] === 0) delete acc[k];
+  return acc;
+}
+
+export function isDimensionless(d: Dims): boolean {
+  return Object.keys(d).length === 0;
+}
+
+export function dimsEqual(a: Dims, b: Dims): boolean {
+  const ka = Object.keys(a), kb = Object.keys(b);
+  return ka.length === kb.length && ka.every(k => a[k] === b[k]);
+}
+
+// `*` adds exponents, `/` subtracts — the multiplicative algebra of units.
+export function dimsMul(a: Dims, b: Dims): Dims {
+  const acc: Record<string, number> = { ...a };
+  for (const k of Object.keys(b)) acc[k] = (acc[k] ?? 0) + b[k]!;
+  for (const k of Object.keys(acc)) if (acc[k] === 0) delete acc[k];
+  return acc;
+}
+export function dimsDiv(a: Dims, b: Dims): Dims {
+  const neg: Record<string, number> = {};
+  for (const k of Object.keys(b)) neg[k] = -b[k]!;
+  return dimsMul(a, neg);
+}
+
+// Print a Dims as a unit expression: `m`, `m/s`, `m/s^2`, `m^2`, `1` (empty).
+export function dimsToString(d: Dims): string {
+  const term = (atom: string, e: number) => (e === 1 ? atom : `${atom}^${e}`);
+  const pos = Object.keys(d).filter(k => d[k]! > 0).sort();
+  const neg = Object.keys(d).filter(k => d[k]! < 0).sort();
+  const numer = pos.length ? pos.map(k => term(k, d[k]!)).join("*") : "1";
+  if (neg.length === 0) return numer;
+  return `${numer}/${neg.map(k => term(k, -d[k]!)).join("*")}`;
 }
 
 // Helpers
@@ -61,6 +109,7 @@ export function isMono(t: Type): boolean {
     case "Tainted": return isMono(t.inner);
     case "Async": case "Stream": return isMono(t.inner);
     case "Refinement": return isMono(t.base);
+    case "United": return isMono(t.base);
   }
 }
 
@@ -83,6 +132,7 @@ export function typeToString(t: Type): string {
     case "Async": return `Async(${typeToString(t.inner)})`;
     case "Stream": return `Stream(${typeToString(t.inner)})`;
     case "Refinement": return t.pred;   // the refinement type's name (e.g. `Age`)
+    case "United": return t.name ?? dimsToString(t.dims);   // `Meters` if declared, else the computed dimension `m/s`
     case "ErrRow":
       return t.entries.length === 0 ? "{}" :
         `{${t.entries.map(e => e.prose ? `prose ${e.name}` : e.payload ? `${e.name}(${typeToString(e.payload)})` : e.name).join(" | ")}}`;

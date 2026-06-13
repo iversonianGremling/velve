@@ -1,5 +1,6 @@
 import type { Span } from "./span.js";
-import { freshVar, typeToString } from "./types.js";
+import { freshVar, typeToString, mkDims, dimsEqual, dimsMul, dimsDiv, isDimensionless } from "./types.js";
+import type { Dims } from "./types.js";
 import { stdlibLookup, stdlibModule, STDLIB_MODULE_NAMES } from "./stdlib.js";
 import { PRIMITIVE_MODE } from "./elements.js";
 import type { Type, Field, RowEntry } from "./types.js";
@@ -75,6 +76,7 @@ class Subst {
       case "Async":      return { ...t, inner: this.apply(t.inner) };
       case "Stream":     return { ...t, inner: this.apply(t.inner) };
       case "Refinement": return { ...t, base: this.apply(t.base) };
+      case "United":     return { ...t, base: this.apply(t.base) };
     }
   }
 }
@@ -92,6 +94,7 @@ function applyOne(t: Type, id: number, rep: Type): Type {
     case "Async":      return { ...t, inner: applyOne(t.inner, id, rep) };
     case "Stream":     return { ...t, inner: applyOne(t.inner, id, rep) };
     case "Refinement": return { ...t, base: applyOne(t.base, id, rep) };
+    case "United":     return { ...t, base: applyOne(t.base, id, rep) };
   }
 }
 
@@ -111,6 +114,7 @@ function collectFree(t: Type, acc: Set<number>): void {
     case "Record":     t.fields.forEach(f => collectFree(f.type, acc)); break;
     case "Tainted": case "Async": case "Stream": collectFree(t.inner, acc); break;
     case "Refinement": collectFree(t.base, acc); break;
+    case "United": collectFree(t.base, acc); break;
   }
 }
 
@@ -135,6 +139,7 @@ function substVars(t: Type, sub: Map<number, Type>): Type {
     case "Async":      return { ...t, inner: substVars(t.inner, sub) };
     case "Stream":     return { ...t, inner: substVars(t.inner, sub) };
     case "Refinement": return { ...t, base: substVars(t.base, sub) };
+    case "United":     return { ...t, base: substVars(t.base, sub) };
     default:           return t;
   }
 }
@@ -153,6 +158,7 @@ function findRow(t: Type): (Type & { tag: "ErrRow" }) | null {
     case "Record":     for (const f of t.fields) { const r = findRow(f.type); if (r) return r; } return null;
     case "Tainted": case "Async": case "Stream": return findRow(t.inner);
     case "Refinement": return findRow(t.base);
+    case "United":     return findRow(t.base);
     default:           return null;
   }
 }
@@ -331,6 +337,11 @@ let TYPE_ALIASES = new Map<string, { params: string[]; body: TypeRef }>();
 // holds those parameter names; at a call site they're bound from the dependent
 // argument expressions carried on the use (`InBounds(listLength xs)`).
 let REFINEMENTS = new Map<string, { params: string[]; baseRef: TypeRef; pred: Expr }>();
+// Unit-of-measure types (`type Meters = Number unit m`, B2). Kept separately like
+// REFINEMENTS: they resolve to a `United` type carrying the normalized dimension
+// vector. UNLIKE refinements, a unit is NOT transparent to its base — the algebra
+// (inferBinOp) enforces dimensional consistency; the solver never sees `dims`.
+let UNITS = new Map<string, { baseRef: TypeRef; dims: Dims }>();
 // Function parameter names (first clause), so a dependent refinement argument like
 // `listLength list` can be resolved against the actual call arguments.
 let FN_PARAMS = new Map<string, string[]>();
@@ -500,6 +511,14 @@ function resolveRef(ref: TypeRef, tp: Map<string, Type>, sagas?: Map<string, Typ
           ? { tag: "Refinement", base, pred: ref.name, args: depArgs }
           : { tag: "Refinement", base, pred: ref.name };
       }
+      const unit = UNITS.get(ref.name);
+      if (unit) {
+        // A unit type is opaque to its base: resolve to `United` carrying the
+        // dimension vector and the declared name (for friendly printing). Not put
+        // through ALIAS_RESOLVING — a unit base is a plain `Number`, never cyclic.
+        const base = resolveRef(unit.baseRef, tp, sagas);
+        return { tag: "United", base, dims: unit.dims, name: ref.name };
+      }
       const alias = TYPE_ALIASES.get(ref.name);
       if (alias && !ALIAS_RESOLVING.has(ref.name)) {
         ALIAS_RESOLVING.add(ref.name);
@@ -554,9 +573,16 @@ function registerAliases(decls: Decl[]): void {
   for (const decl of decls) {
     if (decl.tag === "DModule") registerAliases(decl.decls);
     else if (decl.tag === "DType" && decl.body.tag === "TBAlias") {
-      TYPE_ALIASES.set(decl.name, { params: decl.params, body: decl.body.ref });
-      if (decl.body.pred)
-        REFINEMENTS.set(decl.name, { params: decl.params, baseRef: decl.body.ref, pred: decl.body.pred });
+      if (decl.body.unit) {
+        // A unit type resolves to `United`, NOT to a transparent alias — so it is
+        // registered in UNITS only (not TYPE_ALIASES, which would erase the unit
+        // back to `Number` before the algebra ever sees it).
+        UNITS.set(decl.name, { baseRef: decl.body.ref, dims: mkDims(decl.body.unit) });
+      } else {
+        TYPE_ALIASES.set(decl.name, { params: decl.params, body: decl.body.ref });
+        if (decl.body.pred)
+          REFINEMENTS.set(decl.name, { params: decl.params, baseRef: decl.body.ref, pred: decl.body.pred });
+      }
     }
     else if (decl.tag === "DFn") {
       if (decl.total) TOTAL_FNS.set(decl.name, decl.clauses);
@@ -1375,6 +1401,17 @@ function unify(a: Type, b: Type, ctx: Ctx, span: Span, hint?: string): void {
   if (ta.tag === "Refinement") { unify(ta.base, tb, ctx, span, hint); return; }
   if (tb.tag === "Refinement") { unify(ta, tb.base, ctx, span, hint); return; }
 
+  // Unit types are NOT transparent (unlike refinements): two `United` types
+  // unify iff their dimensions match — and a `United` vs a bare base (or a
+  // differing unit) falls through to the mismatch error below, which is the
+  // explicit-casts-only rule (`5` is not a `Meters` without a constructor).
+  if (ta.tag === "United" && tb.tag === "United") {
+    unify(ta.base, tb.base, ctx, span);
+    if (!dimsEqual(ta.dims, tb.dims))
+      err(ctx, span, `${hint ? hint + ": " : ""}unit mismatch — ${typeToString(ta)} vs ${typeToString(tb)}`);
+    return;
+  }
+
   if (ta.tag === "Prim" && tb.tag === "Prim" && ta.kind === tb.kind) return;
   if (ta.tag === "Atom" && tb.tag === "Atom" && ta.name === tb.name) return;
 
@@ -1564,6 +1601,7 @@ export function infer(mod: Module, resolutions: ResolutionMap): InferResult {
   // Register type aliases / refinements up front so forward references resolve.
   TYPE_ALIASES = new Map();
   REFINEMENTS = new Map();
+  UNITS = new Map();
   FN_PARAMS = new Map();
   FN_SIGS = new Map();
   TOTAL_FNS = new Map();
@@ -3314,8 +3352,23 @@ class Inferrer {
     const dur: Type = { tag: "Named", name: "Duration", args: [] };
     const isDur = (t: Type) => { const a = this.ctx.subst.apply(t); return a.tag === "Named" && a.name === "Duration"; };
 
+    // Units of measure (B2, numeric-dimension-design.md §2.2). `*`/`/` add/subtract
+    // exponent vectors (collapsing a cancelled dimension back to `Number`); `+`/`-`
+    // require matching dimensions. The solver never sees this — it is a shape
+    // algebra. Disjoint from Duration (a `Named` type, not `United`), so the two
+    // dimension stories coexist until B2(ii) folds Duration into this algebra.
+    const asUnit = (t: Type) => { const a = this.ctx.subst.apply(t); return a.tag === "United" ? a : null; };
+    const lu = asUnit(l), ru = asUnit(r);
+    const united = (dims: Dims): Type => isDimensionless(dims) ? num : { tag: "United", base: num, dims };
+
     switch (expr.op) {
       case "+": case "-": {
+        if (lu || ru) {
+          // Both must be the SAME dimension — `m + m`, not `m + s` and not `m + Number`.
+          if (lu && ru && dimsEqual(lu.dims, ru.dims)) return lu;
+          err(this.ctx, expr.span, `'${expr.op}' needs matching units — got ${typeToString(this.ctx.subst.apply(l))} and ${typeToString(this.ctx.subst.apply(r))}`);
+          return lu ?? ru!;
+        }
         // Duration ± Duration → Duration; Number ± Number → Number; mixed → error.
         if (isDur(l) || isDur(r)) {
           unify(l, dur, this.ctx, expr.span, `'${expr.op}' on a Duration needs both operands to be Durations`);
@@ -3327,6 +3380,14 @@ class Inferrer {
         return num;
       }
       case "*": {
+        if (lu || ru) {
+          // m * s → m·s (exponents add); m * Number → m (scaling). A cancelled
+          // result (e.g. (m/s) * s) collapses to bare Number via `united`.
+          if (lu && ru) return united(dimsMul(lu.dims, ru.dims));
+          const u = (lu ?? ru)!;
+          unify(lu ? r : l, num, this.ctx, expr.span, "scaling a united value requires a Number");
+          return u;
+        }
         // Duration * Number / Number * Duration → Duration (scaling); Duration² → error.
         const ld = isDur(l), rd = isDur(r);
         if (ld && rd) { err(this.ctx, expr.span, "cannot multiply two Durations (the result would be time²)"); return dur; }
@@ -3337,6 +3398,14 @@ class Inferrer {
         return num;
       }
       case "/": {
+        if (lu || ru) {
+          // m / s → m/s; m / m → Number (dimensionless collapse — the `400ms /
+          // 100ms : Number` win, generalized); Number / s → s^-1 (e.g. frequency).
+          if (lu && ru) return united(dimsDiv(lu.dims, ru.dims));
+          if (lu) { unify(r, num, this.ctx, expr.span, "dividing a united value requires a Number"); return lu; }
+          unify(l, num, this.ctx, expr.span, "'/' requires Number");
+          return united(dimsDiv({}, ru!.dims));
+        }
         // Duration / Number → Duration; Duration / Duration → Number (ratio).
         const ld = isDur(l), rd = isDur(r);
         if (ld && rd) return num;

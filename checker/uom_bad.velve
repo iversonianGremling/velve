@@ -1,0 +1,26 @@
+@edition "2026.6"
+
+-- The rejections the unit algebra forces (B2(i)). A unit is NOT transparent to
+-- its base, so mixing dimensions is a type error — the whole point of units.
+-- Expected: exactly 3 errors.
+
+module bad_units
+  type Meters   = Number unit m
+  type Seconds  = Number unit s
+  type Velocity = Number unit m/s
+
+  -- 1: m + s — addition requires MATCHING dimensions.
+  def addMixed(d: Meters, t: Seconds): Meters
+    d + t
+
+  -- 2: return-type mismatch — d / t is m/s (Velocity), not Meters. The unit
+  -- vector is the identity, so m/s does not unify with m.
+  def wrongRet(d: Meters, t: Seconds): Meters
+    d / t
+
+  -- 3: comparison across units — `<` requires matching dimensions too.
+  def cmpMixed(d: Meters, t: Seconds): Bool
+    d < t
+
+def main(): Number
+  0

@@ -58,6 +58,7 @@ function isCopy(t: Type | undefined): boolean {
     case "Record":     return t.fields.every(f => isCopy(f.type));
     case "Tainted":    return isCopy(t.inner);
     case "Refinement": return isCopy(t.base);
+    case "United":     return isCopy(t.base);        // a unit is a Number with a dimension tag → copies like its base
     case "Named":      return false;                 // List/Dict/ADTs own their data → affine
     case "Async":      return false;                 // a pending computation is a resource
     case "Stream":     return false;                 // a live stream is a resource

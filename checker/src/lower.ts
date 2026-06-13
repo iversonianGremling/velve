@@ -525,12 +525,36 @@ export class Lowerer {
         ? n.children.slice(whereIdx + 1).find(c => c.isNamed && isExprKind(c.type))
         : undefined;
       const pred = predNode ? this.lowerExpr(predNode) : null;
-      body = typeNode
-        ? { tag: "TBAlias", ref: this.lowerTypeRef(typeNode), pred }
-        : { tag: "TBAlias", ref: { tag: "TRNamed", name: "Unknown", args: [] }, pred };
+      // `type T = Number unit m/s^2` — collect the dimension as signed factors.
+      // The first factor is positive; each later factor's sign is the `*`/`/`
+      // token that precedes it. `^<int>` is the exponent (default 1).
+      const unitNode = named.find(c => c.type === "unit_clause");
+      const unit = unitNode ? this.lowerUnitClause(unitNode) : undefined;
+      const ref = typeNode ? this.lowerTypeRef(typeNode) : { tag: "TRNamed" as const, name: "Unknown", args: [] };
+      body = { tag: "TBAlias", ref, pred, ...(unit ? { unit } : {}) };
     }
 
     return { tag: "DType", name, params, body, span: this.sp(n) };
+  }
+
+  // `unit m/s^2` → [{atom:"m",exp:1},{atom:"s",exp:-2}]. Walks the unit_clause's
+  // children in order: the leading `unit` keyword is skipped, each `unit_factor`
+  // takes the sign of the most recent `/` (negative) or `*`/start (positive).
+  private lowerUnitClause(n: N): { atom: string; exp: number }[] {
+    const out: { atom: string; exp: number }[] = [];
+    let sign = 1;
+    for (const c of n.children) {
+      if (c.type === "/") sign = -1;
+      else if (c.type === "*") sign = 1;
+      else if (c.type === "unit_factor") {
+        const atom = c.namedChildren.find(k => k.type === "lower_id")?.text ?? "?";
+        const numNode = c.namedChildren.find(k => k.type === "number");
+        const exp = numNode ? parseInt(numNode.text, 10) : 1;
+        out.push({ atom, exp: sign * exp });
+        sign = 1;
+      }
+    }
+    return out;
   }
 
   private lowerVariant(n: N): AdtVariant {

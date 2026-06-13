@@ -207,6 +207,24 @@ types**, not eight scattered numeric sketches.
   conversions, `Math.*` interplay (sqrt halves exponents), fixtures incl.
   the classic `ms*ms → Duration²` pin; (iii) std unit library if wanted.
   Erases at lowering (today: eval never sees types — free).
+  - **B2(i) SHIPPED 2026-06** (`uom_test`/`uom_bad`, SPEC §2.15). The
+    `{ tag: "United"; base; dims; name? }` variant landed with `dims` a
+    normalized atom→exponent vector (the canonical identity — `m/s` ≡
+    `Velocity`; the solver never sees it). Grammar: a `unit_clause` tail on a
+    `Number` type alias (`type Velocity = Number unit m/s`), a flat
+    signed-factor form (`m/s^2` → `[{m,1},{s,-2}]`), additive — corpus parser.c
+    regenerates clean, zero baseline change but the two new rows. Algebra in
+    `inferBinOp`: `*` adds / `/` subtracts exponents (a cancelled dimension
+    collapses to bare `Number` — the `400ms/100ms` win generalized), `+`/`-`
+    require `dimsEqual`, scaling by a scalar (`m * Number`) keeps the dimension.
+    `unify` compares two `United` by dims and lets `United`-vs-base fall through
+    to the mismatch error — that IS the explicit-casts-only rule (a `Number` is
+    not a `Meters`). **Duration left untouched** (still a `Named` type, `ms*ms`
+    still errors): folding it into the algebra so `ms*ms → Duration²` is the
+    B2(ii) showcase. Deferred to a later slice with conversions: unit-value
+    construction (constructors / literal-defaulting), so B2(i)'s fixture
+    validates the compile-time algebra through unit-typed defs and runs on the
+    erased (plain-`Number`) semantics.
 - **B3. Sized types + the `overflow` obligation** *(2 slices)*. (i) The
   stdlib range-refinement family (`u8 i8 u16 i16 u32 i32`) with gates
   (`u8(n): Result u8 String`) and closed ops — mirrors the

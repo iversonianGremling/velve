@@ -364,13 +364,20 @@ export default grammar({
     // Types
     // ----------
 
+    // Units of measure (B2): `Number unit m/s^2` — a dimension expression as a
+    // flat sequence of signed factors. The first factor is positive; each later
+    // factor's sign is the `*`/`/` that precedes it. `^<int>` is the exponent.
+    // Lowered to a normalized atom→exponent vector; the solver never sees it.
+    unit_clause:  $ => seq('unit', $.unit_factor, repeat(seq(choice('*', '/'), $.unit_factor))),
+    unit_factor:  $ => seq($.lower_id, optional(seq('^', $.number))),
+
     type_def: $ => seq(
       'type',
       $.upper_id,
       repeat($.lower_id),
       choice(
         seq('=', 'extern', $.record_type, $._newline),
-        seq('=', $._type, optional(seq('where', $._expr)), $._newline),
+        seq('=', $._type, optional($.unit_clause), optional(seq('where', $._expr)), $._newline),
         seq(
           optional(seq('version', ':', $.number, $._newline)),
           $._newline,

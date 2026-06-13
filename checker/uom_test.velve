@@ -1,0 +1,57 @@
+@edition "2026.6"
+
+-- Units of measure (B2(i), numeric-dimension-design.md): ONE dimensional
+-- algebra. A unit type is `Number unit <dim>`; the new `United` Type variant
+-- carries a normalized exponent vector the solver never sees (a shape
+-- discipline, like effects). The rules, all exercised below:
+--   *  adds exponents      (m * m = m^2,  m/s / s = m/s^2)
+--   /  subtracts exponents (m / s = m/s)
+--   /  collapses a cancelled dimension back to bare Number (m / m : Number)
+--   +/- and comparison require MATCHING dimensions (m + m ok; m + s is a
+--      type error — see uom_bad.velve)
+--   a unit is NOT transparent to Number: `m * Number` scales (stays m), but
+--      `m + Number` would error (explicit-casts-only).
+-- Units erase at runtime — every value here is just a Number when it runs;
+-- `main` shows the same arithmetic on raw Numbers (what the unit code lowers
+-- to). Constructing unit VALUES (constructors / literal coercion) is a later
+-- slice; here the six defs validate the compile-time algebra.
+-- Expected: clean; runs.
+
+module kinematics
+  type Meters   = Number unit m
+  type Seconds  = Number unit s
+  type Velocity = Number unit m/s
+  type Accel    = Number unit m/s^2
+  type Area     = Number unit m^2
+
+  -- distance / time = velocity   (m / s → m/s)
+  def speed(d: Meters, t: Seconds): Velocity
+    d / t
+
+  -- velocity / time = acceleration   (m/s / s → m/s^2)
+  def accelerate(v: Velocity, t: Seconds): Accel
+    v / t
+
+  -- m * m = m^2   (exponents add)
+  def area(w: Meters, h: Meters): Area
+    w * h
+
+  -- m + m = m   (matching dimensions)
+  def total(a: Meters, b: Meters): Meters
+    a + b
+
+  -- m / m = dimensionless → Number   (the collapse rule; the `400ms / 100ms`
+  -- Duration win, generalized)
+  def ratio(a: Meters, b: Meters): Number
+    a / b
+
+  -- m * Number = m   (scaling by a plain number — a unit is not transparent,
+  -- but multiplication by a scalar keeps the dimension)
+  def scale(d: Meters, k: Number): Meters
+    d * k
+
+def main(): Effect [io] ()
+  -- the speed(100m, 20s) computation, unit-erased: m/s = 5
+  println(100 / 20)
+  -- area(3m, 4m) erased: 12
+  println(3 * 4)

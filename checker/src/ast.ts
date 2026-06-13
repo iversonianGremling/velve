@@ -291,7 +291,7 @@ export type StreamPolicy =
 // ── Type bodies (for type declarations) ──────────────────────────────────────
 
 export type TypeBody =
-  | { tag: "TBAlias";   ref: TypeRef; pred: Expr | null }  // pred set ⇒ refinement type
+  | { tag: "TBAlias";   ref: TypeRef; pred: Expr | null; unit?: { atom: string; exp: number }[] }  // pred set ⇒ refinement type; unit set ⇒ unit-of-measure type (B2). Raw signed factors from the `unit_clause`; normalized into a Dims vector at registration.
   | { tag: "TBRecord";  fields: { name: string; type: TypeRef; optional: boolean }[] }
   | { tag: "TBAdt";     variants: AdtVariant[] }
   | { tag: "TBExtern";  fields: { name: string; type: TypeRef }[]; align: number | null }
