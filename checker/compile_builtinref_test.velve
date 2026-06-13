@@ -1,0 +1,22 @@
+@edition "2026.6"
+
+-- D1(ix) green fixture — first-class BUILTIN references. A whitelisted builtin
+-- mentioned without calling it becomes a value, exactly as a user `def` does (D1(viii)).
+-- eval has it for free (a builtin is a VBuiltin in the environment); the compiled
+-- builtin is an inlined prelude `const`, itself a value, so the reference lowers to a
+-- bare name. This file binds a builtin and calls it, passes one to a higher-order
+-- function, and PRINTS three — including `int`, the one whose JS impl (`Math.trunc`)
+-- has a different native name, so the emitter wraps it to keep `.name` == "int" and the
+-- display `<fn:int>` byte-identical to eval's VBuiltin.
+
+def apply2(f: (Number -> Number), v: Number): Number
+  f(v)
+
+def main(): Effect [io] ()
+  let a = abs
+  println(a(-9))            -- 9  : builtin bound to a local, called by name
+  println(apply2(abs, -4))  -- 4  : builtin passed to a higher-order function
+  println(apply2(int, 7))   -- 7  : int(7) = trunc(7)
+  println(abs)              -- <fn:abs>
+  println(int)              -- <fn:int>   (the wrapped-name case)
+  println(floor)            -- <fn:floor>

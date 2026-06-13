@@ -1018,6 +1018,27 @@ dimension machinery generalize?
   unchanged). SPEC untouched; no graded row moves (still partial). **Next: D1(ix)** — first-class
   BUILTIN references (the same value-ification for the prelude functions) — still pre-effect.
 
+- [x] 🟢 **Phase D1(ix) — first-class BUILTIN references compile (the frontier twin flips again) —
+  DONE 2026-06** (`core.ts` `BUILTINS` branch in the `Var` normalizer + `norm` fast-path; `emitjs.ts`
+  `int` impl wrapped `(x) => Math.trunc(x)` so its const `.name` == "int"; `compile_builtinref_test.velve`).
+  The value D1(viii)'s guardrail was holding. A whitelisted builtin mentioned WITHOUT calling it is now
+  a value, exactly as a user `def` is: eval has it as a VBuiltin in the env, the compiled builtin is an
+  inlined prelude `const` (itself a value), so the reference lowers to a bare `Var` atom naming it — a
+  two-line echo of D1(viii). **One display trap paid down:** `$show` reads a function's `.name`, and
+  every prelude impl's const already carries its Velve name EXCEPT `int`, whose impl was the bare native
+  `Math.trunc` (`.name === "trunc"`). A printed `int` reference would have shown `<fn:trunc>` against
+  eval's `<fn:int>`, so the impl is now wrapped `(x) => Math.trunc(x)` — an assigned arrow whose const
+  infers `.name === "int"` — behaviourally identical for call sites, faithful for the value. Green
+  `compile_builtinref_test` (builtin let-bound+called, builtin passed to a HOF, `abs`/`int`/`floor`
+  printed) byte-identical to eval (`9 / 4 / 7 / <fn:abs> / <fn:int> / <fn:floor>`). The frontier twin
+  `compile_frontier_test` ROLLED builtin-reference→**short-circuit `&&`** (`true && false` — eval is
+  lazy in the right operand; the spine lowers only strict PrimOps, and `&&`/`||`/`|>` need control flow
+  the lowerer does not yet emit) — next unrepresented form — still exit 2. **No pre-existing corpus file
+  flipped.** Harness: **25 match / 0 mismatch / 0 js-crash / 114 unsupported** across 244 files (+1 match
+  = fixture; unsupported unchanged; the `int` rewrite perturbed no `int`-calling program). SPEC
+  untouched; no graded row moves (still partial). **Next: D1(x)** — short-circuit `&&`/`||` (lowered to a
+  lazy `if`), then `|>` — still pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

@@ -675,6 +675,29 @@ exists (`compiler-architecture-design.md`).
     SPEC untouched; no graded row moves (still partial). Next: **D1(ix)** = first-class
     BUILTIN references (the same value-ification for the prelude functions) — still
     pre-effect.
+  - **D1(ix) — first-class BUILTIN references compile (the frontier twin flips again) —
+    DONE 2026-06.** The value D1(viii)'s guardrail was holding. A whitelisted builtin
+    mentioned without calling it is now a value, exactly as a user `def` is: eval has it
+    as a VBuiltin in the environment, the compiled builtin is an inlined prelude `const`
+    (itself a value), so the reference lowers to a bare `Var` atom naming it. The lowering
+    is a two-line echo of D1(viii) — a `BUILTINS` branch in the `Var` normalizer and the
+    `norm` fast-path. **One display trap had to be paid down:** `$show` reads a function's
+    `.name`, and every prelude impl's const already carries its Velve name EXCEPT `int`,
+    whose impl was the bare native `Math.trunc` (`.name === "trunc"`). A printed `int`
+    reference would have shown `<fn:trunc>` against eval's `<fn:int>`, so the impl is now
+    wrapped `(x) => Math.trunc(x)` — an assigned arrow whose const infers `.name === "int"`
+    — behaviourally identical for the call sites, faithful for the value. Green fixture
+    `compile_builtinref_test.velve` (builtin let-bound and called, builtin passed to a HOF,
+    `abs`/`int`/`floor` printed) compiles **byte-identically** to eval (`9 / 4 / 7 /
+    <fn:abs> / <fn:int> / <fn:floor>`). The frontier twin `compile_frontier_test.velve` was
+    rolled to a **short-circuit `&&`** (`true && false` — eval evaluates it lazily; the
+    spine lowers only strict PrimOps, and `&&`/`||`/`|>` need control flow the lowerer does
+    not yet emit) — the next unrepresented form — and still refuses cleanly (exit 2). No
+    pre-existing corpus file flipped. Harness: **25 match, 0 mismatch, 0 js-crash**, 114
+    unsupported (244 files) — +1 match (the fixture), unsupported unchanged; the `int`
+    rewrite perturbed no `int`-calling program (0 mismatch). SPEC untouched; no graded row
+    moves (still partial). Next: **D1(x)** = short-circuit `&&`/`||` (lowered to a lazy
+    `if`), then `|>` — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

@@ -1,26 +1,24 @@
 @edition "2026.6"
 
--- D1(viii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it names a BUILTIN (`abs`) as a value rather than calling it. eval
--- has this for free — a builtin is a VBuiltin in the environment, so `let f = abs`
--- captures it — and a *user* `def` reference now lowers too (D1(viii)). But a builtin is
--- not a user `def`: it has no `function` declaration in the emitted module, only an
--- inlined prelude `const`, and the lowerer's first-class-reference path admits user defs
--- ONLY (`userFns`). So a bare builtin name is an out-of-scope `Var` the lowerer refuses
--- as a free variable. The differential harness must report it `unsupported` — a CLEAN
--- refusal at the compiler frontier — never a miscompile, never a JS crash.
+-- D1(ix) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it uses the short-circuit boolean `&&`. eval evaluates it (lazy
+-- in the right operand); the compute spine only lowers the STRICT arithmetic/comparison
+-- PrimOps, and `&&`/`||`/`|>` need control flow (lazy evaluation of the second operand,
+-- or a first-class pipeline) the lowerer does not yet emit — so `BinOp '&&'` is refused.
+-- The differential harness must report it `unsupported` — a CLEAN refusal at the
+-- compiler frontier — never a miscompile, never a JS crash.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
 -- yet lower, loudly", asserted by the harness rather than by an error count. D1(ii)
 -- moved the frontier PAST scalar `match`; D1(iii) PAST tuples; D1(iv) PAST ADT
 -- constructors; D1(v) PAST records; D1(vi) PAST lists; D1(vii) PAST closures-as-values;
--- D1(viii) PAST first-class `def` references — a named def bound, passed, returned, and
--- displayed `<fn:name>` (see compile_defref_test). The frontier now sits at FIRST-CLASS
--- BUILTIN references — naming a builtin as a value. This file binds one, so it still
--- refuses; when builtin references lower (a later D1 slice), it flips from `unsupported`
--- to a print with no edit.
+-- D1(viii) PAST first-class `def` references; D1(ix) PAST first-class BUILTIN references
+-- — a builtin bound, passed, and displayed `<fn:name>` (see compile_builtinref_test).
+-- The frontier now sits at SHORT-CIRCUIT booleans — `&&` (and its kin `||`, `|>`). This
+-- file uses one, so it still refuses; when short-circuit lowering lands (a later D1
+-- slice, as a lazy `if`), it flips from `unsupported` to a print with no edit.
 
 def main(): Effect [io] ()
-  let f = abs
-  println(f(-7))
+  let b = true && false
+  println(b)

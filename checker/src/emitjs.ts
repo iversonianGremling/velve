@@ -29,7 +29,10 @@ const BUILTIN_IMPL: Record<string, string> = {
   println:  "(...a) => { console.log(a.map($show).join(' ')); return $unit; }",
   toString: "(v) => $show(v)",
   abs:      "Math.abs", floor: "Math.floor", ceil: "Math.ceil",
-  round:    "Math.round", sqrt: "Math.sqrt", int: "Math.trunc",
+  round:    "Math.round", sqrt: "Math.sqrt",
+  // wrapped (not bare `Math.trunc`) so the const's inferred `.name` is "int", not
+  // "trunc" — a first-class `int` reference must display `<fn:int>` like eval's VBuiltin.
+  int:      "(x) => Math.trunc(x)",
   max:      "(a, b) => Math.max(a, b)", min: "(a, b) => Math.min(a, b)",
   // `length` mirrors eval: a list's element count, or a string's char count.
   length:   "(v) => (v && v.$t === 'L') ? v.es.length : v.length",

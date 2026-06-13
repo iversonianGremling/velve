@@ -578,8 +578,23 @@ match (fixture `compile_defref_test.velve`, byte-identical: `10 / 42 / 30 / 12 /
 <fn:double>`), no corpus flip. The frontier twin rolled to a **builtin reference** (`let f =
 abs` — eval has it as a VBuiltin, the first-class path admits user defs only, so it refuses
 `abs` as a free variable) and still refuses.
-**Remaining for D1(ix)+**: first-class BUILTIN references; non-tail match value; then
-`Perform` in D2.
+
+**D1(ix) shipped (2026-06) — first-class BUILTIN references (the frontier twin flips
+again).** A whitelisted builtin mentioned without calling it is now a value, exactly as a
+user `def` (D1(viii)): eval has it as a VBuiltin, the compiled builtin is an inlined
+prelude `const` (itself a value), so the reference lowers to a bare `Var` atom — a `BUILTINS`
+branch in the `Var` normalizer plus the `norm` fast-path. One display trap: `$show` reads a
+function's `.name`, and every prelude const already carries its Velve name except `int`
+(impl was bare `Math.trunc`, `.name === "trunc"`); a printed `int` would show `<fn:trunc>`
+vs eval's `<fn:int>`, so the impl is wrapped `(x) => Math.trunc(x)` whose assigned const
+infers `.name === "int"` (identical for calls, faithful for the value). Harness: **25 match
+/ 0 mismatch / 0 js-crash / 114 unsupported** (244 files) — +1 match (fixture
+`compile_builtinref_test.velve`, byte-identical: `9 / 4 / 7 / <fn:abs> / <fn:int> /
+<fn:floor>`), no corpus flip, the `int` rewrite perturbed no `int`-calling program. The
+frontier twin rolled to a **short-circuit `&&`** (`true && false` — eval is lazy; the spine
+lowers only strict PrimOps, `&&`/`||`/`|>` need control flow) and still refuses.
+**Remaining for D1(x)+**: short-circuit `&&`/`||`/`|>`; non-tail match value; then `Perform`
+in D2.
 
 ---
 
