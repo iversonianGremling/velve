@@ -53,7 +53,7 @@ means there is a green fixture exercising it under `checker/`.
 | Module-private constructors (`@private type`) | ✅ Built (2026-06) | §7.1, `private_ctor_test`/`_bad`: an ADT's constructors seal at the module boundary (no forging by call, no representation-dependence by pattern); the type name stays public. The soundness primitive for the refined-type tier (north-star §3.5 confirmed → shipped). Resolver scope stays flat — privacy is a use-site check. |
 | Refined-type library (Tier 1) | ✅ Built (2026-06) | §7.1, `refined_types_test`/`_bad`: `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — smart-constructor gates, closed ops, faulting ops through the gate; `divBy(n, NonZero)` makes division total and `getAt(xs, InBounds)` makes indexing safe **as type errors**, no solver. The library module is proof-carrying (`proofs: [total, exhaustive, handled]`). Pure library add — zero checker changes. Tier-1 bound: `InBounds` is not relational (Tier 1.5). |
 | `SortedList` — the semantic archetype | ✅ Built (2026-06) | §7.1, `sorted_list_test`/`_bad`: sortedness has no structural proxy (north-star §3.2), so it ships by the construct-it route — order checked once at the gate (`sortedList` rejects, `fromAny` folds the closed insert), closed ops (`slInsert` filter-split, `slMerge`) preserve it by construction, and `slMin` is O(1) `head` whose *correctness* precondition the type makes unforgeable. Proof-carrying module; pure library add — zero checker changes. The `_bad` twin's doctrinal pin: `proofs: [sorted]` is a vocabulary error — value invariants stay types. `where proof.sorted` (Tier 2) stays PROPOSED. |
-| Relational witness (Tier 1.5) | ✅ Built (2026-06) | §2.7, `index_witness_test`/`_bad`: `Index(length(xs))` — a dependent refinement of the in-range shape — ties an index to THAT list under `proofs: [bounds]`. Caller side: every argument at a witness param is PROVED from path facts (floor → Z3); callee side: the signature seeds the facts, so the read needs no guard. Check once, spend many; an index checked against `xs` and spent on `ys` is refuted with the model that splits them. v1: params only (return-position/`Result`-payload transport is the named follow-on); fn-as-value escapes the demand. |
+| Relational witness (Tier 1.5) | ✅ Built (2026-06) | §2.7, `index_witness_test`/`_bad`: `Index(length(xs))` — a dependent refinement of the in-range shape — ties an index to THAT list under `proofs: [bounds]`. Caller side: every argument at a witness param is PROVED from path facts (floor → Z3); callee side: the signature seeds the facts, so the read needs no guard. Check once, spend many; an index checked against `xs` and spent on `ys` is refuted with the model that splits them. The witness travels in **return** position too — through the `Result Index(length(xs)) e` gate (`index_gate_test`) and the bare `Index(length(xs))` return whose every tail proves total (`index_let_test`), both seeding the caller's binder. v1: a fn-as-value still escapes the demand. |
 | Backpressure per-stream policy | ✅ Built | `stream_policy_test`/`_bad`; `drop` / `buffer N` / `block` at decl site (§10.1). |
 | Theme system (`using` / `OnSurface`) | ✅ Built | `theme_token/using/record/root_test`; `Surface` tokens → `using` → derived `Theme` → live `theme` root (APCA-proven, `setTheme`). |
 | Call children (`card()` composition) | ✅ Built (2026-06) | §11.1, `call_child_test`/`_bad`: a bare lowercase component call is a `child` grammar form — composed views nest for real (closes the last children-flattening residual); a call child resolves, type-checks, and effect-checks like a call anywhere. |
@@ -316,9 +316,16 @@ for the witness, the dual of the demand. Two further bridges:
   no guard. The tie is relational on this bridge too — gating on `xs` and
   reading `ys` in the branch is refuted.
 
-v1 honest bounds: the gate rides the **Result** form (the `Ok`-binder of a
-`match`); a bare `Index(length(xs))` return would need a tail-position
-guarantee check, the remaining follow-on.
+**The bare-return spelling** *(SHIPPED 2026-06, `index_let_test`/`_bad`)*. The
+gate also rides the **unwrapped** return: a `def next(xs, i): Index(length(xs))`
+with no `Result` and no Error escape hatch is total, so the GUARANTEE applies to
+*every tail position* of the body — each `if`/`match` leaf must prove its index
+in range (`infer.tailExprs` walks the leaves; the off-by-one `i + 1` and the
+one-unproven-tail-while-its-sibling-proves cases each fail with a model). The
+SEED is the `let` dual of the `Ok`-binder: `let j = next(xs, i)` carries
+`0 ≤ j < length(xs)` onto `j`, so `xs[j]` reads with no `match` and no guard.
+Relational on both bridges — a return demanding `length(xs)` from an
+`Index(length(ys))` tail, or a seed for `xs` spent on `ys[j]`, is refuted.
 
 ### 2.8 Tainted types
 
@@ -2756,11 +2763,15 @@ Checkable today:
   conversely *assumes* its witness params' facts (assume/guarantee at the
   signature), so its read needs no guard. This moves the obligation across
   the call boundary without widening the vocabulary: the witness transports
-  the in-range fact, the fault class stays `bounds`. **In return position**
-  *(`index_gate_test`/`_bad`)* the same obligation rides the Result gate
-  `Result Index(length(xs)) e`: the callee proves each `Ok(payload)` in range
-  (the gate cannot lie) and the caller seeds the witness onto the `Ok`-binder
-  of a `match`, so `xs[j]` reads with no guard — the demand/assume pair, dualized.
+  the in-range fact, the fault class stays `bounds`. **In return position** the same
+  obligation rides two gate spellings: the Result gate
+  `Result Index(length(xs)) e` *(`index_gate_test`/`_bad`)* — the callee proves
+  each `Ok(payload)` in range and the caller seeds the witness onto the
+  `Ok`-binder of a `match` — and the **bare** `Index(length(xs))` return
+  *(`index_let_test`/`_bad`)*, where the callee proves *every tail position* of
+  its (total, Error-free) body and the caller seeds a `let` binder directly. The
+  gate cannot lie on any path; `xs[j]` reads with no guard — the demand/assume
+  pair, dualized.
 - **`arith`** *(2026-06, `proof_arith_test`/`_bad`)* — every call to a
   **domain-restricted math builtin** in the module must have its argument
   proved inside the domain: `sqrt(x)` needs `x ≥ 0`, `log`/`log2`/`log10` need

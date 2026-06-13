@@ -838,9 +838,27 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       `0 ≤ j < length(xs)` onto the `Ok(j)` match-binder, so `xs[j]` reads with
       no guard). `_bad` pins both bridges: GUARANTEE (no guard, half-guard, and
       the relational cross-list gate) and SEED (the relational wrong-read). v1
-      honest bounds: the gate rides the Result form (the `match` `Ok`-binder); a
-      bare `Index(length(xs))` return needs a tail-position guarantee check, the
-      one remaining follow-on. Zero grammar changes, zero eval.ts changes.
+      honest bounds: the gate rides the Result form (the `match` `Ok`-binder).
+      Zero grammar changes, zero eval.ts changes.
+- [x] **The bare-return witness spelling — `Index(length(xs))` direct, the
+      `let`-direct half (endgame A1)**: ✅ DONE (2026-06, SPEC §2.7 + §12.7,
+      `index_let_test`/`_bad` — 0 errors + runs `30/30/30/20`, and exactly
+      4 errors; baselines unchanged except the two new rows — verified by the
+      stash-dance, the 193-row check AND run corpora IDENTICAL old-vs-new). The
+      last A1 follow-on: the witness now also rides the UNWRAPPED return. A def
+      returning a bare `Index(length(xs))` (no `Result`, no Error escape hatch)
+      is total, so the GUARANTEE applies to EVERY tail position — `infer.tailExprs`
+      walks If/Match/Await/Do-block leaves and records a `WITNESS_DEMANDS` entry
+      on each, which facts.ts proves from that branch's path facts (the `then`
+      tail can prove while its `else` sibling fails — they're checked
+      independently). SEED: `bareWitnessRet` records the gate call in
+      `WITNESS_RETURNS` (sharing the Result-gate table via `?? `), and
+      facts.ts `walkStmt`'s `SBind` seeds `0 ≤ j < length(xs)` onto the `let`
+      binder — the `let` dual of `walkBranch`'s `Ok(j)` seed — so `xs[j]` reads
+      with no `match`, no guard. `_bad` pins both bridges four ways: GUARANTEE
+      (construction overshoot `i + 1`, one-tail-unproven-while-sibling-proves,
+      the relational cross-list return), SEED (the relational wrong-read).
+      Zero grammar changes, zero eval.ts changes. **A1 now fully shipped.**
 - [x] **`arith` — the partial-arithmetic-domain obligation (endgame A2)**:
       ✅ DONE (2026-06, SPEC §12.7, `proof_arith_test`/`_bad` — 0 errors + runs
       `3/0/0/9/4/4/0`, and exactly 4 errors; baselines unchanged except the two

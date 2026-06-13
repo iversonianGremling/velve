@@ -428,13 +428,39 @@ function witnessUseOf(pt: Type & { tag: "Refinement" }): { ref: string; listPara
 }
 
 // Return-gate view: the success payload of `Result(Index(length(p)), e)` is a
-// witness for `p`. Only the Result form is wired (the gate proves its own
-// payload); a bare `Index(length(p))` return is deliberately not a witness
-// here — it would need a tail-position guarantee, the named follow-on.
+// witness for `p` — the gate proves its own payload on the Ok path.
 function resultWitnessRet(t: Type): { ref: string; listParam: string } | null {
   if (t.tag !== "Named" || t.name !== "Result" || t.args.length < 1) return null;
   const ok = t.args[0];
   return ok && ok.tag === "Refinement" ? witnessUseOf(ok) : null;
+}
+
+// Bare-return view: a def returning `Index(length(p))` UNWRAPPED is itself a
+// gate — every tail position of its body is a witness DEMAND (the GUARANTEE,
+// recorded in inferClause over tailExprs), and a call to it seeds a `let`
+// binder in the caller (the SEED, the same WITNESS_RETURNS table the Result
+// gate uses). The total path: no Error escape hatch, so the body must prove an
+// in-range index on EVERY branch.
+function bareWitnessRet(t: Type): { ref: string; listParam: string } | null {
+  return t.tag === "Refinement" ? witnessUseOf(t) : null;
+}
+
+// Tail positions of a function body — the leaf expressions that become the
+// return value. A bare-witness return demands the witness on each of them
+// (every path must hand back an in-range index); intermediate `let`s and
+// guards are not tails. Conservative: shapes it doesn't recognize (the body
+// IS the tail) fall through to the leaf case, and a block not ending in an
+// expression yields nothing (the type checker already errors on that).
+function tailExprs(e: Expr): Expr[] {
+  switch (e.tag) {
+    case "If":    return [...tailExprs(e.then), ...(e.else_ ? tailExprs(e.else_) : [])];
+    case "Match": case "Await": return e.branches.flatMap(b => tailExprs(b.body));
+    case "Do": {
+      const last = e.stmts[e.stmts.length - 1];
+      return last && last.tag === "SExpr" ? tailExprs(last.expr) : [];
+    }
+    default: return [e];
+  }
 }
 
 // Seed-side view (facts.ts entry): from a param's ASCRIPTION, the witness
@@ -2034,6 +2060,17 @@ class Inferrer {
 
     const bodyType = this.inferExpr(clause.body, env);
     unify(bodyType, retType, this.ctx, clause.body.span, `'${name}' return type`);
+
+    // Bare-witness return GUARANTEE: a def returning `Index(length(p))` UNWRAPPED
+    // (no Result escape hatch) must hand back an in-range index on every path —
+    // so each tail position of the body is a witness demand, proved from that
+    // branch's facts by facts.ts (`proofs: [bounds]`). The dual of the Result
+    // gate's `Ok(payload)` demand; the caller seeds it onto a `let` (below).
+    {
+      const w = bareWitnessRet(this.ctx.subst.apply(retType));
+      if (w) for (const tail of tailExprs(clause.body))
+        WITNESS_DEMANDS.set(tail, { list: w.listParam, ref: w.ref });
+    }
     // Ascription effect-coverage: a return ascription must not ERASE the
     // body value's effect row (effects don't participate in unification, so
     // the unify above would silently retype `netGet` as `(String -> String)`).
@@ -2599,11 +2636,12 @@ class Inferrer {
           checkLatentArgEffects(expr.fn.tag === "Var" ? expr.fn.name : "fn");
 
         // Return-gate SEED (caller side): a full-arity call to a gate returning
-        // `Result(Index(length(p)), e)` records the witness with the caller's
-        // actual list substituted for the callee param `p`; facts.ts seeds it
-        // onto the `Ok`-binder of a `match`.
+        // a witness — `Result(Index(length(p)), e)` (seeds a `match`'s Ok-binder)
+        // or a bare `Index(length(p))` (seeds a `let` binder) — records it with
+        // the caller's actual list substituted for the callee param `p`.
         if (resolvedFnT.tag === "Fn") {
-          const w = resultWitnessRet(this.ctx.subst.apply(resolvedFnT.ret));
+          const retT = this.ctx.subst.apply(resolvedFnT.ret);
+          const w = resultWitnessRet(retT) ?? bareWitnessRet(retT);
           if (w) {
             const paramNames = expr.fn.tag === "Var" ? (FN_PARAMS.get(expr.fn.name) ?? []) : [];
             const j = paramNames.indexOf(w.listParam);

@@ -69,14 +69,21 @@ Phase B) are live. The Tier-1.5 relational witness
 (`Index(length(xs))` dependent-refinement params: callers prove from path
 facts, callees assume their signatures) just shipped. What's left in-arc:
 
-- **A1. Witness gate spelling — binder seeding** *(1–2 slices)*. **The
-  `Ok`-payload half SHIPPED 2026-06** (`index_gate_test`/`_bad`): the Result
-  gate `Result Index(length(xs)) e` carries the witness in return position —
-  the callee proves each `Ok(payload)` in range (the gate can't lie), the
-  caller seeds the `Ok`-binder of a `match`. The split landed exactly where
-  this item predicted: the `let`-direct half (a bare `Index(length(xs))`
-  return seeding `let j = …`) remains — it needs a tail-position guarantee
-  check, the one open follow-on. Original framing: Make
+- **A1. Witness gate spelling — binder seeding** *(1–2 slices)*. **FULLY
+  SHIPPED 2026-06.** The `Ok`-payload half (`index_gate_test`/`_bad`): the
+  Result gate `Result Index(length(xs)) e` carries the witness in return
+  position — the callee proves each `Ok(payload)` in range (the gate can't
+  lie), the caller seeds the `Ok`-binder of a `match`. **The `let`-direct half
+  SHIPPED 2026-06** (`index_let_test`/`_bad`): a def returning a BARE
+  `Index(length(xs))` (no `Result`, no Error escape hatch) is itself a gate —
+  the tail-position guarantee check landed as `infer.tailExprs` (walk If/Match/
+  Await/Do-block leaves) feeding `WITNESS_DEMANDS` over EVERY tail (the body is
+  total, so each path must hand back an in-range index), and `bareWitnessRet`
+  records the call in `WITNESS_RETURNS` so `facts.walkStmt` seeds the `let`
+  binder — the `let` dual of the `match … | Ok(j)` seed in `walkBranch`. Both
+  bridges pinned four ways in the `_bad` twin (construction overshoot, one tail
+  unproven while its sibling proves, return relational pin, seed relational
+  pin). Zero perturbation to the 193-row corpus. Original framing: Make
   `checkBounds(i, xs): Result(Index(length(xs)), :oob)` real: a dependent
   refinement in **return position** instantiates its `length(xs)` argument
   with the caller's actual binding, and the facts seed onto the binder —
@@ -336,8 +343,9 @@ the backend and breadth are then build phases, not open questions.
   `proofs: [bounds, total]`-equivalent + gate-spelling fixture green +
   `arith` in the checkable list + sortBy divergence closed. **All four met
   (2026-06)** — `proof_binsearch_test`, `index_gate_test`, `proof_arith_test`,
-  `sortby_test`. What remains in-arc is optional/deferred: A4 (finer proof
-  scopes, possibly cut) and the A1 `let`-direct tail-position follow-on.
+  `sortby_test`. The A1 `let`-direct tail-position follow-on also shipped
+  (`index_let_test`/`_bad`). What remains in-arc is optional/deferred: A4
+  (finer proof scopes, possibly cut).
 - **Phase B done** = `proofs: [overflow]` fixture green with a Z3 model in
   the `_bad`; `ms*ms → Duration²` pin green; Low-level row re-graded with
   the fixture named.

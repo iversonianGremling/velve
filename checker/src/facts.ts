@@ -787,6 +787,19 @@ function walkStmt(s: Stmt, env: Env): Env {
           && !s.mutable && s.declares && translatable(s.value)
           && !termNames(s.value, new Set()).has(s.pat.name))
         next = addFact(next, mkFact(varE(s.pat.name, s.pat.span), "==", s.value));
+      // Return-gate SEED through `let`: `let j = gate(xs)` where gate returns a
+      // bare `Index(length(xs))` (recorded in WITNESS_RETURNS) — the callee
+      // proved its tail in range, so the binder carries those facts and the
+      // licensed read `xs[j]` needs no guard. The `let` dual of walkBranch's
+      // `match … | Ok(j) ->` seed.
+      const ret = WITNESS_RETURNS.get(s.value);
+      if (ret && ret.list !== null && (s.pat.tag === "PVar" || s.pat.tag === "PTyped")
+          && !s.mutable && s.declares) {
+        const lenE: Expr = { tag: "Call", fn: varE("length", s.pat.span),
+                             args: [varE(ret.list, s.pat.span)], named: [], span: s.pat.span };
+        next = addFact(next, mkFact(varE(s.pat.name, s.pat.span), ">=", numE(0, s.pat.span)));
+        next = addFact(next, mkFact(varE(s.pat.name, s.pat.span), "<", lenE));
+      }
       return next;
     }
     case "SExpr": walkExpr(s.expr, env); return env;

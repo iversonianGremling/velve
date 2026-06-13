@@ -1,0 +1,48 @@
+-- Phase A1 (the let-direct half): the RETURN witness without the Result wrapper.
+-- The Tier-1.5 relational witness `Index(length(xs))` now also travels in BARE
+-- return position — a def whose return type IS `Index(length(xs))` (no `Result`,
+-- no Error escape hatch) is itself a gate. Two bridges, both under `proofs: [bounds]`,
+-- the duals of the Result-gate ones (`index_gate_test`):
+--   • GUARANTEE (callee): every TAIL POSITION of the body is proved in range —
+--     there is no Error branch to fall back on, so the index is total. The gate
+--     cannot hand back an out-of-range index on ANY path.
+--   • SEED (caller): `let j = gate(xs)` ties `j` to THAT list directly — the
+--     binder carries the witness facts, so the licensed read `xs[j]` needs no
+--     `match`, no guard. The `let` dual of `match … | Ok(j) -> …`.
+-- Expected: clean; runs.
+@edition "2026.6"
+
+type Index n = Number where 0 <= value && value < n
+
+module slots
+  proofs: [bounds]
+
+  -- THE GATE (construct): both tails prove. `i + 1` is in range on the guarded
+  -- path (`i >= 0` from the witness param, `i + 1 < length(xs)` from the guard);
+  -- `i` is the witness param itself. Total — every path returns an Index.
+  def next(xs: List(Number), i: Index(length(xs))): Index(length(xs))
+    if i + 1 < length(xs) then i + 1 else i
+
+  -- THE GATE (select): each tail is an in-range witness param, so the max of two
+  -- valid indices is itself valid. No construction, pure selection.
+  def maxIdx(xs: List(Number), i: Index(length(xs)), j: Index(length(xs))): Index(length(xs))
+    if i > j then i else j
+
+  -- THE SEED through `let`: `k` carries the witness facts from `next`, so the
+  -- read needs no guard and no `match`.
+  def step(xs: List(Number), i: Index(length(xs))): Number
+    let k = next(xs, i)
+    xs[k]
+
+  -- The seed survives a second hop: `maxIdx` returns a witness, `let m = …`
+  -- carries it, the read is licensed.
+  def pick(xs: List(Number), i: Index(length(xs)), j: Index(length(xs))): Number
+    let m = maxIdx(xs, i, j)
+    xs[m]
+
+def main(): Effect [io] ()
+  let xs = [10, 20, 30]
+  println(step(xs, 1))      -- next(xs,1): 1+1=2 < 3 -> 2; xs[2] = 30
+  println(step(xs, 2))      -- next(xs,2): 3 < 3 false -> 2; xs[2] = 30
+  println(pick(xs, 0, 2))   -- maxIdx(0,2) -> 2; xs[2] = 30
+  println(pick(xs, 1, 0))   -- maxIdx(1,0) -> 1; xs[1] = 20

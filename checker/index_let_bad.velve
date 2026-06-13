@@ -1,0 +1,40 @@
+-- The bare-return witness, violated four ways (the let-direct dual of
+-- index_gate_bad). The gate cannot lie on ANY tail (GUARANTEE) and its `let`
+-- seed is tied to THAT list (SEED) — pinned on both bridges. Expected: exactly
+-- 4 errors.
+@edition "2026.6"
+
+type Index n = Number where 0 <= value && value < n
+
+module slots
+  proofs: [bounds]
+
+  def next(xs: List(Number), i: Index(length(xs))): Index(length(xs))
+    if i + 1 < length(xs) then i + 1 else i
+
+  -- 1: GUARANTEE, construction overshoots — `i + 1` may equal length(xs) (the
+  --    witness gives i < length(xs), so i + 1 <= length(xs)). Off-by-one; no
+  --    guard narrows it. Z3 answers with i = length(xs) - 1.
+  def overshoot(xs: List(Number), i: Index(length(xs))): Index(length(xs))
+    i + 1
+
+  -- 2: GUARANTEE, ONE tail unproven — the `then` proves (full two-sided guard),
+  --    the `else` returns `i` with the guard negated (i may be negative or oob).
+  --    Each tail is checked independently; exactly one fails.
+  def halfTail(xs: List(Number), i: Number): Index(length(xs))
+    if i >= 0 && i < length(xs) then i else i
+
+  -- 3: GUARANTEE, the relational pin — `i` is an in-range witness for `ys`, but
+  --    the RETURN demands an index into `xs`. Facts about length(ys) buy nothing
+  --    about length(xs).
+  def crossed(xs: List(Number), ys: List(Number), i: Index(length(ys))): Index(length(xs))
+    i
+
+  -- 4: SEED, the relational pin — `let k = next(xs, i)` licenses `xs`, the read
+  --    is `ys[k]`. The seeded facts are about the RIGHT list only.
+  def wrongRead(xs: List(Number), ys: List(Number), i: Index(length(xs))): Number
+    let k = next(xs, i)
+    ys[k]
+
+def main(): Number
+  0
