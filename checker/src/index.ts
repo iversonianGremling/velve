@@ -9,7 +9,7 @@ import { checkExhaustiveness } from "./exhaust.js";
 import { checkBorrows } from "./borrow.js";
 import { checkTotality } from "./total.js";
 import { checkHandled } from "./handled.js";
-import { checkNonZero, checkBounds } from "./facts.js";
+import { checkNonZero, checkBounds, checkArith } from "./facts.js";
 import { buildMeasureJobs } from "./terminates.js";
 import { discharge } from "./smt.js";
 import { Evaluator } from "./eval.js";
@@ -47,10 +47,11 @@ if (cmd === "check") {
   // was the structural decrease (the Tier-2 measure check).
   const { diagnostics: nonZeroDiags, residue } = checkNonZero(mod, resolutions);
   const { diagnostics: boundsDiags, residue: boundsResidue } = checkBounds(mod, types, resolutions);
+  const { diagnostics: arithDiags, residue: arithResidue } = checkArith(mod, resolutions);
   const { diagnostics: measureDiags, jobs } = buildMeasureJobs(candidates, resolutions);
-  const smtDiags = await discharge(residue, jobs, boundsResidue);
+  const smtDiags = await discharge(residue, jobs, boundsResidue, arithResidue);
 
-  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags, ...boundsDiags, ...measureDiags, ...smtDiags];
+  const allDiags = [...parseDiags, ...lowerDiags, ...resolveDiags, ...inferDiags, ...exhaustDiags, ...borrowDiags, ...totalDiags, ...handledDiags, ...nonZeroDiags, ...boundsDiags, ...arithDiags, ...measureDiags, ...smtDiags];
   console.log(`${types.size} expressions typed, ${resolutions.size} names resolved`);
   if (allDiags.length === 0) {
     console.log("no errors");

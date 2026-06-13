@@ -64,7 +64,8 @@ open questions:
 
 The fact environment (`facts.ts`), Z3 back-end (`smt.ts`), and the
 `proofs: [...]` vocabulary (`total bounds nonzero arith overflow exhaustive
-handled`; 5 of 7 checkable) are live. The Tier-1.5 relational witness
+handled`; 6 of 7 checkable — `arith` shipped 2026-06, only `overflow` waits on
+Phase B) are live. The Tier-1.5 relational witness
 (`Index(length(xs))` dependent-refinement params: callers prove from path
 facts, callees assume their signatures) just shipped. What's left in-arc:
 
@@ -85,11 +86,16 @@ facts, callees assume their signatures) just shipped. What's left in-arc:
   type info or a side table keyed on AST nodes, same trick as
   `WITNESS_DEMANDS`). Mutation kills apply. If `let`-seeding and
   `Ok`-payload-seeding don't fit one slice, split exactly there.
-- **A2. `arith` obligation** *(1 slice)*. Sixth vocabulary word: partial
-  arithmetic domains — `sqrt(x)` needs `x >= 0`, `log(x)` needs `x > 0`,
-  `asin/acos` need `-1 <= x <= 1`. Same engine as `nonzero` (these are
-  comparisons the floor + Z3 already speak); the work is a domain table for
-  the math builtins and the walk visiting their call args. Scope-local.
+- **A2. `arith` obligation** *(1 slice)*. **SHIPPED 2026-06**
+  (`proof_arith_test`/`_bad`): the sixth vocabulary word — partial arithmetic
+  domains, `sqrt(x)` needs `x >= 0`, `log/log2/log10` need `x > 0`,
+  `asin/acos` need `-1 <= x <= 1`. Built exactly as predicted: a per-builtin
+  domain table (`facts.ts ARITH_DOMAINS`) of one or two interval constraints,
+  walked over both surface spellings (`Math.sqrt(x)` and bare `sqrt(x)`),
+  discharged on the same floor + Z3 the other obligations already speak
+  (`sqrt(a * a)` and `if a > b then log(a - b)` prove guard-free; out-of-domain
+  model in the error). Scope-local. `proof_scope_bad`'s not-checkable pin moved
+  `arith` → `overflow`. **Vocabulary 6/7; only `overflow` (Phase B) remains.**
 - **A3. Fractional-measure slice + binary-search showcase** *(1 slice)*.
   Probed during the SortedList arc: with `m = lo + span/2` the left-half
   measure fails over ℝ for span ∈ [1, 2); `m = lo + (span-1)/2` fixes the

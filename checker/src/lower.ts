@@ -316,7 +316,7 @@ export class Lowerer {
   // under `proofs:`, declared means enforced (the unchecked-mode hole the
   // effect work closed must not reappear here).
   private static readonly PROOF_VOCAB = new Set(["total", "bounds", "nonzero", "arith", "overflow", "exhaustive", "handled"]);
-  private static readonly PROOF_CHECKABLE = new Set(["total", "exhaustive", "handled", "nonzero", "bounds"]);
+  private static readonly PROOF_CHECKABLE = new Set(["total", "exhaustive", "handled", "nonzero", "bounds", "arith"]);
 
   private lowerProofs(node: N | undefined): string[] {
     if (!node) return [];
@@ -330,7 +330,7 @@ export class Lowerer {
       }
       if (!Lowerer.PROOF_CHECKABLE.has(ob)) {
         this.diagnostics.push({ kind: "error", span: this.sp(id),
-          message: `proof obligation '${ob}' is not checkable yet — declaring it would promise an unenforced guarantee (checkable today: total, exhaustive, handled, nonzero, bounds)` });
+          message: `proof obligation '${ob}' is not checkable yet — declaring it would promise an unenforced guarantee (checkable today: total, exhaustive, handled, nonzero, bounds, arith)` });
         continue;
       }
       out.push(ob);

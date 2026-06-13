@@ -270,7 +270,144 @@ function entailsGE0(env: Env, name: string): boolean {
   return false;
 }
 
+// ── `proofs: [arith]` — the partial-arithmetic-domain obligation ─────────────
+//
+// The sixth vocabulary word, same engine as `nonzero` and `bounds`: in a
+// proved scope every call to a math builtin with a restricted domain must
+// have its argument PROVED inside that domain. The faults are the silent NaN
+// kind — `sqrt(-1)`, `log(0)`, `asin(2)` all return NaN in JS rather than
+// throwing, the same "no error to handle" shape that motivates `nonzero`.
+//
+// Each builtin contributes one or two interval constraints `arg op k`:
+//
+//   sqrt              arg >= 0          log / log2 / log10   arg > 0
+//   asin / acos       -1 <= arg <= 1
+//
+// Discharge is the same two tiers: the interval FLOOR settles a literal
+// argument directly and a bare name carrying a constant fact that entails the
+// constraint (`if x >= 0 then sqrt(x)`); anything translatable-but-unsettled
+// becomes a RESIDUE OBLIGATION handed to Z3 (`facts ∧ ¬(arg op k)` UNSAT ⟹
+// proved). Both surface spellings reach the table — the ambient qualified
+// `Math.sqrt(x)` and the bare builtin `sqrt(x)` (a user binding shadows first
+// and gets a resolution entry, so a resolved callee is NOT the builtin and
+// stays opaque, exactly like `length`). Scope-local like `nonzero`: the fault
+// is syntactic to the proved scope, no downward call gate.
+export interface ArithConstraint { op: ">=" | ">" | "<=" | "<"; k: number }
+export interface ArithObligation { facts: Fact[]; arg: Expr; fn: string; need: ArithConstraint; span: Span }
+export interface ArithResult { diagnostics: Diagnostic[]; residue: ArithObligation[] }
+
+const ARITH_DOMAINS: Record<string, ArithConstraint[]> = {
+  sqrt:  [{ op: ">=", k: 0 }],
+  log:   [{ op: ">", k: 0 }],
+  log2:  [{ op: ">", k: 0 }],
+  log10: [{ op: ">", k: 0 }],
+  asin:  [{ op: ">=", k: -1 }, { op: "<=", k: 1 }],
+  acos:  [{ op: ">=", k: -1 }, { op: "<=", k: 1 }],
+};
+
+export function checkArith(mod: Module, resolutions: ResolutionMap): ArithResult {
+  const out: ArithResult = { diagnostics: [], residue: [] };
+  walkArithDecls(mod.decls, false, resolutions, out);
+  return out;
+}
+
+export function arithFloorDiags(residue: ArithObligation[]): Diagnostic[] {
+  return residue.map(o => arithError(o.arg.span, o.fn, o.need,
+    `no fact proves ${o.fn}'s argument in domain on this path — guard it (\`if x ${o.need.op} ${o.need.k}\`)`));
+}
+
+function walkArithDecls(decls: Decl[], inArith: boolean, resolutions: ResolutionMap, out: ArithResult): void {
+  for (const d of decls) {
+    if (d.tag === "DModule") {
+      walkArithDecls(d.decls, inArith || d.proofs.includes("arith"), resolutions, out);
+      continue;
+    }
+    if (inArith && d.tag === "DFn")
+      for (const [i, c] of d.clauses.entries())
+        walkFacts(c.body, clauseEnv(d.clauses, i), (e, env) => {
+          const dom = arithCall(e);
+          if (dom) for (const need of dom.need) proveArith(dom.fn, dom.arg, need, env, out);
+        }, resolutions);
+  }
+}
+
+// A call to a domain-restricted math builtin, in either surface spelling. The
+// qualified `Math.<fn>` is ambient and always the builtin; the bare `<fn>`
+// counts only when unresolved (a user binding would carry a resolution entry).
+function arithCall(e: Expr): { fn: string; arg: Expr; need: ArithConstraint[] } | null {
+  if (e.tag !== "Call" || e.args.length !== 1 || e.named.length > 0) return null;
+  const a = e.args[0];
+  if (!a) return null;
+  if (e.fn.tag === "Field" && e.fn.obj.tag === "Var" && e.fn.obj.name === "Math") {
+    const need = ARITH_DOMAINS[e.fn.field];
+    return need ? { fn: e.fn.field, arg: a, need } : null;
+  }
+  if (e.fn.tag === "Var") {
+    const need = ARITH_DOMAINS[e.fn.name];
+    if (need && currentResolutions?.get(e.fn) === undefined) return { fn: e.fn.name, arg: a, need };
+  }
+  return null;
+}
+
+function proveArith(fn: string, arg: Expr, need: ArithConstraint, env: Env, out: ArithResult): void {
+  const lit = numLit(arg);
+  if (lit !== null) {
+    if (!satisfiesConstraint(lit, need))
+      out.diagnostics.push(arithError(arg.span, fn, need, `the literal argument ${lit} is outside the domain`));
+    return;
+  }
+  if (entailsArith(env, arg, need)) return;
+  if (translatable(arg)) out.residue.push({ facts: env, arg, fn, need, span: arg.span });
+  else out.diagnostics.push(arithError(arg.span, fn, need,
+    "the argument is not a provable term — bind it to a name and guard that"));
+}
+
+function satisfiesConstraint(v: number, need: ArithConstraint): boolean {
+  switch (need.op) {
+    case ">=": return v >= need.k;
+    case ">":  return v > need.k;
+    case "<=": return v <= need.k;
+    case "<":  return v < need.k;
+  }
+}
+
+// Floor: a bare name carrying a constant fact that entails the constraint over
+// ℝ. Richer translatable terms go to Z3; everything else is a conservative
+// error at the call.
+function entailsArith(env: Env, arg: Expr, need: ArithConstraint): boolean {
+  if (arg.tag !== "Var") return false;
+  for (const f of env) {
+    let op = f.op;
+    let k: number | null = null;
+    if (f.lhs.tag === "Var" && f.lhs.name === arg.name) k = numLit(f.rhs);
+    else if (f.rhs.tag === "Var" && f.rhs.name === arg.name) { k = numLit(f.lhs); op = FLIP[op]; }
+    if (k === null) continue;
+    if (impliesConstraint(op, k, need)) return true;
+  }
+  return false;
+}
+
+// Does the fact `x op k` (a constant bound on the argument) entail the domain
+// constraint `x need.op need.k` over the reals? `==` counts as both a lower
+// and an upper bound; `!=` entails nothing here.
+function impliesConstraint(op: CmpOp, k: number, need: ArithConstraint): boolean {
+  if (need.op === ">=" || need.op === ">") {
+    if (op === ">")               return k >= need.k;               // x > k ⟹ x > need.k requires k >= need.k
+    if (op === ">=" || op === "==") return need.op === ">=" ? k >= need.k : k > need.k;
+    return false;
+  }
+  if (op === "<")                 return k <= need.k;               // x < k ⟹ x < need.k requires k <= need.k
+  if (op === "<=" || op === "==") return need.op === "<=" ? k <= need.k : k < need.k;
+  return false;
+}
+
+function arithError(span: Span, fn: string, need: ArithConstraint, detail: string): Diagnostic {
+  return { kind: "error", span,
+    message: `proof obligation 'arith': cannot prove ${fn}'s argument ${need.op} ${need.k} — ${detail} (the module declares proofs: [arith])` };
+}
+
 // The reusable fact-env walk: visits EVERY expression with the fact env in
+// force at that point. `proofs: [nonzero]` visits divisors; the @total Tier-2
 // force at that point. `proofs: [nonzero]` visits divisors; the @total Tier-2
 // measure check (terminates.ts) visits recursive calls. Handles the mutation
 // prepass itself, so callers just provide the seed env and a visitor.

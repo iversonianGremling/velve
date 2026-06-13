@@ -49,7 +49,7 @@ means there is a green fixture exercising it under `checker/`.
 | Effect polymorphism (HOFs) | ✅ Built | §12.4, `hof_effects_test`/`_bad`: latent effects of a function argument are required at the call that supplies it — `map(netGet, urls)` no longer launders `[io]` through a pure function. **Effect tails built (S4c, 2026-06, `effect_tails_test`/`_bad`)**: builtin HOF signatures (`pmap`/`pfilter`/…) charge the argument's row precisely per call site, and non-invoking `identity` charges nothing; the conservative rule remains for untailed callees. **User-spelled rows built (E2, 2026-06, `effect_spell_test`/`_bad`)**: `..e` on param fn-types binds, in the Effect clause charges — user HOFs get the same per-call-site precision; unbound tails error. **Ascription coverage built (2026-06, `effect_ascribe_test`/`_bad`)**: a fn-type ascription must cover the value's row (returns + bindings, covariant-deep) — the erasure laundering hole is closed. |
 | Effect-typed builtin surface | ✅ Built (2026-06) | §12.5, `builtin_effects_test`/`_bad`: `setTheme`/`setViewport` charge `[ui]`, `externSource` and the network names charge `[io]` — the stdlib stops lying by omission, incl. through HOF tails. Decided ambient: `print`/`println` (observation channel) and `sleep` (virtual time) charge nothing. |
 | Totality (`@total`, Tier 1) | ✅ Built (2026-06) | §12.6, `total_test`/`_bad`: opt-in structural termination — recursion must decrease at one position (ctor/tuple/record descent or `n - k` under a literal/comparison floor), totality flows down the call graph (total calls total + terminating builtins; HOFs need a checkable fn), `loop`/`await`/spawn/host rejected in total bodies. Mutual recursion, closure recursion → conservative reject. **The Tier-2 valve opened (2026-06, `proof_terminates_test`/`_bad`)**: when the structural decrease is the only failure, Z3 proves a unit-decreasing floored measure from path facts — `halve(n / 2)` under `if n < 2`, non-constant `shrink(n - k, k)` under `k >= 1`; counterexamples in the errors. First shipped obligation of the north-star §3 proof gradient. **§5.1 payoff shipped (2026-06, `constfold_total_test`/`_bad`)**: the refinement folder (§2.6) executes `@total` predicates at check time — fuel-bounded, conservative on anything undecidable — so the conservative-skip set shrinks by exactly the code that proved it terminates. |
-| Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`; `exhaustive` hardens clause-head gaps to errors in every edition. **`handled` shipped (2026-06, `proof_handled_test`/`_bad`)**: no silently discarded `Result` anywhere in the module — third checkable obligation, scope-local like `exhaustive`. **`nonzero` shipped (2026-06, `proof_nonzero_test`/`_bad`)**: every `/` and `%` divisor proved nonzero via the flow-sensitive fact env — fourth checkable obligation. **Z3 back-end shipped one slice later (2026-06, `proof_nonzero_z3_test`/`_bad`)**: the floor's residue goes to Z3 as a refutation over the reals — the pinned `a != b ⟹ a - b != 0` case graduated from `_bad` to green; counterexample models in the errors; lazy load; floor fallback when uninstalled. **`bounds` shipped (2026-06, `proof_bounds_test`/`_bad`)**: every list index read proved `0 ≤ i < length(xs)` — fifth checkable obligation; `length(xs)` on an immutable name becomes an Int-sorted solver symbol (`≥ 0` asserted), so `xs[length(xs) - 1]` under `length(xs) > 0` proves; two queries per read, the error names which side leaked with the model. Not-checkable-yet is down to `arith`/`overflow`. Per-def/per-block scopes PROPOSED. |
+| Proof gradient module scope (`proofs: [...]`) | ✅ Built (2026-06) | §12.7, `proof_scope_test`/`_bad`: a module declares obligations it must discharge — the dual of `capabilities:` (effects flow up, proofs flow down). Closed vocabulary (`total bounds nonzero arith overflow exhaustive handled`); declared = enforced — unknown or not-yet-checkable obligations are errors, never silent skips. `total` marks every module def implicitly `@total`; `exhaustive` hardens clause-head gaps to errors in every edition. **`handled` shipped (2026-06, `proof_handled_test`/`_bad`)**: no silently discarded `Result` anywhere in the module — third checkable obligation, scope-local like `exhaustive`. **`nonzero` shipped (2026-06, `proof_nonzero_test`/`_bad`)**: every `/` and `%` divisor proved nonzero via the flow-sensitive fact env — fourth checkable obligation. **Z3 back-end shipped one slice later (2026-06, `proof_nonzero_z3_test`/`_bad`)**: the floor's residue goes to Z3 as a refutation over the reals — the pinned `a != b ⟹ a - b != 0` case graduated from `_bad` to green; counterexample models in the errors; lazy load; floor fallback when uninstalled. **`bounds` shipped (2026-06, `proof_bounds_test`/`_bad`)**: every list index read proved `0 ≤ i < length(xs)` — fifth checkable obligation; `length(xs)` on an immutable name becomes an Int-sorted solver symbol (`≥ 0` asserted), so `xs[length(xs) - 1]` under `length(xs) > 0` proves; two queries per read, the error names which side leaked with the model. **`arith` shipped (2026-06, `proof_arith_test`/`_bad`)**: every domain-restricted math builtin (`sqrt` needs `x ≥ 0`, `log` `x > 0`, `asin`/`acos` `-1 ≤ x ≤ 1`) proved in-domain via the same floor → Z3 pipeline — sixth checkable obligation, out-of-domain model in the error. Not-checkable-yet is down to `overflow` alone (6/7). Per-def/per-block scopes PROPOSED. |
 | Module-private constructors (`@private type`) | ✅ Built (2026-06) | §7.1, `private_ctor_test`/`_bad`: an ADT's constructors seal at the module boundary (no forging by call, no representation-dependence by pattern); the type name stays public. The soundness primitive for the refined-type tier (north-star §3.5 confirmed → shipped). Resolver scope stays flat — privacy is a use-site check. |
 | Refined-type library (Tier 1) | ✅ Built (2026-06) | §7.1, `refined_types_test`/`_bad`: `Natural`/`NonZero`/`Positive`/`InBounds` as `@private` ADTs — smart-constructor gates, closed ops, faulting ops through the gate; `divBy(n, NonZero)` makes division total and `getAt(xs, InBounds)` makes indexing safe **as type errors**, no solver. The library module is proof-carrying (`proofs: [total, exhaustive, handled]`). Pure library add — zero checker changes. Tier-1 bound: `InBounds` is not relational (Tier 1.5). |
 | `SortedList` — the semantic archetype | ✅ Built (2026-06) | §7.1, `sorted_list_test`/`_bad`: sortedness has no structural proxy (north-star §3.2), so it ships by the construct-it route — order checked once at the gate (`sortedList` rejects, `fromAny` folds the closed insert), closed ops (`slInsert` filter-split, `slMerge`) preserve it by construction, and `slMin` is O(1) `head` whose *correctness* precondition the type makes unforgeable. Proof-carrying module; pure library add — zero checker changes. The `_bad` twin's doctrinal pin: `proofs: [sorted]` is a vocabulary error — value invariants stay types. `where proof.sorted` (Tier 2) stays PROPOSED. |
@@ -2640,10 +2640,10 @@ The obligation vocabulary is **closed** — six fault classes, fixed up front so
 declaration is portable across checker versions: `total`, `bounds`,
 `nonzero`/`arith`, `overflow`, `exhaustive`, `handled`. An unknown name is a
 compile error. **Declared = enforced**: an obligation the checker cannot
-discharge yet (`arith`, `overflow`) is also an
-error — "checkable today: total, exhaustive, handled, nonzero, bounds" — never
-a silent skip, so a `proofs:` line can never promise more than the compiler
-actually verified.
+discharge yet (`overflow` alone, now `arith` ships) is also an
+error — "checkable today: total, exhaustive, handled, nonzero, bounds, arith" —
+never a silent skip, so a `proofs:` line can never promise more than the
+compiler actually verified.
 
 Checkable today:
 
@@ -2746,13 +2746,33 @@ Checkable today:
   `Result Index(length(xs)) e`: the callee proves each `Ok(payload)` in range
   (the gate cannot lie) and the caller seeds the witness onto the `Ok`-binder
   of a `match`, so `xs[j]` reads with no guard — the demand/assume pair, dualized.
+- **`arith`** *(2026-06, `proof_arith_test`/`_bad`)* — every call to a
+  **domain-restricted math builtin** in the module must have its argument
+  proved inside the domain: `sqrt(x)` needs `x ≥ 0`, `log`/`log2`/`log10` need
+  `x > 0`, `asin`/`acos` need `-1 ≤ x ≤ 1`. The faults are the silent-NaN kind
+  (`sqrt(-1)`, `log(0)`, `asin(2)` all return `NaN` in JS, not an error) — the
+  same "no error to handle" shape that motivates `nonzero`, and the same engine:
+  a per-builtin **domain table** of one or two interval constraints, discharged
+  on the fact env's two tiers. The interval floor settles a literal argument and
+  a bare name carrying a constant fact that entails the constraint
+  (`if x >= 0 then sqrt(x)`, the `&&`-distributed `-1 <= x && x <= 1` for
+  `asin`); anything translatable-but-unsettled goes to **Z3** as a refutation
+  over the reals — facts ∧ ¬(arg `op` k) unsat ⟹ in domain — so `sqrt(a * a)`
+  (a square is non-negative) and `if a > b then log(a - b)` discharge with no
+  guard, and a failed query reports the **out-of-domain model** in the error
+  (`x = -1.0`, `x = 0.0`, `x = 2.0`). Both surface spellings reach the table —
+  the ambient qualified `Math.sqrt(x)` and the bare builtin `sqrt(x)` (a user
+  binding shadows first and carries a resolution entry, so a resolved callee is
+  not the builtin and stays opaque, exactly like `length`). Scope-local like
+  `nonzero`/`bounds`; v1 scope: function bodies. **Vocabulary 6/7 checkable** —
+  only `overflow` (which waits on the sized-types substrate) remains.
 
 Obligations come in two enforcement shapes, and the difference is principled:
 **`total` is a call-graph obligation** (its fault — non-termination — can hide
 in a callee, so it needs the downward gate), while **`exhaustive`, `handled`,
-`nonzero`, and `bounds` are scope-local** (their faults are syntactic to the
+`nonzero`, `bounds`, and `arith` are scope-local** (their faults are syntactic to the
 proved scope; a callee outside the module may still match partially, drop a
-`Result`, or index unsafely *inside itself*, and that is the callee's unproven
+`Result`, index unsafely, or call `sqrt` on a negative *inside itself*, and that is the callee's unproven
 business, exactly as with code called from any verified kernel).
 
 The remaining scopes from the design — per-def `Proof [total, bounds] T` result

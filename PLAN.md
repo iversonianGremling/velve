@@ -841,6 +841,31 @@ Endorsed in review; not part of the surface refactor but cleared to build.
       honest bounds: the gate rides the Result form (the `match` `Ok`-binder); a
       bare `Index(length(xs))` return needs a tail-position guarantee check, the
       one remaining follow-on. Zero grammar changes, zero eval.ts changes.
+- [x] **`arith` — the partial-arithmetic-domain obligation (endgame A2)**:
+      ✅ DONE (2026-06, SPEC §12.7, `proof_arith_test`/`_bad` — 0 errors + runs
+      `3/0/0/9/4/4/0`, and exactly 4 errors; baselines unchanged except the two
+      new rows). The sixth checkable obligation, same engine as `nonzero`/`bounds`:
+      in a `proofs: [arith]` module every call to a domain-restricted math builtin
+      must have its argument proved inside the domain — `sqrt` needs `x ≥ 0`,
+      `log`/`log2`/`log10` need `x > 0`, `asin`/`acos` need `-1 ≤ x ≤ 1`. The
+      faults are the silent-NaN kind (`sqrt(-1)`, `log(0)`, `asin(2)` return NaN,
+      not an error), the same "no error to handle" shape that motivates `nonzero`.
+      As built: a per-builtin **domain table** of one or two interval constraints
+      (facts.ts `ARITH_DOMAINS`), discharged on the two existing tiers — the
+      interval floor settles a literal and a guarded bare name
+      (`if x >= 0 then sqrt(x)`, the `&&`-distributed `-1 <= x && x <= 1` for
+      `asin`), and anything translatable-but-unsettled goes to Z3 as a refutation
+      (`facts ∧ ¬(arg op k)` unsat ⟹ in domain), so `sqrt(a * a)` and
+      `if a > b then log(a - b)` discharge guard-free; a failed query reports the
+      out-of-domain model (`x = -1.0`, `x = 0.0`, `x = 2.0`). Both surface
+      spellings reach the table — ambient `Math.sqrt(x)` and bare `sqrt(x)` (a
+      user binding shadows first and carries a resolution entry, so a resolved
+      callee is not the builtin and stays opaque, like `length`). Scope-local;
+      v1 scope: function bodies. Cross-obligation graduation: `proof_scope_bad`'s
+      not-checkable-yet pin moved `arith` → `overflow` (counts hold at 5 errors).
+      **Vocabulary 6/7 checkable — only `overflow` (sized-types substrate, §5)
+      remains.** Zero grammar changes, zero eval.ts changes. NO re-grade:
+      type-core holds A+; this deepens the gradient within kind.
 - [x] **Canvas free positioning + legibility proof (svg-legibility S0+S1)**:
       ✅ DONE (2026-06, SPEC §11.1.2, `canvas_legible_test`/`_bad`).
       `at=(x, y)` children (Canvas-parent-only; paint order = child order →

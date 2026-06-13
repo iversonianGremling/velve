@@ -27,13 +27,18 @@
 import type { Expr } from "./ast.js";
 import type { Span } from "./span.js";
 import type { Diagnostic } from "./resolve.js";
-import type { Obligation, Fact, BoundsObligation } from "./facts.js";
-import { residueFloorDiags, boundsFloorDiags, mkFact, numE, varE } from "./facts.js";
+import type { Obligation, Fact, BoundsObligation, ArithObligation, CmpOp } from "./facts.js";
+import { residueFloorDiags, boundsFloorDiags, arithFloorDiags, mkFact, numE, varE } from "./facts.js";
 import type { MeasureJob } from "./terminates.js";
 import { measureFailDiag } from "./terminates.js";
 
-export async function discharge(residue: Obligation[], jobs: MeasureJob[], bounds: BoundsObligation[]): Promise<Diagnostic[]> {
-  if (residue.length === 0 && jobs.length === 0 && bounds.length === 0) return [];
+// Negate a domain constraint: `arg op k` must hold, so the solver looks for a
+// model of `arg ¬op k` consistent with the path facts. UNSAT ⟹ proved.
+const NEG_CONSTRAINT: Record<">=" | ">" | "<=" | "<", CmpOp> =
+  { ">=": "<", ">": "<=", "<=": ">", "<": ">=" };
+
+export async function discharge(residue: Obligation[], jobs: MeasureJob[], bounds: BoundsObligation[], arith: ArithObligation[]): Promise<Diagnostic[]> {
+  if (residue.length === 0 && jobs.length === 0 && bounds.length === 0 && arith.length === 0) return [];
   let z3: typeof import("z3-solver");
   try {
     z3 = await import("z3-solver");
@@ -43,6 +48,7 @@ export async function discharge(residue: Obligation[], jobs: MeasureJob[], bound
       ...residueFloorDiags(residue).map(d => ({ ...d, message: d.message + hint })),
       ...jobs.map(j => measureFailDiag(j.fnName, j.span, hint)),
       ...boundsFloorDiags(bounds).map(d => ({ ...d, message: d.message + hint })),
+      ...arithFloorDiags(arith).map(d => ({ ...d, message: d.message + hint })),
     ];
   }
   const { Context, em } = await z3.init();
@@ -99,6 +105,17 @@ export async function discharge(residue: Obligation[], jobs: MeasureJob[], bound
         : `${what} ${side} — Z3 returned unknown, conservatively rejected`;
       diags.push({ kind: "error", span: ob.span,
         message: `proof obligation 'bounds': cannot prove ${ob.witness ? `witness '${ob.witness}'` : "the index in range"} — ${detail} (the module declares proofs: [bounds])` });
+    }
+
+    for (const ob of arith) {
+      const neg = mkFact(ob.arg, NEG_CONSTRAINT[ob.need.op], numE(ob.need.k, ob.span));
+      const r = await checkUnsat(Z3, [...ob.facts, neg]);
+      if (r.verdict === "unsat") continue;  // argument proved inside the domain
+      const detail = r.verdict === "sat"
+        ? `Z3 found an out-of-domain argument consistent with every fact on this path (${r.example})`
+        : "Z3 returned unknown — conservatively rejected";
+      diags.push({ kind: "error", span: ob.span,
+        message: `proof obligation 'arith': cannot prove ${ob.fn}'s argument ${ob.need.op} ${ob.need.k} — ${detail} (the module declares proofs: [arith])` });
     }
   } finally {
     em.PThread.terminateAllThreads();
