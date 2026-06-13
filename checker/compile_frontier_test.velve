@@ -1,11 +1,13 @@
 @edition "2026.6"
 
--- D1(xvii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it uses a RANGE (`1..n`). eval evaluates a range to a list of the
--- integers in `[from, to)` (exclusive) — `1..5` → `[1, 2, 3, 4]`; the compute spine has
--- no range lowering — `normComp`/`norm` reach the `Range` AST node and refuse it (the
--- `default` arm of `normComp`). The differential harness must report it `unsupported` — a
--- CLEAN refusal at the compiler frontier, never a miscompile.
+-- D1(xviii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it uses an INDEX ASSIGNMENT (`xs[1] = 99` — an `SAssign` statement
+-- with a non-bare-name lvalue). eval mutates the element in place (the list is held by a
+-- `mut` binding); the compute spine lowers only a bare-name reassignment (D1(xiv)) — the
+-- `block` SBind path requires the target to be a plain in-scope name, and a field/index
+-- lvalue is a distinct `SAssign` AST node it does not yet lower, so it refuses. The
+-- differential harness must report it `unsupported` — a CLEAN refusal at the compiler
+-- frontier, never a miscompile.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
@@ -16,13 +18,12 @@
 -- D1(x) PAST short-circuit `&&`/`||`; D1(xi) PAST non-tail `if` as a value; D1(xii) PAST
 -- non-tail `match` as a value; D1(xiii) PAST multi-clause `def`s; D1(xiv) PAST reassignment;
 -- D1(xv) PAST atom literals; D1(xvi) PAST duration literals; D1(xvii) PAST `for`
--- COMPREHENSIONS (nested generators × filters → a list; see compile_comprehension_test).
--- The frontier now sits at RANGES. This file uses one, so it still refuses; when ranges
--- lower (a later D1 slice, an integer-fill list builder), it flips from `unsupported` to a
--- print with no edit.
+-- comprehensions; D1(xviii) PAST integer RANGES (`1..n`/`1..=n` → a list; see
+-- compile_range_test). The frontier now sits at FIELD/INDEX ASSIGNMENT. This file uses one,
+-- so it still refuses; when an `SAssign` to an lvalue lowers (a later D1 slice, an in-place
+-- element/field write), it flips from `unsupported` to a print with no edit.
 
-def upto(n: Number): List(Number)
-  for (x in 1..n) -> x
-
-def main(): Effect [io] ()
-  println(upto(5))
+def main(): Unit
+  let mut xs = [10, 20, 30]
+  xs[1] = 99
+  print(xs)

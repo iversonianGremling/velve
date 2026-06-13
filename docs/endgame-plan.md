@@ -873,6 +873,26 @@ exists (`compiler-architecture-design.md`).
     mismatch, 0 js-crash**, 108 unsupported (252 files) — +2 match (the new fixture + the flip), −1
     unsupported (the flip). SPEC untouched; no graded row moves (still partial). Next: **D1(xviii)**
     = ranges (`1..n` → an integer-fill list), or field/index assignment — still pre-effect.
+  - **D1(xviii) — integer ranges compile (the frontier twin flips again) — DONE 2026-06.**
+    The range guardrail D1(xvii) left (`for (x in 1..n)`) was holding. A range now lowers: eval
+    requires both bounds numeric and fills `[from, end]` stepping +1, where `end = inclusive ? to
+    : to - 1` — so `1..5` is `[1,2,3,4]`, `1..=5` is `[1,2,3,4,5]`, and a descending pair is the
+    empty list. The compiler adds a `Range` IRComp (the two bounds as pure number atoms, an
+    `inclusive` flag) emitted as a `$range(from, to, inc)` runtime fill that builds the very same
+    `$list` value a literal `[…]` does — so a range bound directly, driving a `for` generator, or
+    measured by a builtin all compose with no special case. Green fixture `compile_range_test.velve`
+    (exclusive; inclusive; computed bound; a descending/empty range; a range driving a comprehension;
+    a range measured by `length`) compiles **byte-identically** to eval (`[1,2,3,4]` / `[1,2,3,4,5]` /
+    `[0,1,2,3]` / `[]` / `[1,4,9,16,25]` / `10`). (A bare range carries the distinct *type*
+    `Range(Number)` upstream though its runtime value is the same list eval builds — so the
+    range-returning defs ascribe `Range(Number)` while the comprehension yields a `List`; a type
+    distinction, not a compiler one.) The frontier twin rolled to a **FIELD/INDEX ASSIGNMENT**
+    (`xs[1] = 99` — eval mutates the element in place; the spine lowers only a bare-name
+    reassignment, and an lvalue `SAssign` is a distinct statement node it refuses) — the next
+    unrepresented form — still exit 2. **No pre-existing corpus file flipped.** Harness: **40 match,
+    0 mismatch, 0 js-crash**, 108 unsupported (253 files) — +1 match (the fixture), unsupported
+    unchanged. SPEC untouched; no graded row moves (still partial). Next: **D1(xix)** = field/index
+    assignment (in-place element/field write) — still pre-effect.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

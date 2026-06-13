@@ -698,7 +698,21 @@ dependent-generator / interpolated-guard cases, plus one legit corpus flip), −
 The one flip — `for_in_test.velve` (an edition-grammar comprehension fixture) — moved
 `unsupported` → `match`, verified byte-identical. The frontier twin rolled to a **RANGE**
 (`for (x in 1..n) -> x` — the spine has no range lowering, `Range` hits `normComp`'s `default`).
-**Remaining for D1(xviii)+**: ranges (`1..n` → a list); field/index assignment; `while`/`loop`;
+
+**D1(xviii) shipped (2026-06) — integer ranges (`1..n` / `1..=n` → a list).** A range now lowers.
+eval requires both bounds numeric and fills `[from, end]` stepping +1, where `end = inclusive ? to
+: to - 1` — `1..5` is `[1,2,3,4]`, `1..=5` is `[1,2,3,4,5]`, a descending pair is empty. The
+compiler adds a `Range` IRComp (two pure number atoms + an `inclusive` flag) emitted as a
+`$range(from, to, inc)` runtime fill building the very same `$list` value a literal `[…]` does — so
+a range bound directly, driving a `for` generator, or measured by a builtin composes with no special
+case. Harness: **40 match / 0 mismatch / 0 js-crash / 108 unsupported** (253 files) — +1 match
+(fixture `compile_range_test.velve`, byte-identical across exclusive / inclusive / computed /
+empty-descending / comprehension-driven / `length`-measured cases), no corpus flip. (A bare range
+carries the distinct *type* `Range(Number)` upstream though its runtime value is the same list — so
+the range-returning defs ascribe it; a type distinction, not a compiler one.) The frontier twin rolled
+to a **FIELD/INDEX ASSIGNMENT** (`xs[1] = 99` — the spine lowers only a bare-name reassignment; an
+lvalue `SAssign` is a distinct statement node it refuses).
+**Remaining for D1(xix)+**: field/index assignment (in-place element/field write); `while`/`loop`;
 then `Perform` in D2.
 
 ---

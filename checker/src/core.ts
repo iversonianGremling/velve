@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xvii) comprehensions): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
+// SCOPE (through D1(xviii) ranges): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -38,9 +38,10 @@
 // interned runtime value so JS `===` matches eval's by-name equality (D1(xv)); DURATION
 // literals `5s` — folded to their millisecond Number, the Duration type erasing per §11.5
 // (D1(xvi)); and `for` COMPREHENSIONS — `for (x in xs, …guards) -> body` lowered to nested
-// `for…of` over each source's `.es` with an `if` per guard, accumulating a list (D1(xvii)).
-// Field/index assignment (`SAssign`), RANGES (`1..n`), `while`/`loop`, and `Perform`
-// (effects) are next (D1(xviii)+, D2).
+// `for…of` over each source's `.es` with an `if` per guard, accumulating a list (D1(xvii));
+// and integer RANGES — `1..n` (exclusive) / `1..=n` (inclusive) lowered to a `$range` fill
+// producing the same `$list` a literal `[…]` builds (D1(xviii)). Field/index assignment
+// (`SAssign` to an lvalue), `while`/`loop`, and `Perform` (effects) are next (D1(xix)+, D2).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
 
@@ -79,7 +80,8 @@ export type IRComp =
   | { k: "Lambda"; params: string[]; body: IRExpr }    // an anonymous closure value — captures by lexical scope
   | { k: "Cond"; cond: IRAtom; then: IRExpr; else_: IRExpr } // a value-producing conditional — the lazy `if` short-circuit `&&`/`||` lower to
   | { k: "Block"; body: IRExpr }                        // reify an arbitrary value-`IRExpr` (e.g. a `match` decision-spine) as a value
-  | { k: "For"; clauses: IRForClause[]; body: IRExpr }; // a list comprehension — nested generators × filters building a list
+  | { k: "For"; clauses: IRForClause[]; body: IRExpr }  // a list comprehension — nested generators × filters building a list
+  | { k: "Range"; from: IRAtom; to: IRAtom; inclusive: boolean }; // an integer fill `from..to` (`..` exclusive, `..=` inclusive) → a list
 // Perform — D2.
 
 // A lowered `for`-comprehension clause. A generator binds a simple name to each
@@ -522,6 +524,17 @@ class Lowering {
         const inner = new Set(scope);
         for (const pn of params) inner.add(pn);
         return { binds: [], comp: { k: "Lambda", params, body: this.tail(e.body, inner) } };
+      }
+      case "Range": {
+        // An integer range (D1(xviii)). eval requires both bounds to be numbers and fills
+        // `[from, end]` stepping +1, where `end = inclusive ? to : to - 1` — so `1..5` is
+        // `[1,2,3,4]`, `1..=5` is `[1,2,3,4,5]`, and a descending pair yields the empty list.
+        // The bounds are pure number atoms; the fill is a `$range` runtime call producing the
+        // same `$list` value a literal `[…]` builds, so a range nested in a `for` generator
+        // (`for (x in 1..n)`) or bound directly composes with no special case.
+        const f = this.norm(e.from, scope);
+        const t = this.norm(e.to, scope);
+        return { binds: [...f.binds, ...t.binds], comp: { k: "Range", from: f.atom, to: t.atom, inclusive: e.inclusive } };
       }
       case "For": {
         // A list comprehension (D1(xvii)). eval evaluates the clauses left-to-right:

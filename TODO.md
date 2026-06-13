@@ -1199,6 +1199,26 @@ dimension machinery generalize?
   flip). SPEC untouched; no graded row moves (still partial). **Next: D1(xviii)** — ranges (`1..n` → an
   integer-fill list), or field/index assignment — still pre-effect.
 
+- [x] 🟢 **Phase D1(xviii) — integer ranges compile (`1..n` exclusive / `1..=n` inclusive → a list) — DONE
+  2026-06** (`core.ts` new `Range` IRComp + the `Range` case in `normComp`; `emitjs.ts` `Range` emit +
+  `$range` prelude helper; `compile_range_test.velve`). The range guardrail D1(xvii) left (`for (x in 1..n)`)
+  was holding. A range now lowers: eval requires both bounds numeric and fills `[from, end]` stepping +1,
+  where `end = inclusive ? to : to - 1` — so `1..5` is `[1,2,3,4]`, `1..=5` is `[1,2,3,4,5]`, and a
+  descending pair is the empty list. The compiler carries the two bounds as pure number atoms + an
+  `inclusive` flag, emitted as a `$range(from, to, inc)` fill that builds the very same `$list` value a
+  literal `[…]` does — so a range bound directly, driving a `for` generator, or measured by a builtin
+  composes with no special case. Green `compile_range_test` (exclusive; inclusive; computed bound;
+  descending/empty; comprehension-driven; `length`-measured) byte-identical to eval (`[1,2,3,4]` /
+  `[1,2,3,4,5]` / `[0,1,2,3]` / `[]` / `[1,4,9,16,25]` / `10`). (A bare range carries the distinct *type*
+  `Range(Number)` upstream though its runtime value is the same list — the range-returning defs ascribe
+  it; a type distinction, not a compiler one.) The frontier twin `compile_frontier_test` ROLLED
+  range→**FIELD/INDEX ASSIGNMENT** (`xs[1] = 99` — eval mutates in place; the spine lowers only a
+  bare-name reassignment, an lvalue `SAssign` is a distinct statement node it refuses) — next
+  unrepresented form — still exit 2. **No pre-existing corpus file flipped.** Harness: **40 match / 0
+  mismatch / 0 js-crash / 108 unsupported** across 253 files (+1 match = fixture; unsupported unchanged).
+  SPEC untouched; no graded row moves (still partial). **Next: D1(xix)** — field/index assignment (in-place
+  element/field write) — still pre-effect.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

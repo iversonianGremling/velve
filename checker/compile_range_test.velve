@@ -1,0 +1,38 @@
+@edition "2026.6"
+
+-- D1(xviii): integer RANGES compile (`from..to` exclusive, `from..=to` inclusive → a list).
+-- eval requires both bounds numeric and fills `[from, end]` stepping +1, where
+-- `end = inclusive ? to : to - 1` — so `1..5` is `[1,2,3,4]`, `1..=5` is `[1,2,3,4,5]`, and a
+-- descending pair is the empty list. The compiler lowers a range to a `$range(from, to, inc)`
+-- runtime fill producing the same `$list` a literal `[…]` builds — byte-identical to eval,
+-- asserted by the differential harness. Covers: exclusive, inclusive, computed bounds, a
+-- descending (empty) range, a range driving a `for` generator, and a range measured by a
+-- whitelisted builtin. (A bare range has the distinct *type* `Range(Number)` though its
+-- runtime value is the same list eval builds — so the range-returning defs ascribe it, while
+-- the comprehension always yields a `List`.)
+
+def exclusive(): Range(Number)
+  1..5
+
+def inclusive(): Range(Number)
+  1..=5
+
+def computed(n: Number): Range(Number)
+  0..n
+
+def descending(): Range(Number)
+  5..1
+
+def squaresUpto(n: Number): List(Number)
+  for (x in 1..=n) -> x * x
+
+def rangeLen(n: Number): Number
+  length(1..=n)
+
+def main(): Effect [io] ()
+  println(exclusive())
+  println(inclusive())
+  println(computed(4))
+  println(descending())
+  println(squaresUpto(5))
+  println(rangeLen(10))

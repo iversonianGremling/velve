@@ -101,6 +101,9 @@ function comp(c: IRComp): string {
     // nesting IS eval's left-to-right clause recursion (a cartesian product pruned by
     // filters). The result is a fresh `$list` value.
     case "For": return `(() => {\n  const $acc = [];\n${forClauses(c.clauses, 0, c.body, "  ")}  return { $t: "L", es: $acc };\n})()`;
+    // An integer range (D1(xviii)) — a `$range` fill producing the same `$list` value a
+    // literal `[…]` builds (eval's VList-of-VNum). `inclusive` picks `..=` vs `..`.
+    case "Range": return `$range(${atom(c.from)}, ${atom(c.to)}, ${c.inclusive})`;
   }
 }
 
@@ -168,6 +171,10 @@ export function emitModule(mod: IRModule, callMain = true): string {
     'const $record = (fs) => ({ $t: "R", fs });',
     '// A list: elements in a JS array tagged for $show — displays `[a, b, …]`.',
     'const $list = (...es) => ({ $t: "L", es });',
+    '// An integer range fill `from..to` — `inc` ⇒ inclusive upper bound (`..=`), else',
+    '// exclusive; steps +1 from `from`, empty when descending. Same `$list` value a',
+    '// literal `[…]` builds, matching eval\'s VList-of-VNum.',
+    'const $range = (from, to, inc) => { const es = []; const end = inc ? to : to - 1; for (let i = from; i <= end; i++) es.push(i); return { $t: "L", es }; };',
     '// Identity wrapper: keeps a lambda anonymous (arg-position ⇒ no inferred `.name`),',
     '// so $show shows `<fn:<lambda>>` while a `def` reference keeps its real name.',
     'const $lam = (f) => f;',
