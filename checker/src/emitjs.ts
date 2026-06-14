@@ -131,6 +131,10 @@ function loopBody(e: IRExpr, indent: string): string {
     case "Assign": return `${indent}${e.name} = ${comp(e.comp)};\n${loopBody(e.body, indent)}`;
     case "IndexSet": return `${indent}${atom(e.obj)}.es[${atom(e.index)}] = ${atom(e.value)};\n${loopBody(e.body, indent)}`;
     case "If": return `${indent}if (${atom(e.cond)}) {\n${loopBody(e.then, indent + "  ")}${indent}} else {\n${loopBody(e.else_, indent + "  ")}${indent}}\n`;
+    case "PropGuard":
+      // Unreachable: the lowering refuses `?` inside a `loop` body (`noPropInValue`). Guarded
+      // for exhaustiveness so a future regression surfaces loudly rather than silently.
+      throw new Error("PropGuard inside a loop body");
     case "Fail": return `${indent}throw new Error(${JSON.stringify(e.msg)});\n`;
   }
 }
@@ -180,6 +184,11 @@ function body(e: IRExpr, indent: string): string {
       // `break`/`continue` only arise inside a loop body, which `loopBody` (not `body`) emits.
       // Reaching here means a loop node leaked into value/def-body position — a lowering bug.
       throw new Error(`${e.k} outside a loop body`);
+    case "PropGuard":
+      // `e?`: early-return the value when it is an `Error` ctor (eval's ReturnSignal). The
+      // `return` exits the enclosing JS function — the lowering refuses `?` anywhere this
+      // would sit inside a value IIFE, so reaching here always means the real function body.
+      return `${indent}if (${atom(e.ctor)}.name === "Error") return ${atom(e.ctor)};\n${body(e.body, indent)}`;
     case "Fail":
       // The non-exhaustive fall-through. Unreachable on check-passing programs (the
       // `exhaust` pass guarantees coverage); emitted as a hard throw so a future

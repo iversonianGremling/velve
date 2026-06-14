@@ -1,0 +1,37 @@
+@edition "2026.6"
+
+-- D1(xxii): the PROPAGATE operator `e?` compiles (unwrap-or-early-return on Result).
+-- eval: an `Ok(x)` yields `x`; an `Error` throws a ReturnSignal that early-returns the whole
+-- Error from the enclosing function. The compiler hoists the subject to a temp, emits a guard
+-- (`if (_t.name === "Error") return _t;`) — a real JS function-level early return — and the
+-- value is the payload. Byte-identical to eval, asserted by the differential harness. Covers:
+-- a single `?` in a let; chained `?`s where either can early-return; the Ok path threading the
+-- payload through; and `?` as a nested subexpression inside a call argument (it hoists to the
+-- statement level, so its early-return still exits the function).
+
+def parsePos(n: Number): Result(Number, String)
+  if n > 0
+    Ok(n)
+  else
+    Error("not positive")
+
+def double(n: Number): Result(Number, String)
+  let p = parsePos(n)?
+  Ok(p * 2)
+
+def sumTwo(a: Number, b: Number): Result(Number, String)
+  let x = parsePos(a)?
+  let y = parsePos(b)?
+  Ok(x + y)
+
+def wrapArg(n: Number): Result(Number, String)
+  Ok(parsePos(n)? + 1)
+
+def main(): Effect [io] ()
+  println(double(5))
+  println(double(0))
+  println(sumTwo(3, 4))
+  println(sumTwo(0, 4))
+  println(sumTwo(3, 0))
+  println(wrapArg(9))
+  println(wrapArg(0))

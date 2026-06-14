@@ -958,6 +958,28 @@ exists (`compiler-architecture-design.md`).
     js-crash**, 108 unsupported (256 files) — +1 match (the fixture), unsupported unchanged. SPEC
     untouched; no graded row moves (still partial). Next: **D1(xxii)** = the propagate operator
     (`e?` — unwrap-or-early-return on Result), then the D2 effects wall (`Perform`/`await`).
+  - **D1(xxii) — the propagate operator `e?` compiles (the frontier twin flips again) — DONE 2026-06.**
+    The propagate guardrail D1(xxi) left (`half(n)?`) was holding. `e?` now lowers: eval yields an `Ok`'s
+    payload, or throws a ReturnSignal that early-returns the whole `Error` from the enclosing function.
+    The compiler hoists the subject to a temp and marks it a **`guard` bind** — a new optional flag on
+    `Bind` that `wrap` renders as a `Let` followed by a `PropGuard` IR node, emitting
+    `if (_t.name === "Error") return _t;` — a real JS function-level early return — with the propagate's
+    value being the payload (`_t.payload`). Because the early-return is a genuine `return`, `?` is valid
+    only where its guard lands in the function body (statement / tail / lambda position — a lambda's
+    arrow IS a function boundary, so it's fine). Inside a **value IIFE** (a `Cond`/`Block`/`Loop` body,
+    where `return` would escape only the IIFE) it **refuses cleanly** via a `containsPropGuard` walk at
+    those construction sites — a precise `unsupported` ("lift it to a `let` statement"), never a
+    miscompile. Green fixture `compile_propagate_test.velve` (a single `?` in a let; chained `?`s where
+    either operand can early-return; the Ok path threading the payload; and `?` as a nested call-arg
+    subexpression — it hoists to the statement level so its early-return still exits the function)
+    compiles **byte-identically** to eval (`Ok(10)` / `Error(not positive)` / `Ok(7)` / two
+    `Error(not positive)` / `Ok(10)` / `Error(not positive)`). The frontier twin rolled to the
+    **PROP-WITH operator** (`e ?: alt` — unwrap an `Ok` or evaluate the fallback; a *pure* conditional,
+    no early-return; the spine has no prop-with lowering, `PropWith` hits `normComp`'s `default`) — the
+    next unrepresented form — still exit 2. **No pre-existing corpus file flipped.** Harness: **44 match,
+    0 mismatch, 0 js-crash**, 108 unsupported (257 files) — +1 match (the fixture), unsupported unchanged.
+    SPEC untouched; no graded row moves (still partial). Next: **D1(xxiii)** = prop-with (`e ?: alt`),
+    then the D2 effects wall (`Perform`/`await`).
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

@@ -755,7 +755,20 @@ primitive subject returning a proper `false` rather than leaking the operand. Ha
 mismatch / 0 js-crash / 108 unsupported** (256 files) — +1 match (fixture `compile_typetest_test.velve`,
 byte-identical across binder/bare/nullary/value-position/falsy-payload cases), no corpus flip. The
 frontier twin rolled to the **PROPAGATE operator** (`e?` — unwrap-or-early-return on Result).
-**Remaining for D1(xxii)+**: the propagate operator (`e?`); then the D2 effects wall (`Perform`/`await`).
+
+**D1(xxii) shipped (2026-06) — the propagate operator `e?`.** eval yields an `Ok`'s payload, or throws
+a ReturnSignal that early-returns the whole `Error` from the enclosing function. The compiler hoists the
+subject to a temp marked a **`guard` bind** (a new optional flag on `Bind` that `wrap` renders as a `Let`
++ a `PropGuard` IR node → `if (_t.name === "Error") return _t;`), the value being the payload. The
+early-return is a real JS `return`, so `?` is valid only where its guard lands in the function body
+(statement / tail / lambda — a lambda's arrow is itself a function boundary). Inside a **value IIFE** (a
+`Cond`/`Block`/`Loop` body, where `return` would escape only the IIFE) it refuses cleanly via a
+`containsPropGuard` walk at those sites — a precise `unsupported`, never a miscompile. Harness: **44 match
+/ 0 mismatch / 0 js-crash / 108 unsupported** (257 files) — +1 match (fixture
+`compile_propagate_test.velve`, byte-identical across single/chained/payload-threading/nested-arg cases),
+no corpus flip. The frontier twin rolled to the **PROP-WITH operator** (`e ?: alt` — unwrap-or-fallback, a
+pure conditional with no early-return).
+**Remaining for D1(xxiii)+**: prop-with (`e ?: alt`); then the D2 effects wall (`Perform`/`await`).
 
 ---
 

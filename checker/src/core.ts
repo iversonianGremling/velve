@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xxi) type-tests): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
+// SCOPE (through D1(xxii) propagate): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -48,8 +48,11 @@
 // control flow and a CPS loop-body lowering that threads the "iterate again" terminator into
 // each branch (D1(xx)); and TYPE TESTS — `e is Ctor(b)`: the binder form (in an `if` cond)
 // desugars to a ctor-pattern match binding the payload, the binder-less form lowers to a
-// `CtorTest` Bool (`v.$t==="C" && v.name===name`) (D1(xxi)). The PROPAGATE operator (`e?`),
-// then `Perform`/`await` (effects) are next (D1(xxii)+, D2 — the effects wall).
+// `CtorTest` Bool (`v.$t==="C" && v.name===name`) (D1(xxi)); and the PROPAGATE operator `e?`
+// — hoist the subject, early-return it from the fn when it is an `Error` (a `PropGuard` →
+// `if (_t.name==="Error") return _t`), value is the payload; refused inside a value IIFE where
+// `return` couldn't reach the fn (D1(xxii)). PROP-WITH (`e ?: alt`), then `Perform`/`await`
+// (effects) are next (D1(xxiii)+, D2 — the effects wall).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
 import type { Span } from "./span.js";
@@ -118,6 +121,7 @@ export type IRExpr =
   | { k: "If"; cond: IRAtom; then: IRExpr; else_: IRExpr }
   | { k: "Break"; value: IRAtom | null }                // escape the enclosing `loop` with a value (null ⇒ Unit)
   | { k: "Continue" }                                   // skip to the enclosing `loop`'s next iteration
+  | { k: "PropGuard"; ctor: IRAtom; body: IRExpr }      // `e?`: if `ctor` is an `Error`, early-return it from the fn; else fall to `body`
   | { k: "Fail"; msg: string };                         // non-exhaustive fall-through
 
 export interface IRFn { name: string; params: string[]; body: IRExpr }
@@ -144,7 +148,10 @@ export const BUILTINS = new Set([
 
 // ── Lowering ────────────────────────────────────────────────────────────────────
 
-interface Bind { name: string; comp: IRComp }
+// `guard` marks a propagate (`e?`) temp: after binding it, early-return it from the enclosing
+// function if it is an `Error` (eval's ReturnSignal). `wrap` renders a guard bind as a `Let`
+// followed by a `PropGuard`; ordinary binds (the vast majority) leave it undefined.
+interface Bind { name: string; comp: IRComp; guard?: boolean }
 
 // One step of a compiled pattern: introduce a name, or assert an atom is truthy
 // (else the branch falls through). A flat list of these folds into the decision-spine.
@@ -561,6 +568,7 @@ class Lowering {
         if (e.op === "&&" || e.op === "||") {
           const l = this.norm(e.left, scope);
           const right = this.tail(e.right, new Set(scope));   // the lazy operand, as a value-expr
+          noPropInValue(right, "a `&&`/`||` operand");
           const T: IRExpr = { k: "Ret", atom: { k: "Lit", lit: { t: "Bool", v: true } } };
           const F: IRExpr = { k: "Ret", atom: { k: "Lit", lit: { t: "Bool", v: false } } };
           const comp: IRComp = e.op === "&&"
@@ -627,7 +635,9 @@ class Lowering {
         // which emitjs wraps in an arrow-IIFE returning the taken branch's value — the
         // n-way generalization of what `Cond` does for a single binary branch. `Block` is
         // an ordinary comp, so a value-`match` nested in an argument/operand composes.
-        return { binds: [], comp: { k: "Block", body: this.matchE(e.subject, e.branches, scope) } };
+        const mBody = this.matchE(e.subject, e.branches, scope);
+        noPropInValue(mBody, "a value-position `match`");
+        return { binds: [], comp: { k: "Block", body: mBody } };
       }
       case "If": {
         // A non-tail `if` used as a VALUE (`let x = if c then a else b`, or nested in an
@@ -639,11 +649,16 @@ class Lowering {
         // A binder type-test condition (`if e is Ok(v) …`) desugars to a ctor match (D1(xxi));
         // in value position its decision-spine is reified by a `Block`, exactly like a value
         // `match`.
-        if (e.cond.tag === "TypeTest" && e.cond.binder && e.cond.against.tag === "TRNamed")
-          return { binds: [], comp: { k: "Block", body: this.typeTestIf(e.cond.expr, e.cond.against.name, e.cond.binder, e.then, e.else_, scope, e.cond.span) } };
+        if (e.cond.tag === "TypeTest" && e.cond.binder && e.cond.against.tag === "TRNamed") {
+          const ttBody = this.typeTestIf(e.cond.expr, e.cond.against.name, e.cond.binder, e.then, e.else_, scope, e.cond.span);
+          noPropInValue(ttBody, "a value-position `if … is …`");
+          return { binds: [], comp: { k: "Block", body: ttBody } };
+        }
         const c = this.norm(e.cond, scope);
         const then = this.tail(e.then, new Set(scope));
         const els = e.else_ ? this.tail(e.else_, new Set(scope)) : RET_UNIT;
+        noPropInValue(then, "a value-position `if` branch");
+        noPropInValue(els, "a value-position `if` branch");
         return { binds: c.binds, comp: { k: "Cond", cond: c.atom, then, else_: els } };
       }
       case "Lambda": {
@@ -661,6 +676,22 @@ class Lowering {
         const inner = new Set(scope);
         for (const pn of params) inner.add(pn);
         return { binds: [], comp: { k: "Lambda", params, body: this.tail(e.body, inner) } };
+      }
+      case "Propagate": {
+        // The propagate operator `e?` (D1(xxii)). eval: an `Ok(x)` yields `x`, an `Error`
+        // throws a ReturnSignal that early-returns the whole Error from the enclosing function.
+        // We hoist the subject to a temp, mark it a `guard` bind (so `wrap` emits the
+        // early-return `PropGuard` right after it), and the propagate's value is the payload.
+        // The early-return is a real JS `return`, so `?` is valid only where its guard lands
+        // in the function body (statement / tail / lambda) — inside a value IIFE it refuses
+        // (see `noPropInValue` at the `Cond`/`Block`/`Loop` sites). A non-Ok/Error subject is
+        // type-impossible (the checker types `e` as a Result), so the Ok/Error split is total.
+        const s = this.norm(e.expr, scope);
+        const g = this.fresh();
+        return {
+          binds: [...s.binds, { name: g, comp: { k: "Atom", atom: s.atom }, guard: true }],
+          comp: { k: "CtorPayload", ctor: { k: "Var", name: g } },
+        };
       }
       case "TypeTest": {
         // A binder-less type test `e is Name` (D1(xxi)) — a Bool. eval returns
@@ -683,6 +714,7 @@ class Lowering {
         // real labeled control flow (a value-position `Cond` could not express it). emitjs
         // wraps the result in an IIFE around a labeled `while (true)` returning the break value.
         const body = this.loopBlock(e.stmts, new Set(scope), RET_UNIT);
+        noPropInValue(body, "a `loop` body");
         return { binds: [], comp: { k: "Loop", body } };
       }
       case "Range": {
@@ -756,8 +788,32 @@ const ARITH = new Set(["+", "-", "*", "/", "%", "**", "^", "<", ">", "<=", ">=",
 
 function wrap(binds: Bind[], body: IRExpr): IRExpr {
   let e = body;
-  for (let i = binds.length - 1; i >= 0; i--) { const b = binds[i]!; e = { k: "Let", name: b.name, comp: b.comp, body: e }; }
+  for (let i = binds.length - 1; i >= 0; i--) {
+    const b = binds[i]!;
+    // A guard bind (`e?`) binds its temp, then early-returns it when it is an `Error`.
+    e = b.guard
+      ? { k: "Let", name: b.name, comp: b.comp, body: { k: "PropGuard", ctor: { k: "Var", name: b.name }, body: e } }
+      : { k: "Let", name: b.name, comp: b.comp, body: e };
+  }
   return e;
+}
+
+// Does this statement spine carry a `PropGuard` (an `e?` early-return)? Walks the spine only —
+// NOT into nested comps, which are their own IIFEs and refuse `?` at their own construction. A
+// `PropGuard` emits a `return` from the enclosing JS function, so it is INVALID inside a value
+// IIFE (a `Cond`/`Block`/`Loop` body) where `return` would escape only the IIFE; those sites
+// call this to refuse `?` cleanly rather than miscompile (statement/tail/lambda position is fine).
+function containsPropGuard(e: IRExpr): boolean {
+  switch (e.k) {
+    case "PropGuard": return true;
+    case "Let": case "Assign": case "IndexSet": return containsPropGuard(e.body);
+    case "If": return containsPropGuard(e.then) || containsPropGuard(e.else_);
+    default: return false;
+  }
+}
+
+function noPropInValue(e: IRExpr, ctx: string): void {
+  if (containsPropGuard(e)) throw new CompileUnsupported(`\`?\` propagate inside ${ctx} — its early-return can't cross the value boundary (lift it to a \`let\` statement)`);
 }
 
 function lowerLit(l: Lit): IRLit {

@@ -1287,6 +1287,27 @@ dimension machinery generalize?
   across 256 files (+1 match = fixture; unsupported unchanged). SPEC untouched; no graded row moves (still
   partial). **Next: D1(xxii)** — the propagate operator (`e?`), then the D2 effects wall (`Perform`/`await`).
 
+- [x] 🟢 **Phase D1(xxii) — the propagate operator `e?` compiles (unwrap-or-early-return on Result) — DONE
+  2026-06** (`core.ts` `guard?` flag on `Bind` + new `PropGuard` IRExpr + the `Propagate` case in
+  `normComp` + `containsPropGuard`/`noPropInValue` refusal at the `Cond`/`Block`/`Loop` sites; `emitjs.ts`
+  `PropGuard` emit in `body` + defensive throw in `loopBody`; `compile_propagate_test.velve`). The
+  propagate guardrail D1(xxi) left (`half(n)?`) was holding. `e?` now lowers: eval yields an `Ok`'s payload,
+  or throws a ReturnSignal early-returning the whole `Error` from the enclosing function. The compiler
+  hoists the subject to a temp marked a **`guard` bind** (rendered by `wrap` as a `Let` + a `PropGuard` →
+  `if (_t.name === "Error") return _t;`), value = the payload. The early-return is a real JS `return`, so
+  `?` is valid only where its guard lands in the function body (statement / tail / lambda — a lambda's
+  arrow IS a function boundary). Inside a **value IIFE** (`Cond`/`Block`/`Loop` body, where `return` would
+  escape only the IIFE) it **refuses cleanly** via a `containsPropGuard` walk — a precise `unsupported`
+  ("lift it to a `let` statement"), never a miscompile (verified: a `?` in an `if … then` value branch
+  refuses exit 2). Green `compile_propagate_test` (single `?` in a let; chained `?`s; Ok-path payload
+  threading; `?` as a nested call-arg) byte-identical to eval (`Ok(10)` / `Error(not positive)` / `Ok(7)` /
+  two `Error(not positive)` / `Ok(10)` / `Error(not positive)`). The frontier twin `compile_frontier_test`
+  ROLLED propagate→**PROP-WITH** (`e ?: alt` — unwrap-or-fallback, a pure conditional, no early-return;
+  `PropWith` hits `normComp`'s `default`) — next unrepresented form — still exit 2. **No pre-existing corpus
+  file flipped.** Harness: **44 match / 0 mismatch / 0 js-crash / 108 unsupported** across 257 files (+1
+  match = fixture; unsupported unchanged). SPEC untouched; no graded row moves (still partial). **Next:
+  D1(xxiii)** — prop-with (`e ?: alt`), then the D2 effects wall (`Perform`/`await`).
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)
