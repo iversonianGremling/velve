@@ -1371,6 +1371,30 @@ dimension machinery generalize?
   SPEC untouched; no graded row moves (still partial). **Next: D2(b)** — a JS scheduler runtime
   (`$spawn`/`$future`/`$await` prelude), then **D2(c)** `go`/`await` lowering onto it (and `retry`).
 
+- [x] 🟢 **Phase D2(b) — the async scheduler runtime: `go`/`await` compile (first real concurrency) — DONE
+  2026-06** (`core.ts` `Go`/`AwaitFut` IRComps + normComp cases + `asyncScan` call-graph walk + async-set
+  FIXPOINT in `lowerModule` + `usedScheduler`/`usesScheduler` flags + `containsAwait` extended for
+  `AwaitFut`; `emitjs.ts` `Go`/`AwaitFut` emit + ported `$Future`/`$sched` `SCHEDULER_PRELUDE` (gated) +
+  scheduler-based `main` runner; new fixture `compile_goawait_test.velve`). Scheduler runtime + `go`/`await`
+  merged into one slice (scheduler alone is unobservable, like D2(a)). `go expr` spawns the deferred
+  expression → a future; `await fut` blocks on its value. **The scheduler is a VERBATIM port of
+  `src/scheduler.ts`** — eval's is pure virtual time (no `setTimeout`/`Date.now`; determinism = JS microtask
+  FIFO + stable-sorted timers), so porting it whole makes ordering/timing **byte-identical by construction**.
+  `go` → `$sched.spawn(async () => …)` (sync, returns a future, legal anywhere; its arrow is its own async
+  boundary); `await fut` → `await $sched.awaitFuture(fut)`. **Key correction over D2(a):** `go`/`await` are
+  typed `Async T`, NOT effect-row entries (`def testGoAwait(): String` has no `Effect` clause), so the async
+  set is now a **call-graph fixpoint** — seed on (non-empty effect row OR syntactic `go`/`await`), propagate
+  to callers. `await` reuses the D2(a) value-IIFE refusal (`containsAwait` flags `AwaitFut`). Scheduler
+  prelude + `$sched.run(...)` runner emit **only when `usesScheduler`** — **zero blast radius**, every
+  non-concurrent program byte-identical to before (verified). Green `compile_goawait_test` (spawn-then-await;
+  two futures summed; future through a helper; `await` of an async helper call) byte-identical to eval (`25` /
+  `25` / `36`). Frontier **unchanged** (`go`/`await` sit past the `retry` guardrail; `go saga()` refuses for
+  free via its inner `Call` — saga callee isn't a `def`). **No pre-existing corpus file flipped** (existing
+  concurrency files use sagas/streams/`send`, all still refused). Harness: **48 match / 0 mismatch / 0
+  js-crash / 108 unsupported** across 261 files (+1 match = fixture; unsupported unchanged). SPEC untouched;
+  no graded row moves (still partial). **Next: D2(c)** — `retry` (re-run loop around a `try` body) and/or
+  streams (`send` + `await … | branches`), `race`, then sagas/stores.
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

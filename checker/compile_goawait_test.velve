@@ -1,0 +1,31 @@
+@edition "2026.6"
+
+-- D2(b): `go` / `await` compile (the first real concurrency slice). `go expr` spawns the
+-- (deferred) expression as a task on the scheduler, yielding a future; `await fut` blocks on
+-- its value. The compiler ports eval's scheduler (src/scheduler.ts) VERBATIM into the prelude —
+-- pure virtual time, determinism via JS microtask FIFO + a stable-sorted timer array — so
+-- ordering/timing match eval BY CONSTRUCTION. A `go`/`await`-using def is colored `async` (the
+-- async set is a call-graph fixpoint seeded on `go`/`await`, since those are typed `Async T` not
+-- effect-row entries) and runs `main` under `$sched.run`. Byte-identical to eval, asserted by the
+-- differential harness. Covers: spawn-then-await a single future; two futures awaited and summed;
+-- a future threaded through a helper; and `await` of an async helper call (the fixpoint propagation).
+
+def square(n: Number): Number
+  n * n
+
+def viaFuture(n: Number): Number
+  let f = go square(n)
+  await f
+
+def sumTwo(a: Number, b: Number): Number
+  let fa = go square(a)
+  let fb = go square(b)
+  let x = await fa
+  let y = await fb
+  x + y
+
+def main(): Effect [io] ()
+  println("{viaFuture(5)}")
+  println("{sumTwo(3, 4)}")
+  let f = go viaFuture(6)
+  println("{await f}")

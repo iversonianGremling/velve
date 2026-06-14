@@ -1046,6 +1046,32 @@ exists (`compiler-architecture-design.md`).
     108 unsupported (260 files) — +1 match (the fixture), unsupported unchanged. SPEC untouched; no graded row
     moves (still partial). Next: **D2(b)** = a JS scheduler runtime (`$spawn`/`$future`/`$await` prelude),
     then **D2(c)** `go`/`await` lowering onto it (and `retry`, now that the async plumbing exists).
+  - **D2(b) — the async scheduler runtime: `go`/`await` compile (the first real concurrency) — DONE 2026-06.**
+    The scheduler runtime + `go`/`await` lowering, merged into one slice (the scheduler alone is unobservable,
+    like D2(a)'s coloring). `go expr` spawns the (deferred) expression as a task → a future; `await fut`
+    blocks on its value. **The scheduler is a VERBATIM port of `checker/src/scheduler.ts`** (the `Future` +
+    `Scheduler` classes, ~40 lines) into the JS prelude — eval's scheduler is *pure virtual time* (no
+    `setTimeout`/`Date.now`; determinism is JS microtask FIFO + a stable-sorted virtual-timer array), so
+    porting it whole makes ordering/timing **byte-identical by construction** rather than by
+    reverse-engineering. `go expr` → `$sched.spawn(async () => …)` (returns a future synchronously, so `go`
+    needs no `await` and is legal anywhere; the spawned arrow is its own `async` boundary); `await fut` →
+    `await $sched.awaitFuture(fut)`. **Key correction over D2(a):** `go`/`await` are typed `Async T`, *not*
+    effect-row entries (`def testGoAwait(): String` has no `Effect` clause — infer.ts:3103/3122), so the
+    async set is now a **call-graph fixpoint** — seeded on a non-empty effect row (D2a) *or* a body that
+    syntactically uses `go`/`await`, then propagated (a caller of an async def is async). `await fut` reuses
+    the D2(a) value-IIFE refusal (`containsAwait` extended to flag `AwaitFut`) — it can't cross the value
+    boundary. The scheduler prelude + the `$sched.run($sched.spawn(async () => await main()))` runner are
+    **emitted only when the module uses `go`/`await`** (a new `usesScheduler` flag), so every non-concurrent
+    program is byte-identical to before — **zero blast radius**, verified. Green fixture
+    `compile_goawait_test.velve` (spawn-then-await a future; two futures awaited and summed; a future
+    threaded through a helper; `await` of an async helper call — the fixpoint propagation) compiles
+    **byte-identically** to eval (`25` / `25` / `36`). The frontier is **unchanged** (D2(b) lowers `go`/`await`,
+    which sit past the `retry` guardrail; `retry`/streams/`race`/sagas still refuse). **No pre-existing corpus
+    file flipped** (existing concurrency files use sagas/streams/`send`, all still refused). `go saga(args)`
+    refuses for free — the saga callee is not a `def`, so its inner `Call` trips the frontier. Harness:
+    **48 match, 0 mismatch, 0 js-crash**, 108 unsupported (261 files) — +1 match (the fixture), unsupported
+    unchanged. SPEC untouched; no graded row moves (still partial). Next: **D2(c)** = `retry` (a re-run loop
+    around a `try` body) and/or streams (`send` + `await … | branches`), `race`, then sagas/stores.
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

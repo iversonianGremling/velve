@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D2(a) effect coloring): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
+// SCOPE (through D2(b) go/await): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -59,8 +59,11 @@
 // a `def` with a non-empty `Effect [...]` row lowers to an `async function` and its calls
 // `await` — the row survives AST→IR (a 2nd erasure-law exception, like the width tag); an
 // effectful (awaited) call inside a value IIFE refuses (the `await` can't cross the value
-// boundary, exactly as `?` can't). `retry`, then the async EFFECTS themselves (`go`/`await`/
-// stores via a JS scheduler) are next (D2b+ — the runtime build).
+// boundary, exactly as `?` can't). ASYNC `go`/`await` (D2b): `go expr` → `$sched.spawn(async
+// () => …)` (a future); `await fut` → `await $sched.awaitFuture(fut)`; eval's scheduler ports
+// verbatim into the prelude (gated on use), so ordering matches by construction. The async set
+// is now a CALL-GRAPH FIXPOINT (go/await are typed `Async T`, not effect-row entries). `retry`,
+// streams (`send`/`await`-branches), `race`, sagas/stores are next (D2c+).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
 import type { Span } from "./span.js";
@@ -105,7 +108,9 @@ export type IRComp =
   | { k: "Range"; from: IRAtom; to: IRAtom; inclusive: boolean } // an integer fill `from..to` (`..` exclusive, `..=` inclusive) → a list
   | { k: "Loop"; body: IRExpr }                         // an unbounded imperative loop — `break` escapes with a value, `continue` re-iterates
   | { k: "Try"; body: IRExpr }                          // a `try` block — an IIFE yielding a Result; auto-peels each line, first failure escapes
-  | { k: "Helper"; name: string; arg: IRAtom };         // a unary prelude-helper call (`$isFail`/`$peelVal`/`$tryWrap`) — the `try` peel primitives
+  | { k: "Helper"; name: string; arg: IRAtom }          // a unary prelude-helper call (`$isFail`/`$peelVal`/`$tryWrap`) — the `try` peel primitives
+  | { k: "Go"; body: IRExpr }                           // `go expr` — spawn the (deferred) body as a task on the scheduler, yields a future (D2b)
+  | { k: "AwaitFut"; fut: IRAtom };                     // `await fut` — block on a future's value (D2b); always inside an `async` fn
 // Perform — D2.
 
 // A lowered `for`-comprehension clause. A generator binds a simple name to each
@@ -135,7 +140,7 @@ export type IRExpr =
   | { k: "Fail"; msg: string };                         // non-exhaustive fall-through
 
 export interface IRFn { name: string; params: string[]; body: IRExpr; async?: boolean }
-export interface IRModule { fns: IRFn[]; hasMain: boolean }
+export interface IRModule { fns: IRFn[]; hasMain: boolean; usesScheduler?: boolean }
 
 // The loud frontier: any AST form outside the supported core throws this, so the
 // differential harness reports the file `unsupported` (a clean refusal) rather than
@@ -177,6 +182,7 @@ type CtorInfo = { nullary: boolean };
 
 class Lowering {
   private n = 0;
+  usedScheduler = false;   // set when a `Go`/`AwaitFut` is actually lowered — gates the scheduler prelude (D2b)
   constructor(private userFns: Set<string>, private ctors: Map<string, CtorInfo>, private asyncFns: Set<string> = new Set()) {}
   private fresh(): string { return `_t${this.n++}`; }
 
@@ -754,6 +760,26 @@ class Lowering {
         noAwaitInValue(lamBody, "a lambda body");   // an effectful closure needs an `async` arrow — a later slice
         return { binds: [], comp: { k: "Lambda", params, body: lamBody } };
       }
+      case "Go": {
+        // `go expr` (D2b) — spawn the expression as a concurrent task, yielding a future.
+        // eval DEFERS the body (`spawn(() => evalExpr(expr))`), so we lower `expr` in tail
+        // position and wrap it in `$sched.spawn(async () => …)`. `spawn` returns synchronously,
+        // so `go` is legal in any position (no `await`); the spawned arrow is its own `async`
+        // function boundary, so awaits inside it are fine. A `go saga(args)` refuses for free:
+        // the saga callee is not a `def`, so the inner `Call` trips the frontier.
+        this.usedScheduler = true;
+        return { binds: [], comp: { k: "Go", body: this.tail(e.expr, new Set(scope)) } };
+      }
+      case "Await": {
+        // `await fut` (D2b) — block on a future's value. Branches (the `| Push v ->` arms) are
+        // stream/saga territory — refuse them; a bare `await` extracts the future's value. The
+        // subject is named to an atom, then `await $sched.awaitFuture(atom)`. The enclosing def
+        // contains an `Await` ⇒ it is in `asyncFns` ⇒ emitted `async`, so the `await` is legal.
+        if (e.branches.length > 0) throw new CompileUnsupported("`await` with branches (streams/sagas — a later slice)");
+        this.usedScheduler = true;
+        const s = this.norm(e.expr, scope);
+        return { binds: s.binds, comp: { k: "AwaitFut", fut: s.atom } };
+      }
       case "Propagate": {
         // The propagate operator `e?` (D1(xxii)). eval: an `Ok(x)` yields `x`, an `Error`
         // throws a ReturnSignal that early-returns the whole Error from the enclosing function.
@@ -947,7 +973,7 @@ function noPropInValue(e: IRExpr, ctx: string): void {
 // is wanted. Those sites refuse it (D2a) — exactly the `?` boundary — until effect-aware value
 // positions land. (Statement/tail position threads the `await` into the real `async` function body.)
 function containsAwait(e: IRExpr): boolean {
-  const awaited = (c: IRComp) => c.k === "Call" && !!c.await;
+  const awaited = (c: IRComp) => (c.k === "Call" && !!c.await) || c.k === "AwaitFut";
   switch (e.k) {
     case "Let": case "Assign": return awaited(e.comp) || containsAwait(e.body);
     case "IndexSet": case "PropGuard": return containsAwait(e.body);
@@ -992,19 +1018,78 @@ const PRELUDE_CTORS: Array<[string, boolean]> = [
   ["Ok", false], ["Error", false], ["Some", false], ["None", true],
 ];
 
+// Scan a def's clause bodies for (a) syntactic `go`/`await` (the async SEED — `go`/`await` are
+// typed `Async T`, NOT effect-row entries, so an effectful-row check alone misses them) and (b) the
+// user-`def` names it calls (the call-graph EDGES, for the async fixpoint). A full recursive walk —
+// missing a `go`/`await` would emit `await` in a sync function — so it covers every Expr/Stmt shape.
+function asyncScan(clauses: FnClause[]): { usesConc: boolean; calls: Set<string> } {
+  let usesConc = false;
+  const calls = new Set<string>();
+  const st = (s: Stmt): void => {
+    switch (s.tag) {
+      case "SBind": ex(s.value); return;
+      case "SExpr": ex(s.expr); return;
+      case "SAssign": ex(s.target); ex(s.value); return;
+      case "SBreak": case "SReturn": if (s.value) ex(s.value); return;
+    }
+  };
+  const ex = (e: Expr | null | undefined): void => {
+    if (!e) return;
+    if (e.tag === "Go" || e.tag === "Await") usesConc = true;
+    switch (e.tag) {
+      case "Call": if (e.fn.tag === "Var") calls.add(e.fn.name); ex(e.fn); e.args.forEach(ex); e.named.forEach(n => ex(n.value)); return;
+      case "BinOp": ex(e.left); ex(e.right); return;
+      case "UnOp": case "Propagate": case "Go": case "Resume": case "Drop": case "AddrOf": case "Deref": ex(e.expr); return;
+      case "Field": ex(e.obj); return;
+      case "Index": ex(e.obj); ex(e.index); return;
+      case "Lambda": ex(e.body); return;
+      case "Match": ex(e.subject); e.branches.forEach(b => { if (b.guard) ex(b.guard); ex(b.body); }); return;
+      case "If": ex(e.cond); ex(e.then); ex(e.else_); return;
+      case "Do": case "Loop": case "Try": e.stmts.forEach(st); return;
+      case "Transaction": ex(e.config); e.body.forEach(st); return;
+      case "Retry": ex(e.count); ex(e.delay); e.stmts.forEach(st); return;
+      case "For": e.clauses.forEach(c => c.tag === "Gen" ? ex(c.iter) : ex(c.cond)); ex(e.body); return;
+      case "Range": ex(e.from); ex(e.to); return;
+      case "Tuple": case "List": e.elems.forEach(ex); return;
+      case "Record": if (e.spread) ex(e.spread); e.fields.forEach(f => ex(f.value)); return;
+      case "PropWith": ex(e.expr); ex(e.alt); return;
+      case "Await": ex(e.expr); e.branches.forEach(b => { if (b.guard) ex(b.guard); ex(b.body); }); return;
+      case "TypeTest": ex(e.expr); return;
+      case "Element": ex(e.content); e.props.forEach(p => ex(p.value)); e.children.forEach(ex); return;
+      case "Handler": ex(e.body); return;
+      case "Break": if (e.value) ex(e.value); return;
+      case "Send": ex(e.msg); return;
+      default: return;   // Lit, Var, Continue, JSExpr, Machine — no expr children for async detection
+    }
+  };
+  for (const cl of clauses) { ex(cl.body); for (const w of cl.where_) ex(w.value); }
+  return { usesConc, calls };
+}
+
 export function lowerModule(mod: Module): IRModule {
   const userFns = new Set<string>();
   for (const d of mod.decls) if (d.tag === "DFn") userFns.add(d.name);
 
-  // Effect-row coloring (D2a): a `def` whose Effect clause declares any capability (or an `..e`
-  // tail) is EFFECTFUL — it lowers to an `async function`, and calls to it `await`. The row is
-  // read off the surface signature (it survives AST→IR here, a deliberate exception to the §11.5
-  // erasure law, exactly as the width tag does). Effects propagate to callers in the checker, so
-  // this set is closed under "calls an effectful def".
+  // Async coloring (D2a + D2b): a `def` lowers to an `async function` — and calls to it `await` —
+  // when it is async. The async set is a CALL-GRAPH FIXPOINT: SEED on a non-empty Effect row (D2a;
+  // the row survives AST→IR, a deliberate exception to the §11.5 erasure law, as the width tag does)
+  // OR a body that syntactically uses `go`/`await` (D2b; those are typed `Async T`, not effect-row
+  // entries, so the row alone misses them); then PROPAGATE — a caller of an async def is itself async
+  // (so its `await` of that call sits inside an `async` fn). The checker propagates *effects* to
+  // callers, but not concurrency-by-type, so the fixpoint is computed here rather than read off rows.
+  const scans = new Map<string, { usesConc: boolean; calls: Set<string> }>();
+  for (const d of mod.decls) if (d.tag === "DFn") scans.set(d.name, asyncScan(d.clauses));
   const asyncFns = new Set<string>();
   for (const d of mod.decls)
-    if (d.tag === "DFn" && d.clauses.some(cl => cl.effects.length > 0 || cl.effectTails.length > 0))
+    if (d.tag === "DFn" && (d.clauses.some(cl => cl.effects.length > 0 || cl.effectTails.length > 0) || scans.get(d.name)!.usesConc))
       asyncFns.add(d.name);
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const [name, s] of scans) {
+      if (asyncFns.has(name)) continue;
+      for (const callee of s.calls) if (asyncFns.has(callee)) { asyncFns.add(name); changed = true; break; }
+    }
+  }
 
   // Constructor registry: the prelude data ctors plus every variant of every
   // `type … = | A | B(p)` in the module. A variant with no payload is nullary.
@@ -1016,6 +1101,7 @@ export function lowerModule(mod: Module): IRModule {
 
   const fns: IRFn[] = [];
   let hasMain = false;
+  let usesScheduler = false;
   for (const d of mod.decls) {
     // Non-`def` decls carry no top-level runtime computation in the pure core
     // (a `type`'s constructors, an `import`'s names): skip them. Any *use* of what
@@ -1036,7 +1122,8 @@ export function lowerModule(mod: Module): IRModule {
       const paramNames = Array.from({ length: arity }, (_, i) => `_a${i}`);
       fns.push({ name: d.name, params: paramNames, body: low.clauses(d.clauses, paramNames), async: isAsync });
     }
+    if (low.usedScheduler) usesScheduler = true;
     if (d.name === "main") hasMain = true;
   }
-  return { fns, hasMain };
+  return { fns, hasMain, usesScheduler };
 }

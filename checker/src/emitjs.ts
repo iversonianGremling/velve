@@ -120,6 +120,13 @@ function comp(c: IRComp): string {
     case "Try": return `(() => {\n${body(c.body, "  ")}\n})()`;
     // A unary prelude-helper call — the `try` peel primitives ($isFail / $peelVal / $tryWrap).
     case "Helper": return `${c.name}(${atom(c.arg)})`;
+    // `go expr` (D2b) — spawn the deferred body on the scheduler; returns a future synchronously,
+    // so `go` needs no `await` and is legal in any position. The arrow is `async` (its own fn
+    // boundary), so awaits inside the spawned body are fine.
+    case "Go": return `$sched.spawn(async () => {\n${body(c.body, "    ")}\n  })`;
+    // `await fut` (D2b) — block on the future's value via the scheduler. Always inside an `async`
+    // fn (the enclosing def uses `await` ⇒ it is colored async).
+    case "AwaitFut": return `await $sched.awaitFuture(${atom(c.fut)})`;
   }
 }
 
@@ -249,7 +256,39 @@ export function emitModule(mod: IRModule, callMain = true): string {
       .filter(([name]) => !userNames.has(name))
       .map(([name, impl]) => `const ${name} = ${impl};`),
   ];
+  // The async scheduler (D2b) — a verbatim port of checker/src/scheduler.ts (Future + Scheduler),
+  // emitted ONLY when the module uses `go`/`await` (keeps every non-concurrent program byte-identical).
+  // It is pure virtual time (no setTimeout/Date.now): determinism is JS microtask FIFO + a stable sort
+  // of the virtual-timer array, identical to eval's own scheduler — so ordering/timing match by construction.
+  if (mod.usesScheduler) prelude.push(SCHEDULER_PRELUDE);
   const out = [prelude.join("\n"), ...mod.fns.map(fn)];
-  if (callMain && mod.hasMain) out.push("main();");
+  // The entry call. A concurrent module drives `main` under the scheduler (so the virtual clock can
+  // advance) exactly as eval's `run()` does; a plain module keeps the synchronous fire-and-forget call.
+  if (callMain && mod.hasMain) out.push(mod.usesScheduler ? "$sched.run($sched.spawn(async () => await main()));" : "main();");
   return out.join("\n\n") + "\n";
 }
+
+// Verbatim port of checker/src/scheduler.ts (Future + Scheduler), with `Value` → JS values and
+// `{tag:"VUnit"}` → `$unit`. See that file for the design notes; the logic here is 1:1.
+const SCHEDULER_PRELUDE = [
+  '// The async scheduler (D2b) — a verbatim port of src/scheduler.ts; pure virtual time.',
+  'class $Future {',
+  '  constructor() { this.done = false; this.value = undefined; this.error = undefined; this.waiters = []; }',
+  '  resolve(v) { if (this.done) return; this.done = true; this.value = v; const ws = this.waiters; this.waiters = []; for (const w of ws) w.resolve(v); }',
+  '  reject(e) { if (this.done) return; this.done = true; this.error = e; const ws = this.waiters; this.waiters = []; for (const w of ws) w.reject(e); }',
+  '  get() { if (this.error !== undefined) throw this.error; return this.value === undefined ? $unit : this.value; }',
+  '  promise() { if (this.done) return this.error !== undefined ? Promise.reject(this.error) : Promise.resolve(this.get()); return new Promise((resolve, reject) => this.waiters.push({ resolve, reject })); }',
+  '}',
+  'const $drain = () => new Promise(r => setImmediate(r));',
+  'const $sched = {',
+  '  clock: 0,',
+  '  timers: [],',
+  '  now() { return this.clock; },',
+  '  spawn(run) { const fut = new $Future(); (async () => { try { fut.resolve(await run()); } catch (e) { fut.reject(e); } })(); return fut; },',
+  '  awaitFuture(fut) { return fut.promise(); },',
+  '  awaitFirst(futs) { return Promise.race(futs.map(f => f.promise())); },',
+  '  sleep(ms) { const target = this.clock + Math.max(0, ms); return new Promise(resolve => this.timers.push({ time: target, resolve })); },',
+  '  never() { return new Promise(() => {}); },',
+  '  async run(root) { await $drain(); while (!root.done && this.timers.length > 0) { this.timers.sort((a, b) => a.time - b.time); const t = this.timers.shift(); this.clock = Math.max(this.clock, t.time); t.resolve(); await $drain(); } },',
+  '};',
+].join("\n");

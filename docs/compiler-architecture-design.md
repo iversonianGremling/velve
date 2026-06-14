@@ -807,8 +807,22 @@ main()` still flushes under `runc`'s synchronous `new Function(js)()`: every `aw
 js-crash / 108 unsupported** (260 files) — +1 match (fixture `compile_effectchain_test.velve`, byte-identical
 and in-order across a nested `await`-chain of effectful user defs), **the whole effectful corpus** (every io
 `main` now async) stayed green, no corpus flip. The frontier is unchanged (D2(a) lowers no new *form*).
-**Remaining for D2(b)+**: a JS scheduler runtime (`$spawn`/`$future`/`$await`); then `go`/`await`/`retry`
-and stores/sagas onto it.
+
+**D2(b) shipped (2026-06) — the async scheduler runtime: `go`/`await` compile.** `go expr` spawns the
+(deferred) expression as a task → a future; `await fut` blocks on its value. **The scheduler is a verbatim
+port of `src/scheduler.ts`** (`Future` + `Scheduler`) into the JS prelude — eval's scheduler is pure
+virtual time (no `setTimeout`/`Date.now`; determinism = JS microtask FIFO + a stable-sorted timer array),
+so porting it whole makes ordering/timing byte-identical by construction. `go` → `$sched.spawn(async () =>
+…)` (a sync call returning a future, so `go` is legal anywhere; its arrow is its own `async` boundary);
+`await fut` → `await $sched.awaitFuture(fut)`. **Correction over D2(a):** `go`/`await` are typed `Async T`,
+not effect-row entries, so the async set is now a **call-graph fixpoint** (seed on effect row *or* syntactic
+`go`/`await`; propagate to callers). `await fut` reuses the D2(a) value-IIFE refusal (`containsAwait` flags
+`AwaitFut`). The scheduler prelude + `$sched.run(...)` runner emit **only when the module uses `go`/`await`**
+(a `usesScheduler` flag) — zero blast radius for non-concurrent programs. Harness: **48 match / 0 mismatch /
+0 js-crash / 108 unsupported** (261 files) — +1 match (fixture `compile_goawait_test.velve`, byte-identical
+across spawn/await, two-futures-summed, and fixpoint-propagation cases), no corpus flip. The frontier is
+unchanged (`go`/`await` sit past the `retry` guardrail; `go saga()` refuses for free via its inner `Call`).
+**Remaining for D2(c)+**: `retry`; streams (`send` + `await … | branches`), `race`; then stores/sagas.
 
 ---
 
