@@ -1,0 +1,22 @@
+@edition "2026.6"
+
+-- D2(a): EFFECT-ROW COLORING — an effectful `def` (a non-empty `Effect [...]` row) compiles to
+-- an `async function`, and a call to one is `await`ed. The effect system propagates effects to
+-- callers, so any function with an awaited call is itself effectful ⇒ itself `async`, making the
+-- `await` always legal. Prior io fixtures only call the synchronous builtin `println`; this one
+-- exercises the NEW path — `await`ing effectful USER defs, including a nested chain (an effectful
+-- helper that awaits another). The async/await is invisible at runtime (no real async effect yet,
+-- so every `await` resolves synchronously), so output stays byte-identical to eval and IN ORDER,
+-- asserted by the differential harness.
+
+def emit(label: String, n: Number): Effect [io] ()
+  println("{label}={n}")
+
+def emitPair(a: Number, b: Number): Effect [io] ()
+  emit("x", a)
+  emit("y", b)
+
+def main(): Effect [io] ()
+  emit("start", 0)
+  emitPair(3, 4)
+  emit("end", 9)

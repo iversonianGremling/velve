@@ -57,7 +57,7 @@ function atom(a: IRAtom): string {
 function comp(c: IRComp): string {
   switch (c.k) {
     case "Atom": return atom(c.atom);
-    case "Call": return `${c.fn}(${c.args.map(atom).join(", ")})`;
+    case "Call": return `${c.await ? "await " : ""}${c.fn}(${c.args.map(atom).join(", ")})`;
     case "PrimOp": {
       const a = c.args.map(atom);
       const j = OP[c.op];
@@ -205,7 +205,10 @@ function body(e: IRExpr, indent: string): string {
 }
 
 function fn(f: IRFn): string {
-  return `function ${f.name}(${f.params.join(", ")}) {\n${body(f.body, "  ")}\n}`;
+  // An effectful def (non-empty Effect row) emits `async` (D2a); its calls to other effectful
+  // defs are `await`ed. The effect system makes any awaited call sit inside an effectful (async)
+  // function, so `await` is always syntactically legal.
+  return `${f.async ? "async " : ""}function ${f.name}(${f.params.join(", ")}) {\n${body(f.body, "  ")}\n}`;
 }
 
 // Emit a complete, self-contained JS module. When `callMain` and the module has a

@@ -793,7 +793,22 @@ here, the `noPropInValue` refusal deliberately not applied to the `try` body. `r
 (fixture `compile_try_test.velve`, byte-identical across explicit-`?` / implicit-auto-peel /
 bare-value-Ok-wrap / failure-collapse cases), no corpus flip. The frontier twin rolled to the **`retry`
 block** (`Retry` hits `normComp`'s `default`).
-**Remaining for D1(xxv)+**: the `retry` block; then the D2 effects wall (`Perform`/`await`/`go`).
+
+**D2(a) shipped (2026-06) — effect-row coloring (the effects-runtime foundation).** The first D2 slice. A
+`def` with a non-empty `Effect [...]` row now lowers to an **`async function`**, and calls to such defs are
+**`await`ed**. The row **survives AST→IR** — a deliberate second exception to the §11.5 erasure law, like
+the width tag (the backend must know which functions are effectful). Soundness is free: the checker
+propagates effects to callers, so any function with an awaited call is itself `async`, so `await` is always
+legal. Two boundaries refuse cleanly: an effectful call inside a **value IIFE** (`Cond`/`Block`/`Loop`/`try`)
+— its `await` would make the arrow return a Promise, *exactly* the `?` boundary, caught by a parallel
+`containsAwait` walk — and an **effectful lambda** body (needs an `async` arrow, a later slice). An `async
+main()` still flushes under `runc`'s synchronous `new Function(js)()`: every `await` resolves synchronously
+(no real async effect yet) and Node drains microtasks before exit. Harness: **47 match / 0 mismatch / 0
+js-crash / 108 unsupported** (260 files) — +1 match (fixture `compile_effectchain_test.velve`, byte-identical
+and in-order across a nested `await`-chain of effectful user defs), **the whole effectful corpus** (every io
+`main` now async) stayed green, no corpus flip. The frontier is unchanged (D2(a) lowers no new *form*).
+**Remaining for D2(b)+**: a JS scheduler runtime (`$spawn`/`$future`/`$await`); then `go`/`await`/`retry`
+and stores/sagas onto it.
 
 ---
 

@@ -1346,6 +1346,31 @@ dimension machinery generalize?
   fixture; unsupported unchanged). SPEC untouched; no graded row moves (still partial). **Next: D1(xxv)** —
   the `retry` block, then the D2 effects wall (`Perform`/`await`/`go` — where the async runtime begins).
 
+- [x] 🟢 **Phase D2(a) — effect-row coloring: effectful `def`s compile `async` (the effects-runtime
+  foundation) — DONE 2026-06** (`core.ts` `async?` on `IRFn` + `await?` on the `Call` comp + `asyncFns` set
+  computed in `lowerModule` and threaded to `Lowering` + `containsAwait`/`noAwaitInValue` refusal at the
+  value-IIFE sites + the Lambda guard; `emitjs.ts` `async function` + `await` call emit; new fixture
+  `compile_effectchain_test.velve`). **The first D2 slice** — the load-bearing infrastructure the async
+  effects (`go`/`await`/stores) will sit on, chosen ("color by effect row") over async-color-everything /
+  defer-effects. A `def` whose `Effect [...]` row is non-empty lowers to an **`async function`**, and a call
+  to one is **`await`ed**. The row is read off the surface signature and **survives AST→IR** — a deliberate
+  2nd exception to the §11.5 erasure law, like the width tag. Soundness is free: the checker propagates
+  effects to callers, so any function with an awaited call is itself effectful ⇒ itself `async`, so `await`
+  is always legal. Two boundaries refuse cleanly: an effectful (awaited) call inside a **value IIFE**
+  (`Cond`/`Block`/`Loop`/`try` body) — its `await` would make the arrow return a Promise where a value is
+  wanted, *exactly* the `?` boundary (parallel `containsAwait` walk) — and an **effectful lambda** body
+  (needs an `async` arrow, a later slice). An `async main()` still flushes under `runc`'s synchronous
+  `new Function(js)()` (every `await` resolves synchronously — no real async effect yet — and Node drains
+  microtasks before exit). **Blast radius = the whole effectful corpus** (every `Effect [io]` `main` is now
+  `async`); all 46 prior matches stayed green. Green `compile_effectchain_test` exercises the NEW path —
+  `await`ing effectful USER defs in a nested chain (`main` → `emitPair` → `emit`), byte-identical and IN
+  ORDER (`start=0` / `x=3` / `y=4` / `end=9`); prior io fixtures only called the synchronous builtin
+  `println`. The frontier is **unchanged** (D2(a) lowers no new *form* — it colors existing effectful defs —
+  so the `retry` guardrail still refuses). **No pre-existing corpus file flipped.** Harness: **47 match / 0
+  mismatch / 0 js-crash / 108 unsupported** across 260 files (+1 match = fixture; unsupported unchanged).
+  SPEC untouched; no graded row moves (still partial). **Next: D2(b)** — a JS scheduler runtime
+  (`$spawn`/`$future`/`$await` prelude), then **D2(c)** `go`/`await` lowering onto it (and `retry`).
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

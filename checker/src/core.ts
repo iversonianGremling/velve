@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xxiv) try): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
+// SCOPE (through D2(a) effect coloring): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -55,8 +55,12 @@
 // fallback, reusing `Cond` over a `CtorTest(_,"Ok")` with the payload as `then` and the lazy
 // fallback as `else` (D1(xxiii)); and the `try` block — an IIFE yielding a Result, auto-peeling
 // each line (`$isFail`/`$peelVal`), the first failure escaping, the final value `$tryWrap`ped;
-// a `?` inside targets this IIFE, matching eval's catch (D1(xxiv)). `retry`, then `Perform`/
-// `await` (effects) are next (D1(xxv)+, D2 — the effects wall, where the async runtime begins).
+// a `?` inside targets this IIFE, matching eval's catch (D1(xxiv)). EFFECT-ROW COLORING (D2a):
+// a `def` with a non-empty `Effect [...]` row lowers to an `async function` and its calls
+// `await` — the row survives AST→IR (a 2nd erasure-law exception, like the width tag); an
+// effectful (awaited) call inside a value IIFE refuses (the `await` can't cross the value
+// boundary, exactly as `?` can't). `retry`, then the async EFFECTS themselves (`go`/`await`/
+// stores via a JS scheduler) are next (D2b+ — the runtime build).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
 import type { Span } from "./span.js";
@@ -82,7 +86,7 @@ export type Width = { bits: number; signed: boolean };
 // Computations — everything with a value to name; each is the RHS of a `Let`.
 export type IRComp =
   | { k: "Atom"; atom: IRAtom }
-  | { k: "Call"; fn: string; args: IRAtom[] }          // saturated; fn is a name
+  | { k: "Call"; fn: string; args: IRAtom[]; await?: boolean } // saturated; fn is a name. `await` ⇒ the callee is effectful (async), so `await` it (D2a)
   | { k: "PrimOp"; op: string; args: IRAtom[]; width?: Width }
   | { k: "Tuple"; elems: IRAtom[] }                    // build a positional aggregate
   | { k: "Proj"; tuple: IRAtom; index: number }        // read element `index` of a tuple
@@ -130,7 +134,7 @@ export type IRExpr =
   | { k: "PropGuard"; ctor: IRAtom; body: IRExpr }      // `e?`: if `ctor` is an `Error`, early-return it from the fn; else fall to `body`
   | { k: "Fail"; msg: string };                         // non-exhaustive fall-through
 
-export interface IRFn { name: string; params: string[]; body: IRExpr }
+export interface IRFn { name: string; params: string[]; body: IRExpr; async?: boolean }
 export interface IRModule { fns: IRFn[]; hasMain: boolean }
 
 // The loud frontier: any AST form outside the supported core throws this, so the
@@ -173,7 +177,7 @@ type CtorInfo = { nullary: boolean };
 
 class Lowering {
   private n = 0;
-  constructor(private userFns: Set<string>, private ctors: Map<string, CtorInfo>) {}
+  constructor(private userFns: Set<string>, private ctors: Map<string, CtorInfo>, private asyncFns: Set<string> = new Set()) {}
   private fresh(): string { return `_t${this.n++}`; }
 
   fn(params: string[], body: Expr): IRExpr {
@@ -635,6 +639,7 @@ class Lowering {
           const l = this.norm(e.left, scope);
           const right = this.tail(e.right, new Set(scope));   // the lazy operand, as a value-expr
           noPropInValue(right, "a `&&`/`||` operand");
+          noAwaitInValue(right, "a `&&`/`||` operand");
           const T: IRExpr = { k: "Ret", atom: { k: "Lit", lit: { t: "Bool", v: true } } };
           const F: IRExpr = { k: "Ret", atom: { k: "Lit", lit: { t: "Bool", v: false } } };
           const comp: IRComp = e.op === "&&"
@@ -703,6 +708,7 @@ class Lowering {
         // an ordinary comp, so a value-`match` nested in an argument/operand composes.
         const mBody = this.matchE(e.subject, e.branches, scope);
         noPropInValue(mBody, "a value-position `match`");
+        noAwaitInValue(mBody, "a value-position `match`");
         return { binds: [], comp: { k: "Block", body: mBody } };
       }
       case "If": {
@@ -718,6 +724,7 @@ class Lowering {
         if (e.cond.tag === "TypeTest" && e.cond.binder && e.cond.against.tag === "TRNamed") {
           const ttBody = this.typeTestIf(e.cond.expr, e.cond.against.name, e.cond.binder, e.then, e.else_, scope, e.cond.span);
           noPropInValue(ttBody, "a value-position `if … is …`");
+          noAwaitInValue(ttBody, "a value-position `if … is …`");
           return { binds: [], comp: { k: "Block", body: ttBody } };
         }
         const c = this.norm(e.cond, scope);
@@ -725,6 +732,8 @@ class Lowering {
         const els = e.else_ ? this.tail(e.else_, new Set(scope)) : RET_UNIT;
         noPropInValue(then, "a value-position `if` branch");
         noPropInValue(els, "a value-position `if` branch");
+        noAwaitInValue(then, "a value-position `if` branch");
+        noAwaitInValue(els, "a value-position `if` branch");
         return { binds: c.binds, comp: { k: "Cond", cond: c.atom, then, else_: els } };
       }
       case "Lambda": {
@@ -741,7 +750,9 @@ class Lowering {
         const params = e.params.map(p => patName(p.pat));
         const inner = new Set(scope);
         for (const pn of params) inner.add(pn);
-        return { binds: [], comp: { k: "Lambda", params, body: this.tail(e.body, inner) } };
+        const lamBody = this.tail(e.body, inner);
+        noAwaitInValue(lamBody, "a lambda body");   // an effectful closure needs an `async` arrow — a later slice
+        return { binds: [], comp: { k: "Lambda", params, body: lamBody } };
       }
       case "Propagate": {
         // The propagate operator `e?` (D1(xxii)). eval: an `Ok(x)` yields `x`, an `Error`
@@ -771,6 +782,7 @@ class Lowering {
         const pay = this.fresh();
         const elseE = this.tail(e.alt, new Set(scope));
         noPropInValue(elseE, "a `?:` fallback");
+        noAwaitInValue(elseE, "a `?:` fallback");
         return {
           binds: [
             ...s.binds,
@@ -802,7 +814,9 @@ class Lowering {
         // with the peeled value (`$peelVal`); the IIFE ends `return $tryWrap(last)`. A `?` inside
         // emits its usual `return` — which now lands in THIS IIFE, exactly eval's catch, so it is
         // allowed here (no `noPropInValue`).
-        return { binds: [], comp: { k: "Try", body: this.tryBlock(e.stmts, scope) } };
+        const tBody = this.tryBlock(e.stmts, scope);
+        noAwaitInValue(tBody, "a `try` block");   // a `?` is fine here (targets the try IIFE); an `await` is not yet
+        return { binds: [], comp: { k: "Try", body: tBody } };
       }
       case "Loop": {
         // An unbounded imperative loop (D1(xx)). eval runs the body block forever, sharing
@@ -815,6 +829,7 @@ class Lowering {
         // wraps the result in an IIFE around a labeled `while (true)` returning the break value.
         const body = this.loopBlock(e.stmts, new Set(scope), RET_UNIT);
         noPropInValue(body, "a `loop` body");
+        noAwaitInValue(body, "a `loop` body");
         return { binds: [], comp: { k: "Loop", body } };
       }
       case "Range": {
@@ -873,7 +888,15 @@ class Lowering {
         if (!scope.has(fn) && !this.userFns.has(fn) && !BUILTINS.has(fn))
           throw new CompileUnsupported(`call to '${fn}' (not a def or supported builtin)`);
         const parts = e.args.map(a => this.norm(a, scope));
-        return { binds: parts.flatMap(p => p.binds), comp: { k: "Call", fn, args: parts.map(p => p.atom) } };
+        // An EFFECTFUL callee (a `def` whose Effect row is non-empty) compiles to an `async`
+        // function, so its call site `await`s it (D2a). The effect system propagates effects to
+        // callers, so a function containing an awaited call is itself effectful ⇒ itself `async`
+        // — `await` therefore only ever lands inside an `async` function. A local closure call
+        // (`scope.has(fn)`) or a builtin is never marked: a closure's effects aren't tracked here
+        // yet (an effectful local closure trips the value-IIFE/Lambda guard), and builtins like
+        // `println` are synchronous prelude consts.
+        const isAsync = this.asyncFns.has(fn) && !scope.has(fn);
+        return { binds: parts.flatMap(p => p.binds), comp: { k: "Call", fn, args: parts.map(p => p.atom), await: isAsync } };
       }
       default:
         throw new CompileUnsupported(e.tag);
@@ -917,6 +940,26 @@ function noPropInValue(e: IRExpr, ctx: string): void {
   if (containsPropGuard(e)) throw new CompileUnsupported(`\`?\` propagate inside ${ctx} — its early-return can't cross the value boundary (lift it to a \`let\` statement)`);
 }
 
+// Does this statement spine make an EFFECTFUL (awaited) call? Like `containsPropGuard`, it walks
+// the spine only — a `Let`/`Assign` whose comp is an awaited `Call`, threaded through bodies and
+// `If` branches. An `await` makes its arrow `async` ⇒ the arrow returns a Promise, so an effectful
+// call inside a value IIFE (a `Cond`/`Block`/`Loop`/`try` body) would yield a Promise where a value
+// is wanted. Those sites refuse it (D2a) — exactly the `?` boundary — until effect-aware value
+// positions land. (Statement/tail position threads the `await` into the real `async` function body.)
+function containsAwait(e: IRExpr): boolean {
+  const awaited = (c: IRComp) => c.k === "Call" && !!c.await;
+  switch (e.k) {
+    case "Let": case "Assign": return awaited(e.comp) || containsAwait(e.body);
+    case "IndexSet": case "PropGuard": return containsAwait(e.body);
+    case "If": return containsAwait(e.then) || containsAwait(e.else_);
+    default: return false;
+  }
+}
+
+function noAwaitInValue(e: IRExpr, ctx: string): void {
+  if (containsAwait(e)) throw new CompileUnsupported(`an effectful (async) call inside ${ctx} — its \`await\` can't cross the value boundary (lift it to a \`let\` statement)`);
+}
+
 function lowerLit(l: Lit): IRLit {
   switch (l.tag) {
     case "Num":  return { t: "Num", v: l.value };
@@ -953,6 +996,16 @@ export function lowerModule(mod: Module): IRModule {
   const userFns = new Set<string>();
   for (const d of mod.decls) if (d.tag === "DFn") userFns.add(d.name);
 
+  // Effect-row coloring (D2a): a `def` whose Effect clause declares any capability (or an `..e`
+  // tail) is EFFECTFUL — it lowers to an `async function`, and calls to it `await`. The row is
+  // read off the surface signature (it survives AST→IR here, a deliberate exception to the §11.5
+  // erasure law, exactly as the width tag does). Effects propagate to callers in the checker, so
+  // this set is closed under "calls an effectful def".
+  const asyncFns = new Set<string>();
+  for (const d of mod.decls)
+    if (d.tag === "DFn" && d.clauses.some(cl => cl.effects.length > 0 || cl.effectTails.length > 0))
+      asyncFns.add(d.name);
+
   // Constructor registry: the prelude data ctors plus every variant of every
   // `type … = | A | B(p)` in the module. A variant with no payload is nullary.
   const ctors = new Map<string, CtorInfo>();
@@ -968,19 +1021,20 @@ export function lowerModule(mod: Module): IRModule {
     // (a `type`'s constructors, an `import`'s names): skip them. Any *use* of what
     // they introduce trips the frontier inside the def that uses it.
     if (d.tag !== "DFn") continue;
-    const low = new Lowering(userFns, ctors);
+    const low = new Lowering(userFns, ctors, asyncFns);
+    const isAsync = asyncFns.has(d.name);
     if (d.clauses.length === 1) {
       // Single clause: params are simple binders, lowered directly (the fast path).
       const cl = d.clauses[0]!;
       const params = cl.params.map(p => patName(p.pat));
-      fns.push({ name: d.name, params, body: low.fn(params, cl.body) });
+      fns.push({ name: d.name, params, body: low.fn(params, cl.body), async: isAsync });
     } else {
       // Multi-clause: emit ONE JS `function` over fresh param names that dispatches
       // across the clauses by their parameter patterns (D1(xiii)). All clauses of a `def`
       // share its arity, so the fresh-name count is the first clause's param count.
       const arity = d.clauses[0]!.params.length;
       const paramNames = Array.from({ length: arity }, (_, i) => `_a${i}`);
-      fns.push({ name: d.name, params: paramNames, body: low.clauses(d.clauses, paramNames) });
+      fns.push({ name: d.name, params: paramNames, body: low.clauses(d.clauses, paramNames), async: isAsync });
     }
     if (d.name === "main") hasMain = true;
   }

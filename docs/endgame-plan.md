@@ -1022,6 +1022,30 @@ exists (`compiler-architecture-design.md`).
     108 unsupported (259 files) — +1 match (the fixture), unsupported unchanged. SPEC untouched; no graded
     row moves (still partial). Next: **D1(xxv)** = the `retry` block, then the D2 effects wall
     (`Perform`/`await`/`go` — where the async runtime design begins).
+  - **D2(a) — effect-row coloring: effectful `def`s compile `async` (the effects-runtime foundation) — DONE 2026-06.**
+    The **first D2 slice** — the load-bearing infrastructure the async effects (`go`/`await`/stores) will
+    sit on, chosen over async-color-everything / defer-effects after weighing the trade-offs. A `def` whose
+    `Effect [...]` row is non-empty now lowers to an **`async function`**, and a call to such a def is
+    **`await`ed**. The row is read off the surface signature and **survives AST→IR** — a deliberate second
+    exception to the §11.5 erasure law, exactly as the width tag survives (the backend needs to know which
+    functions are effectful, just as it needs widths for numerics). Soundness is free: the checker propagates
+    effects to callers, so any function containing an awaited call is itself effectful ⇒ itself `async`, making
+    every `await` syntactically legal. Two boundaries are guarded by clean refusals: an effectful (awaited)
+    call inside a **value IIFE** (a `Cond`/`Block`/`Loop`/`try` body) refuses (its `await` would make the arrow
+    return a Promise where a value is wanted — *exactly* the `?` boundary, via a parallel `containsAwait`
+    walk), and an **effectful lambda** body refuses (it needs an `async` arrow — a later slice). The `runc`
+    runner's `new Function(js)()` is synchronous, but an `async main()` still flushes: every `await` resolves
+    synchronously (no real async effect lowers yet), and Node drains the microtask queue before exit — verified
+    byte-identical across the whole corpus. **The blast radius is the whole effectful corpus** (every
+    `Effect [io]` `main` is now `async`); all 46 prior matches stayed green. Green NEW fixture
+    `compile_effectchain_test.velve` exercises the genuinely new path — `await`ing effectful USER defs in a
+    nested chain (`main` → `emitPair` → `emit`), output **byte-identical and in order** (`start=0` / `x=3` /
+    `y=4` / `end=9`); prior io fixtures only ever called the synchronous builtin `println`. The frontier is
+    **unchanged** (D2(a) lowers no new *form* — it colors existing effectful defs — so the `retry` guardrail
+    still refuses). **No pre-existing corpus file flipped.** Harness: **47 match, 0 mismatch, 0 js-crash**,
+    108 unsupported (260 files) — +1 match (the fixture), unsupported unchanged. SPEC untouched; no graded row
+    moves (still partial). Next: **D2(b)** = a JS scheduler runtime (`$spawn`/`$future`/`$await` prelude),
+    then **D2(c)** `go`/`await` lowering onto it (and `retry`, now that the async plumbing exists).
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,
