@@ -1,12 +1,12 @@
 @edition "2026.6"
 
--- D1(xxiii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it uses a `try` BLOCK (a scope where `?` collapses to a local Result
--- instead of early-returning the whole function — Design A, SPEC §). eval runs the body and
--- yields a Result, catching a propagated Error into this block's value; the compute spine has
--- no try lowering — `normComp`/`norm` reach the `Try` AST node and refuse it (the `default`
--- arm of `normComp`). The differential harness must report it `unsupported` — a CLEAN refusal
--- at the compiler frontier, never a miscompile.
+-- D1(xxiv) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it uses a `retry` BLOCK (run the body like a `try`; on a failure value
+-- re-run, up to `count` attempts). eval runs the body, and on an Error re-executes it (up to
+-- the count, or with a backoff schedule); the compute spine has no retry lowering —
+-- `normComp`/`norm` reach the `Retry` AST node and refuse it (the `default` arm of `normComp`).
+-- The differential harness must report it `unsupported` — a CLEAN refusal at the compiler
+-- frontier, never a miscompile.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
@@ -19,19 +19,17 @@
 -- D1(xv) PAST atom literals; D1(xvi) PAST duration literals; D1(xvii) PAST `for`
 -- comprehensions; D1(xviii) PAST integer ranges; D1(xix) PAST index assignment; D1(xx) PAST
 -- the `loop` construct; D1(xxi) PAST type tests; D1(xxii) PAST the propagate operator `e?`;
--- D1(xxiii) PAST the PROP-WITH operator (`e ?: alt`; see compile_propwith_test). The frontier
--- now sits at the `try` block. This file uses one, so it still refuses; when `try` lowers (a
--- later D1 slice, a Result-collecting block), it flips from `unsupported` to a print with no edit.
+-- D1(xxiii) PAST the prop-with operator `e ?: alt`; D1(xxiv) PAST the `try` block (a
+-- Result-collecting `?` scope; see compile_try_test). The frontier now sits at the `retry`
+-- block. This file uses one, so it still refuses; when retry lowers (a later D1 slice, a
+-- re-run loop around a try body), it flips from `unsupported` to a print with no edit.
 
-def parsePos(n: Number): Result(Number, String)
+def flaky(n: Number): Result(Number, String)
   if n > 0 then Ok(n) else Error("neg")
 
-def addThem(a: Number, b: Number): Result(Number, String)
-  try
-    let x = parsePos(a)?
-    let y = parsePos(b)?
-    Ok(x + y)
+def attempt(n: Number): Result(Number, String)
+  retry 3
+    flaky(n)
 
 def main(): Effect [io] ()
-  println(addThem(3, 4))
-  println(addThem(3, -1))
+  println(attempt(5))

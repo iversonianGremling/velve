@@ -779,7 +779,21 @@ picks the branch, the Ok payload (`CtorPayload`, D1(iv)) is the `then` atom read
 cases), no corpus flip. (Noted: `?:` binds tighter than `*`, so `e ?: d * 10` parses `(e ?: d) * 10` — the
 compiler matches eval's precedence.) The frontier twin rolled to the **`try` block** (a Result-collecting
 `?` scope; `Try` hits `normComp`'s `default`).
-**Remaining for D1(xxiv)+**: the `try` block; then the D2 effects wall (`Perform`/`await`).
+
+**D1(xxiv) shipped (2026-06) — the `try` block (Design A, a Result-collecting scope).** eval's
+`evalTryBody` auto-peels every statement (each line unwraps an `Ok`; the first `Error`/`None` collapses
+the block), catches a `?`'s early-return *here* rather than at the function, and wraps the final value
+`Ok(...)` unless already a Result. The compiler lowers it to an IIFE (a new `Try` comp) whose body — a
+`tryBlock`/`tryStmts` pass — is a `mut last` accumulator: each statement `return`s a failure raw
+(`$isFail`), else updates `last` with the peeled value (`$peelVal`); the IIFE ends `return $tryWrap(last)`.
+Three prelude helpers ($isFail/$peelVal/$tryWrap), reached via a generic unary `Helper` comp. A `?` inside
+a `try` emits its usual `PropGuard` `return`, landing in *this* IIFE (eval's catch) — so it is allowed
+here, the `noPropInValue` refusal deliberately not applied to the `try` body. `return`/`break` inside a
+`try` refuse. Harness: **46 match / 0 mismatch / 0 js-crash / 108 unsupported** (259 files) — +1 match
+(fixture `compile_try_test.velve`, byte-identical across explicit-`?` / implicit-auto-peel /
+bare-value-Ok-wrap / failure-collapse cases), no corpus flip. The frontier twin rolled to the **`retry`
+block** (`Retry` hits `normComp`'s `default`).
+**Remaining for D1(xxv)+**: the `retry` block; then the D2 effects wall (`Perform`/`await`/`go`).
 
 ---
 

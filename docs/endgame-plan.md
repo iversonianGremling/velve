@@ -999,6 +999,29 @@ exists (`compiler-architecture-design.md`).
     js-crash**, 108 unsupported (258 files) — +1 match (the fixture), unsupported unchanged. SPEC
     untouched; no graded row moves (still partial). Next: **D1(xxiv)** = the `try` block (Result-collecting
     `?` scope), then the D2 effects wall (`Perform`/`await`).
+  - **D1(xxiv) — the `try` block compiles (the frontier twin flips again) — DONE 2026-06.**
+    The `try` guardrail D1(xxiii) left was holding. A `try` block (Design A) now lowers. eval's
+    `evalTryBody` **auto-peels every statement** — each line's value is unwrapped (an `Ok(x)` → `x`) and
+    the first `Error`/`None` collapses the whole block to that failure; a `?` inside collapses *here*
+    (eval catches its ReturnSignal) rather than early-returning the function; the block's value is the
+    last line's peeled value, wrapped `Ok(...)` unless already a Result. The compiler lowers it to an IIFE
+    (a new `Try` comp) whose body — built by a `tryBlock`/`tryStmts` pass — is a `mut last` accumulator
+    spine: each statement binds its value, `return`s it raw when it is a failure (`$isFail`), else updates
+    `last` with the peeled value (`$peelVal`); the IIFE ends `return $tryWrap(last)`. Three one-line
+    prelude helpers (`$isFail`/`$peelVal`/`$tryWrap`) carry the peel/collapse/wrap logic, reached via a
+    generic unary `Helper` comp. Crucially, a `?` inside a `try` emits its usual `PropGuard` `return` —
+    which now lands in *this* IIFE, exactly eval's catch — so it is **allowed** here (the value-IIFE
+    `noPropInValue` refusal that fires for `Cond`/`Block`/`Loop` is deliberately not applied to the `try`
+    body). `return`/`break` inside a `try` refuse. Green fixture `compile_try_test.velve` (explicit `?`
+    inside `try`; **implicit auto-peel** — a bind with no `?`; a bare final value getting wrapped in `Ok`;
+    and the first-failure collapse on both the explicit and implicit paths) compiles **byte-identically**
+    to eval (`Ok(7)` / `Error(neg)` / `Ok(11)` / `Error(neg)` / `Ok(20)` / `Error(neg)`). The frontier
+    twin rolled to the **`retry` block** (run the body like a `try`, re-running on failure up to a count;
+    the spine has no retry lowering, `Retry` hits `normComp`'s `default`) — the next unrepresented form —
+    still exit 2. **No pre-existing corpus file flipped.** Harness: **46 match, 0 mismatch, 0 js-crash**,
+    108 unsupported (259 files) — +1 match (the fixture), unsupported unchanged. SPEC untouched; no graded
+    row moves (still partial). Next: **D1(xxv)** = the `retry` block, then the D2 effects wall
+    (`Perform`/`await`/`go` — where the async runtime design begins).
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,

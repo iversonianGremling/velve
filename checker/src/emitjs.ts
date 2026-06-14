@@ -113,6 +113,13 @@ function comp(c: IRComp): string {
     // `continue` re-iterates; falling off the body's end re-iterates too (the `while (true)`).
     // The IIFE scopes `$r`/`$loop` per loop, so nested loops (each its own IIFE) never collide.
     case "Loop": return `(() => {\n  let $r = $unit;\n  $loop: while (true) {\n${loopBody(c.body, "    ")}  }\n  return $r;\n})()`;
+    // A `try` block (D1(xxiv)) — an IIFE yielding a Result. The body (built by `tryBlock`) is a
+    // `mut last` accumulator spine: each line auto-peels (returns a failure raw, else updates
+    // `last`), ending `return $tryWrap(last)`. A `?` inside emits its usual `return`, landing in
+    // THIS IIFE — exactly eval's ReturnSignal catch.
+    case "Try": return `(() => {\n${body(c.body, "  ")}\n})()`;
+    // A unary prelude-helper call — the `try` peel primitives ($isFail / $peelVal / $tryWrap).
+    case "Helper": return `${c.name}(${atom(c.arg)})`;
   }
 }
 
@@ -221,6 +228,12 @@ export function emitModule(mod: IRModule, callMain = true): string {
     '// exclusive; steps +1 from `from`, empty when descending. Same `$list` value a',
     '// literal `[…]` builds, matching eval\'s VList-of-VNum.',
     'const $range = (from, to, inc) => { const es = []; const end = inc ? to : to - 1; for (let i = from; i <= end; i++) es.push(i); return { $t: "L", es }; };',
+    '// `try` peel primitives (D1(xxiv)). $isFail: an `Error`/`None` ctor (collapses the block);',
+    '// $peelVal: an `Ok`\'s payload, else the value as-is; $tryWrap: wrap a final value `Ok(...)`',
+    '// unless it is already a Result.',
+    'const $isFail = (v) => v != null && v.$t === "C" && (v.name === "Error" || v.name === "None");',
+    'const $peelVal = (v) => (v != null && v.$t === "C" && v.name === "Ok") ? v.payload : v;',
+    'const $tryWrap = (v) => (v != null && v.$t === "C" && (v.name === "Ok" || v.name === "Error")) ? v : $ctor("Ok", v);',
     '// Identity wrapper: keeps a lambda anonymous (arg-position ⇒ no inferred `.name`),',
     '// so $show shows `<fn:<lambda>>` while a `def` reference keeps its real name.',
     'const $lam = (f) => f;',

@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xxiii) prop-with): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
+// SCOPE (through D1(xxiv) try): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -53,8 +53,10 @@
 // `if (_t.name==="Error") return _t`), value is the payload; refused inside a value IIFE where
 // `return` couldn't reach the fn (D1(xxii)); and PROP-WITH `e ?: alt` — a PURE unwrap-or-
 // fallback, reusing `Cond` over a `CtorTest(_,"Ok")` with the payload as `then` and the lazy
-// fallback as `else` (D1(xxiii)). The `try` block, then `Perform`/`await` (effects) are next
-// (D1(xxiv)+, D2 — the effects wall).
+// fallback as `else` (D1(xxiii)); and the `try` block — an IIFE yielding a Result, auto-peeling
+// each line (`$isFail`/`$peelVal`), the first failure escaping, the final value `$tryWrap`ped;
+// a `?` inside targets this IIFE, matching eval's catch (D1(xxiv)). `retry`, then `Perform`/
+// `await` (effects) are next (D1(xxv)+, D2 — the effects wall, where the async runtime begins).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
 import type { Span } from "./span.js";
@@ -97,7 +99,9 @@ export type IRComp =
   | { k: "Block"; body: IRExpr }                        // reify an arbitrary value-`IRExpr` (e.g. a `match` decision-spine) as a value
   | { k: "For"; clauses: IRForClause[]; body: IRExpr }  // a list comprehension — nested generators × filters building a list
   | { k: "Range"; from: IRAtom; to: IRAtom; inclusive: boolean } // an integer fill `from..to` (`..` exclusive, `..=` inclusive) → a list
-  | { k: "Loop"; body: IRExpr };                        // an unbounded imperative loop — `break` escapes with a value, `continue` re-iterates
+  | { k: "Loop"; body: IRExpr }                         // an unbounded imperative loop — `break` escapes with a value, `continue` re-iterates
+  | { k: "Try"; body: IRExpr }                          // a `try` block — an IIFE yielding a Result; auto-peels each line, first failure escapes
+  | { k: "Helper"; name: string; arg: IRAtom };         // a unary prelude-helper call (`$isFail`/`$peelVal`/`$tryWrap`) — the `try` peel primitives
 // Perform — D2.
 
 // A lowered `for`-comprehension clause. A generator binds a simple name to each
@@ -515,6 +519,66 @@ class Lowering {
     }
   }
 
+  // A `try` body (D1(xxiv)). Builds the spine INSIDE the try IIFE: a `mut last` accumulator
+  // seeded to Unit, the statements threaded after it, ending `return $tryWrap(last)`. eval
+  // auto-peels each line and collapses on the first failure; this mirrors it statement by
+  // statement (`tryStmts`). A `?` inside lowers to its usual `PropGuard` `return`, which now
+  // lands in this IIFE — exactly eval's ReturnSignal catch — so it is allowed (not refused).
+  private tryBlock(stmts: Stmt[], scope: Set<string>): IRExpr {
+    const last = this.fresh();
+    const inner = new Set(scope); inner.add(last);
+    const r = this.fresh();
+    const fin: IRExpr = { k: "Let", name: r, comp: { k: "Helper", name: "$tryWrap", arg: { k: "Var", name: last } }, body: { k: "Ret", atom: { k: "Var", name: r } } };
+    const spine = this.tryStmts(stmts, inner, last, fin);
+    return { k: "Let", name: last, mut: true, comp: { k: "Atom", atom: UNIT_ATOM }, body: spine };
+  }
+
+  // One `try` statement, auto-peeled (eval's `evalTryBody`): bind the value to `_u`; if it is a
+  // failure (`$isFail` — an `Error`/`None`) `return` it raw from the try IIFE; otherwise update
+  // `last` with the peeled value (`$peelVal` — an `Ok`'s payload, else the value) and continue.
+  // A binding `let x = e` binds `x` to the peeled value, then sets `last = Unit` (as eval does).
+  // `return`/`break` inside a `try`, and reassignment/destructuring binds, refuse for now.
+  private tryStmts(stmts: Stmt[], scope: Set<string>, last: string, cont: IRExpr): IRExpr {
+    if (stmts.length === 0) return cont;
+    const head = stmts[0]!;
+    const rest = stmts.slice(1);
+    switch (head.tag) {
+      case "SReturn": throw new CompileUnsupported("`return` inside a `try`");
+      case "SBreak": throw new CompileUnsupported("`break` inside a `try`");
+      case "SAssign": {
+        const t = head.target;
+        if (t.tag !== "Index") throw new CompileUnsupported(`assignment target ${t.tag}`);
+        const v = this.norm(head.value, scope);
+        const o = this.norm(t.obj, scope);
+        const i = this.norm(t.index, scope);
+        return wrap([...v.binds, ...o.binds, ...i.binds], { k: "IndexSet", obj: o.atom, index: i.atom, value: v.atom,
+          body: { k: "Assign", name: last, comp: { k: "Atom", atom: UNIT_ATOM }, body: this.tryStmts(rest, scope, last, cont) } });
+      }
+      case "SBind": {
+        if (!head.declares) throw new CompileUnsupported("reassignment inside a `try`");
+        const name = patName(head.pat);
+        const c = this.normComp(head.value, scope);
+        const u = this.fresh();
+        const cf = this.fresh();
+        const next = new Set(scope); next.add(name);
+        return wrap(c.binds, { k: "Let", name: u, comp: c.comp, body:
+          { k: "Let", name: cf, comp: { k: "Helper", name: "$isFail", arg: { k: "Var", name: u } }, body:
+            { k: "If", cond: { k: "Var", name: cf }, then: { k: "Ret", atom: { k: "Var", name: u } }, else_:
+              { k: "Let", name, comp: { k: "Helper", name: "$peelVal", arg: { k: "Var", name: u } }, body:
+                { k: "Assign", name: last, comp: { k: "Atom", atom: UNIT_ATOM }, body: this.tryStmts(rest, next, last, cont) } } } } });
+      }
+      case "SExpr": {
+        const c = this.normComp(head.expr, scope);
+        const u = this.fresh();
+        const cf = this.fresh();
+        return wrap(c.binds, { k: "Let", name: u, comp: c.comp, body:
+          { k: "Let", name: cf, comp: { k: "Helper", name: "$isFail", arg: { k: "Var", name: u } }, body:
+            { k: "If", cond: { k: "Var", name: cf }, then: { k: "Ret", atom: { k: "Var", name: u } }, else_:
+              { k: "Assign", name: last, comp: { k: "Helper", name: "$peelVal", arg: { k: "Var", name: u } }, body: this.tryStmts(rest, scope, last, cont) } } } });
+      }
+    }
+  }
+
   // Normalize an expression to an ATOM, accumulating the `Let`-able binds it needs.
   private norm(e: Expr, scope: Set<string>): { binds: Bind[]; atom: IRAtom } {
     if (e.tag === "Lit") return { binds: [], atom: { k: "Lit", lit: lowerLit(e.lit) } };
@@ -727,6 +791,19 @@ class Lowering {
         const s = this.norm(e.expr, scope);
         return { binds: s.binds, comp: { k: "CtorTest", ctor: s.atom, name: e.against.name } };
       }
+      case "Try": {
+        // A `try` block (D1(xxiv)) — Design A. eval's `evalTryBody` AUTO-PEELS every statement:
+        // each line's value is unwrapped (an `Ok(x)` → `x`), and the FIRST `Error`/`None`
+        // collapses the whole block to that failure; a `?` inside likewise collapses HERE (eval
+        // catches its ReturnSignal) rather than early-returning the function; the block's value
+        // is the last line's peeled value, wrapped `Ok(...)` unless already a Result. We lower it
+        // to an IIFE (the `Try` comp) whose body is a `mut last` accumulator spine: each statement
+        // binds its value, `return`s it raw if it is a failure (`$isFail`), else updates `last`
+        // with the peeled value (`$peelVal`); the IIFE ends `return $tryWrap(last)`. A `?` inside
+        // emits its usual `return` — which now lands in THIS IIFE, exactly eval's catch, so it is
+        // allowed here (no `noPropInValue`).
+        return { binds: [], comp: { k: "Try", body: this.tryBlock(e.stmts, scope) } };
+      }
       case "Loop": {
         // An unbounded imperative loop (D1(xx)). eval runs the body block forever, sharing
         // one env so a `mut` declared OUTSIDE persists and mutates across iterations; a
@@ -805,6 +882,7 @@ class Lowering {
 }
 
 const RET_UNIT: IRExpr = { k: "Ret", atom: { k: "Lit", lit: { t: "Unit" } } };
+const UNIT_ATOM: IRAtom = { k: "Lit", lit: { t: "Unit" } };
 
 // Strict, pure operators that map 1:1 onto a JS operator (emitjs.ts owns the table).
 const ARITH = new Set(["+", "-", "*", "/", "%", "**", "^", "<", ">", "<=", ">=", "==", "!=", "++"]);

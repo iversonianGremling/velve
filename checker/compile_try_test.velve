@@ -1,0 +1,39 @@
+@edition "2026.6"
+
+-- D1(xxiv): the `try` block compiles (Design A — a Result-collecting scope). eval's
+-- evalTryBody AUTO-PEELS every statement (each line's Result auto-unwraps; the first Error/None
+-- collapses the block to that failure), catches a `?`'s early-return HERE rather than at the
+-- function, and wraps the final value `Ok(...)` unless it is already a Result. The compiler
+-- lowers it to an IIFE with a `mut last` accumulator: each line returns a failure raw, else
+-- updates `last` with the peeled value; the IIFE ends `return $tryWrap(last)`. Byte-identical
+-- to eval, asserted by the differential harness. Covers: explicit `?` inside `try`; IMPLICIT
+-- auto-peel (a bind with no `?`); a bare final value getting wrapped in `Ok`; and the
+-- first-failure collapse on both the explicit and implicit paths.
+
+def parsePos(n: Number): Result(Number, String)
+  if n > 0 then Ok(n) else Error("neg")
+
+def addExplicit(a: Number, b: Number): Result(Number, String)
+  try
+    let x = parsePos(a)?
+    let y = parsePos(b)?
+    Ok(x + y)
+
+def addImplicit(a: Number, b: Number): Result(Number, String)
+  try
+    let x = parsePos(a)
+    let y = parsePos(b)
+    Ok(x + y)
+
+def bareValue(n: Number): Result(Number, String)
+  try
+    let x = parsePos(n)
+    x * 2
+
+def main(): Effect [io] ()
+  println(addExplicit(3, 4))
+  println(addExplicit(0, 4))
+  println(addImplicit(5, 6))
+  println(addImplicit(5, -2))
+  println(bareValue(10))
+  println(bareValue(-1))

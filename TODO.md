@@ -1325,6 +1325,27 @@ dimension machinery generalize?
   (+1 match = fixture; unsupported unchanged). SPEC untouched; no graded row moves (still partial). **Next:
   D1(xxiv)** — the `try` block (Result-collecting `?` scope), then the D2 effects wall (`Perform`/`await`).
 
+- [x] 🟢 **Phase D1(xxiv) — the `try` block compiles (Design A — a Result-collecting scope) — DONE 2026-06**
+  (`core.ts` new `Try` + `Helper` IRComp + the `Try` case in `normComp` + new `tryBlock`/`tryStmts` pass +
+  `UNIT_ATOM`; `emitjs.ts` `Try` IIFE + `Helper` emit + `$isFail`/`$peelVal`/`$tryWrap` prelude;
+  `compile_try_test.velve`). The `try` guardrail D1(xxiii) left was holding. eval's `evalTryBody`
+  **auto-peels every statement** — each line unwraps an `Ok`, the first `Error`/`None` collapses the block
+  to that failure; a `?` inside collapses HERE (eval catches its ReturnSignal) not at the function; the
+  block value is the last line's peeled value, wrapped `Ok(...)` unless already a Result. The compiler
+  lowers it to an IIFE (the `Try` comp) whose body is a `mut last` accumulator spine: each statement
+  `return`s a failure raw (`$isFail`), else updates `last` with the peeled value (`$peelVal`); the IIFE
+  ends `return $tryWrap(last)`. A `?` inside the `try` emits its usual `PropGuard` `return`, landing in
+  THIS IIFE (eval's catch) — so it is **allowed** here (the value-IIFE `noPropInValue` refusal is
+  deliberately not applied to the `try` body); `return`/`break` inside a `try` refuse. Green
+  `compile_try_test` (explicit `?` inside `try`; **implicit auto-peel** — a bind with no `?`; a bare final
+  value getting `Ok`-wrapped; first-failure collapse on both paths) byte-identical to eval (`Ok(7)` /
+  `Error(neg)` / `Ok(11)` / `Error(neg)` / `Ok(20)` / `Error(neg)`). The frontier twin `compile_frontier_test`
+  ROLLED try→**`retry` block** (run the body like a `try`, re-running on failure up to a count; `Retry`
+  hits `normComp`'s `default`) — next unrepresented form — still exit 2. **No pre-existing corpus file
+  flipped.** Harness: **46 match / 0 mismatch / 0 js-crash / 108 unsupported** across 259 files (+1 match =
+  fixture; unsupported unchanged). SPEC untouched; no graded row moves (still partial). **Next: D1(xxv)** —
+  the `retry` block, then the D2 effects wall (`Perform`/`await`/`go` — where the async runtime begins).
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)
