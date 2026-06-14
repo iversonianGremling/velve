@@ -1,12 +1,12 @@
 @edition "2026.6"
 
--- D1(xxii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
--- not a `_bad`), but it uses the PROP-WITH operator (`e ?: alt` — unwrap an `Ok` payload, or
--- evaluate the fallback `alt` on anything else). eval yields the `Ok` payload or evaluates
--- `alt` (a PURE conditional — no early-return, unlike `?`); the compute spine has no prop-with
--- lowering — `normComp`/`norm` reach the `PropWith` AST node and refuse it (the `default` arm
--- of `normComp`). The differential harness must report it `unsupported` — a CLEAN refusal at
--- the compiler frontier, never a miscompile.
+-- D1(xxiii) frontier guardrail. This program is VALID (it type-checks clean — a `_test`,
+-- not a `_bad`), but it uses a `try` BLOCK (a scope where `?` collapses to a local Result
+-- instead of early-returning the whole function — Design A, SPEC §). eval runs the body and
+-- yields a Result, catching a propagated Error into this block's value; the compute spine has
+-- no try lowering — `normComp`/`norm` reach the `Try` AST node and refuse it (the `default`
+-- arm of `normComp`). The differential harness must report it `unsupported` — a CLEAN refusal
+-- at the compiler frontier, never a miscompile.
 --
 -- This is the backend-slice analogue of a `_bad` twin: a backend slice adds no checker
 -- rejection rule, so the guarantee under test is "the compiler refuses what it cannot
@@ -18,18 +18,20 @@
 -- non-tail `match` as a value; D1(xiii) PAST multi-clause `def`s; D1(xiv) PAST reassignment;
 -- D1(xv) PAST atom literals; D1(xvi) PAST duration literals; D1(xvii) PAST `for`
 -- comprehensions; D1(xviii) PAST integer ranges; D1(xix) PAST index assignment; D1(xx) PAST
--- the `loop` construct; D1(xxi) PAST type tests; D1(xxii) PAST the PROPAGATE operator (`e?` —
--- unwrap-or-early-return on Result; see compile_propagate_test). The frontier now sits at the
--- PROP-WITH operator (`e ?: alt`). This file uses one, so it still refuses; when prop-with
--- lowers (a later D1 slice, an Ok-payload-or-fallback select), it flips from `unsupported` to
--- a print with no edit.
+-- the `loop` construct; D1(xxi) PAST type tests; D1(xxii) PAST the propagate operator `e?`;
+-- D1(xxiii) PAST the PROP-WITH operator (`e ?: alt`; see compile_propwith_test). The frontier
+-- now sits at the `try` block. This file uses one, so it still refuses; when `try` lowers (a
+-- later D1 slice, a Result-collecting block), it flips from `unsupported` to a print with no edit.
 
 def parsePos(n: Number): Result(Number, String)
   if n > 0 then Ok(n) else Error("neg")
 
-def orZero(n: Number): Number
-  parsePos(n) ?: 0
+def addThem(a: Number, b: Number): Result(Number, String)
+  try
+    let x = parsePos(a)?
+    let y = parsePos(b)?
+    Ok(x + y)
 
 def main(): Effect [io] ()
-  println(orZero(5))
-  println(orZero(-3))
+  println(addThem(3, 4))
+  println(addThem(3, -1))

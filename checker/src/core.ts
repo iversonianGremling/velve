@@ -9,7 +9,7 @@
 // already discharged upstream and simply do not appear below — the lone survivor,
 // the width tag, rides `PrimOp` as inert metadata (unset on this JS-only slice).
 //
-// SCOPE (through D1(xxii) propagate): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
+// SCOPE (through D1(xxiii) prop-with): `def`s (single- AND multi-clause); `Lit` (Str/Num/Bool/Unit/Atom/Duration→ms);
 // `Var`; arithmetic/comparison/equality `BinOp`; `UnOp`; saturated `Call` to a user
 // `def` or a whitelisted pure builtin; tail-position `If` (incl. else-if ladders);
 // `Do` blocks of `let`/expr statements; scalar `match` (D1(ii)); TUPLES — built and
@@ -51,8 +51,10 @@
 // `CtorTest` Bool (`v.$t==="C" && v.name===name`) (D1(xxi)); and the PROPAGATE operator `e?`
 // — hoist the subject, early-return it from the fn when it is an `Error` (a `PropGuard` →
 // `if (_t.name==="Error") return _t`), value is the payload; refused inside a value IIFE where
-// `return` couldn't reach the fn (D1(xxii)). PROP-WITH (`e ?: alt`), then `Perform`/`await`
-// (effects) are next (D1(xxiii)+, D2 — the effects wall).
+// `return` couldn't reach the fn (D1(xxii)); and PROP-WITH `e ?: alt` — a PURE unwrap-or-
+// fallback, reusing `Cond` over a `CtorTest(_,"Ok")` with the payload as `then` and the lazy
+// fallback as `else` (D1(xxiii)). The `try` block, then `Perform`/`await` (effects) are next
+// (D1(xxiv)+, D2 — the effects wall).
 
 import type { Module, Expr, Stmt, Lit, Pat, Branch, FnClause } from "./ast.js";
 import type { Span } from "./span.js";
@@ -691,6 +693,27 @@ class Lowering {
         return {
           binds: [...s.binds, { name: g, comp: { k: "Atom", atom: s.atom }, guard: true }],
           comp: { k: "CtorPayload", ctor: { k: "Var", name: g } },
+        };
+      }
+      case "PropWith": {
+        // The prop-with operator `e ?: alt` (D1(xxiii)) — eval: an `Ok(x)` yields `x`, anything
+        // else evaluates the fallback `alt`. Unlike `?`, it is PURE (no early-return) — a plain
+        // value conditional — so it reuses the `Cond` machinery: a `CtorTest(_, "Ok")` picks the
+        // branch, the `Ok` payload is the `then` atom, `alt` the lazy `else` (run only when not
+        // Ok). The payload is read eagerly into a temp (harmless — a field read; its value is
+        // simply discarded on the Error branch), so the `then` arm is a bare atom, no IIFE.
+        const s = this.norm(e.expr, scope);
+        const ok = this.fresh();
+        const pay = this.fresh();
+        const elseE = this.tail(e.alt, new Set(scope));
+        noPropInValue(elseE, "a `?:` fallback");
+        return {
+          binds: [
+            ...s.binds,
+            { name: ok, comp: { k: "CtorTest", ctor: s.atom, name: "Ok" } },
+            { name: pay, comp: { k: "CtorPayload", ctor: s.atom } },
+          ],
+          comp: { k: "Cond", cond: { k: "Var", name: ok }, then: { k: "Ret", atom: { k: "Var", name: pay } }, else_: elseE },
         };
       }
       case "TypeTest": {

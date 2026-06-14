@@ -768,7 +768,18 @@ early-return is a real JS `return`, so `?` is valid only where its guard lands i
 `compile_propagate_test.velve`, byte-identical across single/chained/payload-threading/nested-arg cases),
 no corpus flip. The frontier twin rolled to the **PROP-WITH operator** (`e ?: alt` — unwrap-or-fallback, a
 pure conditional with no early-return).
-**Remaining for D1(xxiii)+**: prop-with (`e ?: alt`); then the D2 effects wall (`Perform`/`await`).
+
+**D1(xxiii) shipped (2026-06) — the prop-with operator `e ?: alt`.** eval yields an `Ok`'s payload, or
+evaluates the fallback `alt` on anything else. Unlike `?` it is **pure** (no early-return) — a plain value
+conditional — so it reuses the `Cond` machinery with **no new IR node**: a `CtorTest(_, "Ok")` (D1(xxi))
+picks the branch, the Ok payload (`CtorPayload`, D1(iv)) is the `then` atom read eagerly into a temp
+(harmless field read, discarded on the Error branch — so no IIFE), and `alt` is the lazy `else` of a `Cond`
+(D1(x)). Harness: **45 match / 0 mismatch / 0 js-crash / 108 unsupported** (258 files) — +1 match (fixture
+`compile_propwith_test.velve`, byte-identical across Ok / fallback / non-trivial-fallback / subexpression
+cases), no corpus flip. (Noted: `?:` binds tighter than `*`, so `e ?: d * 10` parses `(e ?: d) * 10` — the
+compiler matches eval's precedence.) The frontier twin rolled to the **`try` block** (a Result-collecting
+`?` scope; `Try` hits `normComp`'s `default`).
+**Remaining for D1(xxiv)+**: the `try` block; then the D2 effects wall (`Perform`/`await`).
 
 ---
 

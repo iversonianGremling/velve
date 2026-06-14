@@ -1,0 +1,30 @@
+@edition "2026.6"
+
+-- D1(xxiii): the PROP-WITH operator `e ?: alt` compiles (unwrap-or-fallback on Result).
+-- eval: an `Ok(x)` yields `x`; anything else evaluates the fallback `alt`. Unlike `?` it is
+-- PURE — no early-return — a plain value conditional, so the compiler reuses the `Cond`
+-- machinery: a `CtorTest(_, "Ok")` picks the branch, the Ok payload is the `then`, `alt` the
+-- else (run only when not Ok). Byte-identical to eval, asserted by the differential harness.
+-- Covers: the Ok path, the fallback path, a parenthesized fallback that is a non-trivial
+-- expression, and `?:` used as a parenthesized subexpression inside arithmetic. (`?:` binds
+-- tighter than `*`, so the fallback is parenthesized where a full expression is intended.)
+
+def parsePos(n: Number): Result(Number, String)
+  if n > 0 then Ok(n) else Error("neg")
+
+def orZero(n: Number): Number
+  parsePos(n) ?: 0
+
+def orDefault(n: Number, d: Number): Number
+  parsePos(n) ?: (d * 10)
+
+def plusOne(n: Number): Number
+  (parsePos(n) ?: 0) + 1
+
+def main(): Effect [io] ()
+  println(orZero(5))
+  println(orZero(-3))
+  println(orDefault(7, 9))
+  println(orDefault(-1, 9))
+  println(plusOne(4))
+  println(plusOne(-2))

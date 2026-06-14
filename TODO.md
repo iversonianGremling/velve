@@ -1308,6 +1308,23 @@ dimension machinery generalize?
   match = fixture; unsupported unchanged). SPEC untouched; no graded row moves (still partial). **Next:
   D1(xxiii)** — prop-with (`e ?: alt`), then the D2 effects wall (`Perform`/`await`).
 
+- [x] 🟢 **Phase D1(xxiii) — the prop-with operator `e ?: alt` compiles (pure unwrap-or-fallback on Result)
+  — DONE 2026-06** (`core.ts` the `PropWith` case in `normComp` — NO new IR node, a composition of
+  `CtorTest` + `CtorPayload` + `Cond`; `compile_propwith_test.velve`). The prop-with guardrail D1(xxii)
+  left (`parsePos(n) ?: 0`) was holding. `e ?: alt` now lowers: eval yields an `Ok`'s payload, or evaluates
+  the fallback `alt` on anything else. Unlike `?` it is **pure** (no early-return) — a plain value
+  conditional — so it reuses the `Cond` machinery: a `CtorTest(_, "Ok")` picks the branch, the Ok payload
+  is the `then` atom (read eagerly into a temp — harmless field read, discarded on the Error branch, so no
+  IIFE), and `alt` is the lazy `else`. Green `compile_propwith_test` (Ok path; fallback path; parenthesized
+  non-trivial fallback `(d * 10)`; `?:` as a parenthesized subexpression in arithmetic) byte-identical to
+  eval (`5` / `0` / `7` / `90` / `5` / `1`). (Noted: `?:` binds tighter than `*`, so `e ?: d * 10` parses
+  `(e ?: d) * 10` — the compiler matches eval's precedence exactly.) The frontier twin `compile_frontier_test`
+  ROLLED prop-with→**`try` block** (a scope where `?` collapses to a local Result instead of early-returning
+  the function; `Try` hits `normComp`'s `default`) — next unrepresented form — still exit 2. **No pre-existing
+  corpus file flipped.** Harness: **45 match / 0 mismatch / 0 js-crash / 108 unsupported** across 258 files
+  (+1 match = fixture; unsupported unchanged). SPEC untouched; no graded row moves (still partial). **Next:
+  D1(xxiv)** — the `try` block (Result-collecting `?` scope), then the D2 effects wall (`Perform`/`await`).
+
 ---
 
 ## 4. Features to consider **deleting** (the refusal discipline, applied to syntax)

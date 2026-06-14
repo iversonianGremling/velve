@@ -980,6 +980,25 @@ exists (`compiler-architecture-design.md`).
     0 mismatch, 0 js-crash**, 108 unsupported (257 files) — +1 match (the fixture), unsupported unchanged.
     SPEC untouched; no graded row moves (still partial). Next: **D1(xxiii)** = prop-with (`e ?: alt`),
     then the D2 effects wall (`Perform`/`await`).
+  - **D1(xxiii) — the prop-with operator `e ?: alt` compiles (the frontier twin flips again) — DONE 2026-06.**
+    The prop-with guardrail D1(xxii) left (`parsePos(n) ?: 0`) was holding. `e ?: alt` now lowers: eval
+    yields an `Ok`'s payload, or evaluates the fallback `alt` on anything else. Unlike `?` it is **pure**
+    — no early-return, a plain value conditional — so it reuses the `Cond` machinery built for `&&`/`||`
+    and value-`if`: a `CtorTest(_, "Ok")` picks the branch, the Ok payload is the `then` atom (read
+    eagerly into a temp — a harmless field read, discarded on the Error branch — so the `then` arm needs
+    no IIFE), and `alt` is the lazy `else` (run only when not Ok). No new IR node: the whole operator is a
+    composition of `CtorTest` (D1(xxi)) + `CtorPayload` (D1(iv)) + `Cond` (D1(x)). Green fixture
+    `compile_propwith_test.velve` (the Ok path; the fallback path; a parenthesized non-trivial fallback
+    `(d * 10)`; and `?:` as a parenthesized subexpression inside arithmetic) compiles **byte-identically**
+    to eval (`5` / `0` / `7` / `90` / `5` / `1`). (A discovery worth noting: `?:` binds *tighter* than
+    `*`, so `e ?: d * 10` parses as `(e ?: d) * 10` — the compiler matches eval's precedence exactly; the
+    fixture parenthesizes where a full-expression fallback is intended.) The frontier twin rolled to the
+    **`try` block** (a scope where `?` collapses to a local Result instead of early-returning the whole
+    function; the spine has no try lowering, `Try` hits `normComp`'s `default`) — the next unrepresented
+    form — still exit 2. **No pre-existing corpus file flipped.** Harness: **45 match, 0 mismatch, 0
+    js-crash**, 108 unsupported (258 files) — +1 match (the fixture), unsupported unchanged. SPEC
+    untouched; no graded row moves (still partial). Next: **D1(xxiv)** = the `try` block (Result-collecting
+    `?` scope), then the D2 effects wall (`Perform`/`await`).
 - **D2. Effects & concurrency runtime** *(5–10)*. Sagas (compile to state
   machines or generators — generators are the natural JS target),
   `go`/`race`/`after` on a scheduler, streams + backpressure policies,
